@@ -19,6 +19,10 @@ jobs:
           xcrun --sdk iphoneos clang -target arm64-apple-ios15.0 -isysroot "$SDK" -Wall -Wextra -Werror -c ios/bringup/fiber_smoke.c -o build/ios-bringup/fiber_smoke.o
           xcrun --sdk iphoneos nm build/ios-bringup/fiber_smoke.o | grep ngb_ctx_switch_smoke
           file build/ios-bringup/fiber_smoke.o
+      - name: Compile production portability header for iPhoneOS
+        run: |
+          SDK="$(xcrun --sdk iphoneos --show-sdk-path)"
+          xcrun --sdk iphoneos clang -target arm64-apple-ios15.0 -isysroot "$SDK" -Wall -Wextra -Werror -c ios/bringup/portability_smoke.c -o build/ios-bringup/portability_smoke.o
       - name: Check iOS simulator ARM64 compilation
         run: |
           SDK="$(xcrun --sdk iphonesimulator --show-sdk-path)"
