@@ -61,3 +61,20 @@ The complete extracted disc directory is still needed at runtime. Extracting
 only the XBE here does not supply runtime data. Each runner is disposable, so do
 not delete the only copy of the disc or revoke its link while future build runs
 still need it. A successful preflight does not create a permanent backup.
+
+## Confirmed execution
+
+[Run 40096238764](https://github.com/ajellia81-cmd/ngbrecomp/actions/runs/40096238764)
+downloaded all 7,825,162,240 bytes, accepted the retail executable fingerprint,
+generated 48 game C translation units, and compiled the real production fibers
+for iPhoneOS ARM64. Its independent job also linked the production scheduler
+against device and simulator libraries and passed the existing macOS scheduler
+and thread-suspension regressions. This establishes the input/build route; it
+does not establish whole-engine compilation or gameplay. The later workflow
+adds compilation of all 48 generated units, whose result must be checked
+separately.
+
+The computed ISO SHA-256 was
+`4fd09d95ebf86dde18fca6ea038a76a376a15cdf3980c9cffe6f2571ead827ff`.
+No independent expected hash was supplied for that run. This value is an
+observed digest, not a claim of matching an external preservation database.

@@ -1,0 +1,59 @@
+name: iOS VM API behavior
+on:
+  push:
+    branches: [ios-port]
+    paths:
+      - '.github/workflows/ios-vm-test.yml'
+      - 'ios/vm_api_test.c'
+      - 'src/port.h'
+      - 'xboxrecomp/src/platform/apple_vm.h'
+      - 'xboxrecomp/src/platform/win32_compat.c'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  vm-api:
+    runs-on: macos-15
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Exercise existing macOS VM behavior
+        run: |
+          mkdir -p build/ios-vm
+          xcrun --sdk macosx clang -arch arm64 -std=gnu11 -O2 \
+            -Ixboxrecomp/src -Ixboxrecomp/src/platform \
+            ios/vm_api_test.c xboxrecomp/src/platform/win32_compat.c \
+            xboxrecomp/src/platform/vcpu.c -o build/ios-vm/vm-macos
+          build/ios-vm/vm-macos
+      - name: Compile and sign simulator regression executable
+        run: |
+          SDK="$(xcrun --sdk iphonesimulator --show-sdk-path)"
+          xcrun --sdk iphonesimulator clang -target arm64-apple-ios15.0-simulator \
+            -isysroot "$SDK" -std=gnu11 -O2 -Ixboxrecomp/src -Ixboxrecomp/src/platform \
+            ios/vm_api_test.c xboxrecomp/src/platform/win32_compat.c \
+            xboxrecomp/src/platform/vcpu.c -o build/ios-vm/vm-simulator
+          codesign --force --sign - --timestamp=none build/ios-vm/vm-simulator
+      - name: Exercise public iOS VM APIs in a cloud simulator
+        shell: bash
+        run: |
+          set -euo pipefail
+          xcrun simctl list devices available --json > "$RUNNER_TEMP/ngb-simulators.json"
+          python3 - <<'PY'
+          import json, os
+          from pathlib import Path
+          data = json.loads((Path(os.environ['RUNNER_TEMP']) / 'ngb-simulators.json').read_text())
+          devices = [d for runtime, items in data['devices'].items() if '.iOS-' in runtime
+                     for d in items if d.get('isAvailable') and d['name'].startswith('iPhone')]
+          if not devices:
+              raise SystemExit('No available cloud iPhone simulator; execution is not verified')
+          device = next((d for d in devices if d['state'] == 'Booted'), devices[0])
+          (Path(os.environ['RUNNER_TEMP']) / 'ngb-sim-selected').write_text(device['udid'] + '\n' + device['state'] + '\n')
+          PY
+          DEVICE=$(sed -n '1p' "$RUNNER_TEMP/ngb-sim-selected")
+          STATE=$(sed -n '2p' "$RUNNER_TEMP/ngb-sim-selected")
+          if [ "$STATE" != Booted ]; then xcrun simctl boot "$DEVICE"; fi
+          xcrun simctl bootstatus "$DEVICE" -b
+          xcrun simctl spawn "$DEVICE" "$PWD/build/ios-vm/vm-simulator"
+    # No app/IPA artifact: this only validates VM semantics, not game startup.
