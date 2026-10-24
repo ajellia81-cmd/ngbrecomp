@@ -6,13 +6,14 @@ after restarting following the first load. Long-term reliability, performance an
 background resume still require testing. The older NGBBringup diagnostic app is
 a separate target.
 
-- Build source: `fd4617d1ef582f4ee255e76fbeb7adb0c186d856`, branch `ios-port`.
-- [Successful Actions run](https://github.com/ajellia81-cmd/ngbrecomp/actions/runs/40111477099).
-- [Encrypted IPA artifact](https://github.com/ajellia81-cmd/ngbrecomp/actions/runs/40111477099/artifacts/12566663991).
-- Unsigned IPA: **14,239,616 bytes**, containing **11,740 linked lifted game functions**,
-  the real engine/runtime, SDL UIKit entry point and MoltenVK framework.
-- IPA SHA-256: `7c2b3859c05bcb25e507a6a42b9a13b484727b31fb628c4340250c1703861a9e`.
-- GitHub artifact ZIP SHA-256: `736d3287655d958d044a7c1e258cf6268d20a022513a46eaaf68b7a4e9291ba4`.
+- Build source: `392e02b48f1ead8a5e1bd8c3388ebfe309fdf53c`, branch `ios-port`.
+- [Successful Actions run](https://github.com/ajellia81-cmd/ngbrecomp/actions/runs/40122256419).
+- [Encrypted IPA artifact](https://github.com/ajellia81-cmd/ngbrecomp/actions/runs/40122256419/artifacts/12571398666).
+- Unsigned IPA: **47,240,533 bytes**, containing **11,740 linked lifted game functions**,
+  135 additional Korean variants, the real engine/runtime, SDL UIKit entry point,
+  MoltenVK framework and private translation capsule.
+- IPA SHA-256: `5a1a2b1925cb1cdd6d25743a483542c9bbb5ba674a7026837c63f2297a11724d`.
+- GitHub artifact ZIP SHA-256: `1a6c0e89aa05baaa628172efd045e6b8187b5e5d2546421aaed265080d70c0da`.
 
 See [INSTALL.md](INSTALL.md) for download, LiveContainer import and game data.
 The download is an encrypted 7z inside GitHub's artifact ZIP. It expires seven
@@ -88,6 +89,8 @@ pause state is preserved. This lifecycle path needs an owner-device retest.
 | UIKit game app | Bundle linked with real engine, SDL UIKit entry and MoltenVK |
 | IPA | iPhoneOS platform and engine symbols checked; ZIP integrity passed |
 | Encrypted delivery | 7z password/integrity test and artifact upload passed |
+| Korean build | Pinned patch, all 17 section hashes, 135 variants, iPhoneOS ARM64 compilation/link and encrypted IPA packaging passed |
+| Korean archive/settings fixtures | Actual Foundation AFS/delta tests and Japanese/English/Korean settings persistence passed; not a real-disc/device test |
 | VM semantics | Allocation collision, protected writes, protection restoration and 64 MiB backing-file shared aliases passed on macOS and iPhone simulator |
 | Scheduler/thread regressions | Existing macOS and Linux regressions passed |
 | Lifecycle CPU/time | Loaded-image scheduler stops a noncooperative guest spin loop, freezes its clock and resumes; passed Linux and macOS |
