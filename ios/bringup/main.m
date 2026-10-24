@@ -1,4 +1,6 @@
 #import <UIKit/UIKit.h>
+#import <GameController/GameController.h>
+#include "../../src/port.h"
 @interface NGBAppDelegate : UIResponder <UIApplicationDelegate>
 @property (nonatomic, strong) UIWindow *window;
 @end
@@ -14,7 +16,12 @@
     NSError *error = nil;
     BOOL writable = [@"NGB sandbox write test" writeToFile:testPath atomically:YES encoding:NSUTF8StringEncoding error:&error];
     NSString *status = writable ? @"Sandbox write: OK" : [NSString stringWithFormat:@"Sandbox write: FAILED (%@)", error.localizedDescription];
-    label.text = [NSString stringWithFormat:@"Ninja Gaiden Black\\niOS bring-up\\n\\n%@\\n\\nRuntime integration pending", status];
+    char configPath[1024] = {0};
+    ngb_config_dir(configPath, sizeof(configPath), 1);
+    BOOL configOK = access(configPath, W_OK) == 0;
+    NSUInteger controllers = GCController.controllers.count;
+    NSString *diagnostics = [NSString stringWithFormat:@"%@\\nConfig directory: %@\\nControllers: %lu", status, configOK ? @"OK" : @"FAILED", (unsigned long)controllers];
+    label.text = [NSString stringWithFormat:@"Ninja Gaiden Black\\niOS bring-up\\n\\n%@\\n\\nRuntime integration pending", diagnostics];
     label.textColor = UIColor.whiteColor;
     label.numberOfLines = 0;
     label.textAlignment = NSTextAlignmentCenter;
