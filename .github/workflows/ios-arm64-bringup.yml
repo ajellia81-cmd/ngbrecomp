@@ -19,7 +19,12 @@ jobs:
           xcrun --sdk iphoneos clang -target arm64-apple-ios15.0 -isysroot "$SDK" -Wall -Wextra -Werror -c ios/bringup/fiber_smoke.c -o build/ios-bringup/fiber_smoke.o
           xcrun --sdk iphoneos nm build/ios-bringup/fiber_smoke.o | grep ngb_ctx_switch_smoke
           file build/ios-bringup/fiber_smoke.o
+      - name: Check iOS simulator ARM64 compilation
+        run: |
+          SDK="$(xcrun --sdk iphonesimulator --show-sdk-path)"
+          xcrun --sdk iphonesimulator clang -target arm64-apple-ios15.0-simulator -isysroot "$SDK" -Wall -Wextra -Werror -c ios/bringup/fiber_smoke.c -o build/ios-bringup/fiber_simulator.o
+          file build/ios-bringup/fiber_simulator.o
       - uses: actions/upload-artifact@v4
         with:
           name: iphoneos-arm64-fiber-object
-          path: build/ios-bringup/fiber_smoke.o
+          path: build/ios-bringup/*.o
