@@ -9,7 +9,12 @@
     UIViewController *controller = [UIViewController new];
     controller.view.backgroundColor = [UIColor colorWithRed:0.06 green:0.08 blue:0.12 alpha:1.0];
     UILabel *label = [[UILabel alloc] initWithFrame:CGRectZero];
-    label.text = @"Ninja Gaiden Black\niOS bring-up\n\nRuntime integration pending";
+    NSString *documents = NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES).firstObject;
+    NSString *testPath = [documents stringByAppendingPathComponent:@"ngb-bringup-test.txt"];
+    NSError *error = nil;
+    BOOL writable = [@"NGB sandbox write test" writeToFile:testPath atomically:YES encoding:NSUTF8StringEncoding error:&error];
+    NSString *status = writable ? @"Sandbox write: OK" : [NSString stringWithFormat:@"Sandbox write: FAILED (%@)", error.localizedDescription];
+    label.text = [NSString stringWithFormat:@"Ninja Gaiden Black\\niOS bring-up\\n\\n%@\\n\\nRuntime integration pending", status];
     label.textColor = UIColor.whiteColor;
     label.numberOfLines = 0;
     label.textAlignment = NSTextAlignmentCenter;
