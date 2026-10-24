@@ -32,6 +32,9 @@ int nv2a_vk_share(nv2a_vk_shared *out);
  * are on the PFIFO thread, a sharer's on its own. */
 void nv2a_vk_queue_lock(void);
 void nv2a_vk_queue_unlock(void);
+/* Block new submissions/acquisitions and drain queued GPU work before the
+ * host loses foreground permission. Call from the UI thread, not a guest. */
+void nv2a_vk_set_background(bool background);
 
 /* While set, the renderer executes the pushbuffer without drawing: no
  * draws, clears, blits or surface traffic (the sharer draws instead). */

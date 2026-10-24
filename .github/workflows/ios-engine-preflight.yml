@@ -12,6 +12,7 @@ on:
       - 'ios/report_build_errors.py'
       - 'ios/app.m'
       - 'ios/vcpu_image_test.c'
+      - 'ios/audio_pause_test.c'
       - 'ios/target.cmake'
       - 'ios/Info.plist.in'
       - 'ios/package_ipa.sh'
@@ -20,6 +21,9 @@ on:
       - 'src/fibers.c'
       - 'src/port.h'
       - 'xboxrecomp/src/platform/**'
+      - 'xboxrecomp/src/apu/apu_sdl_out.c'
+      - 'xboxrecomp/src/nv2a_vk/host/**'
+      - 'xboxrecomp/src/nv2a_vk/xemu/pgraph/vk/instance.c'
 
 permissions:
   contents: read
@@ -112,6 +116,17 @@ jobs:
               "xboxrecomp/tests/$test/test_main.c" -o "build/ios-platform/$test"
             "build/ios-platform/$test"
           done
+
+      - name: Check lifecycle audio with a silent SDL device
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! brew list sdl2 >/dev/null 2>&1; then brew install sdl2; fi
+          xcrun --sdk macosx clang -arch arm64 -std=c11 -O2 -Ixboxrecomp/src \
+            $(pkg-config --cflags sdl2) ios/audio_pause_test.c \
+            xboxrecomp/src/apu/apu_sdl_out.c $(pkg-config --libs sdl2) \
+            -o build/ios-platform/audio-pause
+          SDL_AUDIODRIVER=dummy build/ios-platform/audio-pause
 
   private-recompilation:
     # Standard GitHub-hosted runner: never the owner's PC or a paid larger runner.

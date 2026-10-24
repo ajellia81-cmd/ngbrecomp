@@ -83,8 +83,41 @@ static vcpu_thread *s_threads[VCPU_MAX_THREADS];
 static unsigned long s_seq;
 static int64_t s_holder_since_ms;
 static int s_enabled = -1;
+static int s_paused;
+static pthread_cond_t s_idle = PTHREAD_COND_INITIALIZER;
 static __thread vcpu_thread *t_self;
 
+#if !defined(_WIN32)
+static pthread_mutex_t s_clock_lock = PTHREAD_MUTEX_INITIALIZER;
+static int64_t s_clock_offset, s_clock_stopped;
+static int s_clock_paused;
+static int64_t host_clock_ns(void)
+{
+    struct timespec t;
+    clock_gettime(CLOCK_MONOTONIC, &t);
+    return (int64_t)t.tv_sec * 1000000000LL + t.tv_nsec;
+}
+long long vcpu_game_clock_ns(void)
+{
+    pthread_mutex_lock(&s_clock_lock);
+    int64_t now = s_clock_paused ? s_clock_stopped : host_clock_ns();
+    now -= s_clock_offset;
+    pthread_mutex_unlock(&s_clock_lock);
+    return now;
+}
+void vcpu_game_clock_pause(int paused)
+{
+    pthread_mutex_lock(&s_clock_lock);
+    if (paused && !s_clock_paused) {
+        s_clock_stopped = host_clock_ns();
+        s_clock_paused = 1;
+    } else if (!paused && s_clock_paused) {
+        s_clock_offset += host_clock_ns() - s_clock_stopped;
+        s_clock_paused = 0;
+    }
+    pthread_mutex_unlock(&s_clock_lock);
+}
+#endif
 
 int vcpu_enabled(void)
 {
@@ -170,6 +203,7 @@ static vcpu_thread *best_ready(void)
  * free. */
 static void dispatch(void)
 {
+    if (s_paused) return;
     vcpu_thread *next = best_ready();
     if (next) {
         next->ready = 0;
@@ -217,6 +251,28 @@ static void request_preempt(vcpu_thread *h)
     }
 }
 
+int vcpu_set_paused(int paused)
+{
+    /* Never park the UI with an unbounded wait during resign-active. A host
+     * call in progress may need time to reach the next safe point. */
+    struct timespec until;
+    timespec_get(&until, TIME_UTC);
+    until.tv_nsec += 250000000;
+    if (until.tv_nsec >= 1000000000) { until.tv_sec++; until.tv_nsec -= 1000000000; }
+    pthread_mutex_lock(&s_lock);
+    s_paused = !!paused;
+    if (s_paused) {
+        if (s_holder) request_preempt(s_holder);
+        while (s_holder)
+            if (pthread_cond_timedwait(&s_idle, &s_lock, &until) == ETIMEDOUT) break;
+    } else if (!s_holder) {
+        dispatch();
+    }
+    int stopped = !s_holder;
+    pthread_mutex_unlock(&s_lock);
+    return paused ? stopped : 1;
+}
+
 /* Wait for the CPU. Caller holds s_lock and does not hold the CPU.
  * polite: do not preempt the holder (it was just handed the CPU by this
  * thread's yield); the quantum timer brings the CPU back. */
@@ -244,6 +300,7 @@ static void release_locked(vcpu_thread *t)
 {
     if (s_holder == t) {
         s_holder = NULL;
+        pthread_cond_broadcast(&s_idle);
         dispatch();
     }
 }
@@ -255,7 +312,7 @@ static void yield_now(vcpu_thread *t)
     t->preempt = 0;
     if (s_holder == t) {
         vcpu_thread *b = best_ready();
-        if (b && (b->priority >= t->priority || starved_ready())) {
+        if (s_paused || (b && (b->priority >= t->priority || starved_ready()))) {
             release_locked(t);
             acquire_locked_ex(t, 1);
         }
@@ -310,7 +367,7 @@ static void *quantum_thread(void *unused)
         pthread_mutex_lock(&s_lock);
         if (s_holder && now_ms() - s_holder_since_ms >= VCPU_QUANTUM_MS) {
             vcpu_thread *b = best_ready();
-            if (b && (b->priority >= s_holder->priority || starved_ready()))
+            if (s_paused || (b && (b->priority >= s_holder->priority || starved_ready())))
                 request_preempt(s_holder);
         }
         pthread_mutex_unlock(&s_lock);

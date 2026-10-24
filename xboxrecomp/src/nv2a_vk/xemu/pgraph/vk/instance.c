@@ -34,6 +34,8 @@ static nv2a_vk_shared s_shared;
 static int s_shared_state;          /* 0 not yet, 1 up, -1 none */
 static bool s_push_descriptor_enabled;
 static GMutex s_queue_lock;
+static GCond s_queue_active;
+static bool s_background;
 
 int nv2a_vk_share(nv2a_vk_shared *out)
 {
@@ -58,6 +60,17 @@ bool nv2a_vk_draws_off(void)
 void nv2a_vk_queue_lock(void)
 {
     g_mutex_lock(&s_queue_lock);
+    while (s_background) g_cond_wait(&s_queue_active, &s_queue_lock);
+}
+
+void nv2a_vk_set_background(bool background)
+{
+    g_mutex_lock(&s_queue_lock);
+    s_background = background;
+    if (background && __atomic_load_n(&s_shared_state, __ATOMIC_ACQUIRE) == 1)
+        vkDeviceWaitIdle(s_shared.device);
+    if (!background) g_cond_broadcast(&s_queue_active);
+    g_mutex_unlock(&s_queue_lock);
 }
 
 void nv2a_vk_queue_unlock(void)

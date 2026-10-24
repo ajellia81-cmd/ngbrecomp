@@ -9,6 +9,44 @@
 #include <dlfcn.h>
 #include <math.h>
 #include "../src/install.h"
+#include "platform/vcpu.h"
+
+extern void apu_host_pause(int paused);
+extern volatile int apu_host_paused;
+extern void nv2a_vk_set_background(bool background);
+static BOOL gameActive = YES;
+static int previousAudioPause;
+
+/* Only the UI thread runs this. Guest and renderer threads can park without
+ * preventing UIKit from delivering the did-become-active notification. */
+void ngb_ios_wait_foreground(void)
+{
+    while (!gameActive) @autoreleasepool {
+        [NSRunLoop.currentRunLoop runUntilDate:[NSDate dateWithTimeIntervalSinceNow:0.05]];
+    }
+}
+
+static void game_set_active(BOOL active)
+{
+    if (gameActive == active) return;
+    gameActive = active;
+    if (!active) {
+        previousAudioPause = apu_host_paused;
+        apu_host_pause(1);
+        int stopped = vcpu_set_paused(1);
+        vcpu_game_clock_pause(1);
+        nv2a_vk_set_background(true);
+        fprintf(stderr, "[iOS] inactive: audio paused, guest %s, clock frozen, GPU drained\n",
+                stopped ? "parked" : "pause pending");
+    } else {
+        nv2a_vk_set_background(false);
+        vcpu_game_clock_pause(0);
+        [AVAudioSession.sharedInstance setActive:YES error:nil];
+        apu_host_pause(previousAudioPause);
+        vcpu_set_paused(0);
+        fprintf(stderr, "[iOS] active: GPU, clock, audio and guest resumed\n");
+    }
+}
 
 @interface NGBImport : NSObject <UIDocumentPickerDelegate>
 @property(nonatomic, strong) UIWindow *window;
@@ -334,7 +372,11 @@ int ngb_ios_prepare(void)
             [notifications addObserverForName:name object:nil queue:NSOperationQueue.mainQueue
                                   usingBlock:^(NSNotification *note) { (void)note; [touchControls refresh]; }];
         [notifications addObserverForName:UIApplicationWillResignActiveNotification object:nil queue:NSOperationQueue.mainQueue
-                              usingBlock:^(NSNotification *note) { (void)note; [touchControls releaseInputs]; }];
+                              usingBlock:^(NSNotification *note) {
+            (void)note; [touchControls releaseInputs]; game_set_active(NO);
+        }];
+        [notifications addObserverForName:UIApplicationDidBecomeActiveNotification object:nil queue:NSOperationQueue.mainQueue
+                              usingBlock:^(NSNotification *note) { (void)note; game_set_active(YES); }];
         return 1;
     }
 }

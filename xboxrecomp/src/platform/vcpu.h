@@ -71,6 +71,16 @@ int vcpu_busy(void);
  * for comparison. */
 int vcpu_enabled(void);
 
+/* Host lifecycle control. Pause requests prevent dispatch and park a running
+ * guest at a safe point; return 1 once no guest holds the CPU, 0 if still pending.
+ * The UI/event thread must not itself be attached as a guest. */
+int vcpu_set_paused(int paused);
+#if !defined(_WIN32)
+/* Guest monotonic time excludes host lifecycle pauses; host waits stay real. */
+long long vcpu_game_clock_ns(void);
+void vcpu_game_clock_pause(int paused);
+#endif
+
 /* Sleep about us microseconds (a spin-wait's pause; the caller gives the CPU
  * up around it). Windows sleeps in whole milliseconds, coarser still before
  * timeBeginPeriod: there a high-resolution waitable timer. */

@@ -125,10 +125,14 @@ bool bql_locked(void) { return s_bql_held; }
 
 int64_t qemu_clock_get_ns(QEMUClockType type)
 {
-    struct timespec ts;
     (void)type;
+#if !defined(_WIN32)
+    return vcpu_game_clock_ns();
+#else
+    struct timespec ts;
     clock_gettime(CLOCK_MONOTONIC, &ts);
     return (int64_t)ts.tv_sec * 1000000000LL + ts.tv_nsec;
+#endif
 }
 
 static pthread_mutex_t s_timer_lock = PTHREAD_MUTEX_INITIALIZER;
@@ -174,6 +178,13 @@ static void *timer_thread(void *unused)
                 ts = (struct timespec){delta / 1000000000LL, delta % 1000000000LL};
                 pthread_cond_timedwait_relative_np(&s_timer_cond, &s_timer_lock, &ts);
 #else
+                /* Translate a guest-clock deadline into the host wait clock,
+                 * which continues while the app's virtual time is paused. */
+                int64_t delta = next - qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL);
+                if (delta < 0) delta = 0;
+                clock_gettime(CLOCK_MONOTONIC, &ts);
+                int64_t host_deadline = (int64_t)ts.tv_sec * 1000000000LL + ts.tv_nsec + delta;
+                ts = (struct timespec){host_deadline / 1000000000LL, host_deadline % 1000000000LL};
                 pthread_cond_timedwait(&s_timer_cond, &s_timer_lock, &ts);
 #endif
             }

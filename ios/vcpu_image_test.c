@@ -22,6 +22,7 @@ int main(int argc, char **argv)
 #include <time.h>
 
 static atomic_int started, progressed, stop;
+static atomic_ulong iterations;
 static void pause_ms(long milliseconds)
 {
     struct timespec t = { milliseconds / 1000, milliseconds % 1000 * 1000000 };
@@ -32,7 +33,7 @@ static void *spinner(void *unused)
     (void)unused;
     vcpu_attach(VCPU_PRIO_NORMAL);
     atomic_store(&started, 1);
-    while (!atomic_load(&stop)) { /* Intentionally no cooperative yield. */ }
+    while (!atomic_load(&stop)) atomic_fetch_add(&iterations, 1);
     vcpu_detach();
     return NULL;
 }
@@ -54,6 +55,26 @@ int ngb_vcpu_image_test(void)
     if (pthread_create(&second, NULL, peer, NULL)) return 2;
     for (int i = 0; i < 200 && !atomic_load(&progressed); i++) pause_ms(5);
     int ok = atomic_load(&progressed);
+    if (ok) {
+        int parked = vcpu_set_paused(1);
+        unsigned long before = atomic_load(&iterations);
+        vcpu_game_clock_pause(1);
+        long long frozen = vcpu_game_clock_ns();
+        pause_ms(80);
+        int still = parked && before == atomic_load(&iterations);
+        int clock_still = frozen == vcpu_game_clock_ns();
+        /* Duplicate lifecycle notifications must not reset pause accounting. */
+        vcpu_game_clock_pause(1);
+        vcpu_set_paused(1);
+        vcpu_game_clock_pause(0);
+        long long resumed = vcpu_game_clock_ns();
+        vcpu_set_paused(0);
+        for (int i = 0; i < 100 && before == atomic_load(&iterations); i++) pause_ms(5);
+        int running = before != atomic_load(&iterations);
+        ok = still && clock_still && running && resumed >= frozen && resumed - frozen < 40000000LL;
+        printf("Guest lifecycle: parked=%d frozen-clock=%d resumed=%d: %s\n",
+               still, clock_still, running, ok ? "OK" : "FAILED");
+    }
     atomic_store(&stop, 1);
     pthread_join(first, NULL);
     pthread_join(second, NULL);

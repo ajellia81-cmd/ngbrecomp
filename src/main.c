@@ -1336,6 +1336,10 @@ int main(int argc, char **argv)
 #if defined(NGB_NV2A_VK)
     if (s_use_gpu && !s_headless) {
         while (nv2a_window_pump()) {
+#ifdef NGB_IOS_APP
+            extern void ngb_ios_wait_foreground(void);
+            ngb_ios_wait_foreground();
+#endif
             ngb_quick_poll();
             usleep(2000);
         }

@@ -15,6 +15,8 @@
 static SDL_AudioDeviceID s_dev;
 static int s_failed;
 static int s_playing;
+static int s_paused;
+static SDL_SpinLock s_state_lock;
 
 int apu_sdl_out_init(void)
 {
@@ -36,12 +38,15 @@ int apu_sdl_out_init(void)
     want.format = AUDIO_S16SYS;
     want.channels = 2;
     want.samples = 480;     /* 10 ms: the device's own share of the delay */
-    s_dev = SDL_OpenAudioDevice(NULL, 0, &want, &have, 0);
-    if (!s_dev) {
+    SDL_AudioDeviceID device = SDL_OpenAudioDevice(NULL, 0, &want, &have, 0);
+    if (!device) {
         fprintf(stderr, "[APU] cannot open an audio device: %s\n", SDL_GetError());
         s_failed = 1;
         return 0;
     }
+    SDL_AtomicLock(&s_state_lock);
+    s_dev = device;
+    SDL_AtomicUnlock(&s_state_lock);
     /* Starts paused; apu_sdl_out_submit unpauses once a little is queued. */
     fprintf(stderr, "[APU] SDL audio: %s, 48 kHz stereo\n",
             SDL_GetCurrentAudioDriver());
@@ -50,26 +55,32 @@ int apu_sdl_out_init(void)
 
 int apu_sdl_out_active(void)
 {
-    return s_dev != 0;
+    SDL_AtomicLock(&s_state_lock);
+    int active = s_dev != 0;
+    SDL_AtomicUnlock(&s_state_lock);
+    return active;
 }
 
 /* Silence while paused: what is queued is dropped, and the device waits for
  * a little to be queued again before it plays (as at the start). */
 void apu_sdl_out_pause(int paused)
 {
-    if (!s_dev)
-        return;
-    SDL_PauseAudioDevice(s_dev, 1);
-    SDL_ClearQueuedAudio(s_dev);
+    SDL_AtomicLock(&s_state_lock);
+    s_paused = !!paused;
+    if (s_dev) {
+        SDL_PauseAudioDevice(s_dev, 1);
+        SDL_ClearQueuedAudio(s_dev);
+    }
     s_playing = 0;
-    (void)paused;
+    SDL_AtomicUnlock(&s_state_lock);
 }
 
 int apu_sdl_out_queued_frames(void)
 {
-    if (!s_dev || !s_playing)
-        return -1;
-    return (int)(SDL_GetQueuedAudioSize(s_dev) / 4);
+    SDL_AtomicLock(&s_state_lock);
+    int queued = s_dev && s_playing ? (int)(SDL_GetQueuedAudioSize(s_dev) / 4) : -1;
+    SDL_AtomicUnlock(&s_state_lock);
+    return queued;
 }
 
 /* Queue n stereo frames. The APU paces itself on the queue level (see
@@ -81,8 +92,11 @@ void apu_sdl_out_submit(const int16_t *frames, int n)
     const Uint32 prebuffer = 1536 * 4;          /* ~32 ms */
     Uint32 queued;
 
-    if (!s_dev)
+    SDL_AtomicLock(&s_state_lock);
+    if (!s_dev || s_paused) {
+        SDL_AtomicUnlock(&s_state_lock);
         return;
+    }
     queued = SDL_GetQueuedAudioSize(s_dev);
     if (queued > max_queued)
         SDL_ClearQueuedAudio(s_dev);
@@ -91,5 +105,6 @@ void apu_sdl_out_submit(const int16_t *frames, int n)
         SDL_PauseAudioDevice(s_dev, 0);
         s_playing = 1;
     }
+    SDL_AtomicUnlock(&s_state_lock);
 }
 #endif

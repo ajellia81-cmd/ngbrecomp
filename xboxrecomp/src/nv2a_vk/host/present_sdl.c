@@ -1069,8 +1069,10 @@ static void present_pixels(PGRAPHVkState *r, VkBuffer buf, int w, int h)
     VkResult res;
 
     vkWaitForFences(r->device, 1, &s_fence[f], VK_TRUE, UINT64_MAX);
+    nv2a_vk_queue_lock();
     res = vkAcquireNextImageKHR(r->device, s_swapchain, 100000000ull,
                                 s_acquired[f], VK_NULL_HANDLE, &idx);
+    nv2a_vk_queue_unlock();
     if (res == VK_ERROR_OUT_OF_DATE_KHR) {
         s_resized = true;
         return;
@@ -1367,8 +1369,10 @@ static void present_locked(PGRAPHState *pg, bool on_pfifo)
     f = s_frame++ % FRAMES_IN_FLIGHT;
     vkWaitForFences(r->device, 1, &s_fence[f], VK_TRUE, UINT64_MAX);
 
+    nv2a_vk_queue_lock();
     res = vkAcquireNextImageKHR(r->device, s_swapchain, 0, s_acquired[f],
                                 VK_NULL_HANDLE, &idx);
+    nv2a_vk_queue_unlock();
     if (res == VK_ERROR_OUT_OF_DATE_KHR) {
         s_resized = true;
         return;

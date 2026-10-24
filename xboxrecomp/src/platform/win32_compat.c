@@ -1638,18 +1638,14 @@ VOID GetLocalTime(LPSYSTEMTIME st)
 
 ULONGLONG GetTickCount64(void)
 {
-    struct timespec ts;
-    clock_gettime(CLOCK_MONOTONIC, &ts);
-    return (ULONGLONG)ts.tv_sec * 1000ULL + (ULONGLONG)ts.tv_nsec / 1000000ULL;
+    return (ULONGLONG)(vcpu_game_clock_ns() / 1000000LL);
 }
 
 DWORD GetTickCount(void) { return (DWORD)GetTickCount64(); }
 
 BOOL QueryPerformanceCounter(PLARGE_INTEGER count)
 {
-    struct timespec ts;
-    clock_gettime(CLOCK_MONOTONIC, &ts);
-    count->QuadPart = (LONGLONG)ts.tv_sec * 1000000000LL + ts.tv_nsec;
+    count->QuadPart = vcpu_game_clock_ns();
     return TRUE;
 }
 
