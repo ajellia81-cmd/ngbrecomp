@@ -8,6 +8,8 @@ on:
       - '.github/workflows/ios-runtime-build.yml'
       - 'ios/build_dependencies.sh'
       - 'ios/triplets/**'
+      - 'CMakeLists.txt'
+      - 'src/d3d/**'
       - 'xboxrecomp/src/**'
       - 'xboxrecomp/CMakeLists.txt'
 
@@ -40,13 +42,13 @@ jobs:
           mkdir -p "$RUNNER_TEMP/ngb-dependency-cache"
           export VCPKG_BINARY_SOURCES="clear;files,$RUNNER_TEMP/ngb-dependency-cache,readwrite"
           bash ios/build_dependencies.sh "$RUNNER_TEMP/ngb-ios-tools"
-      - name: Configure the existing full Xbox runtime for iPhoneOS
+      - name: Configure the existing full runtime and game renderer for iPhoneOS
         shell: bash
         run: |
           set -euo pipefail
           VCPKG="$RUNNER_TEMP/ngb-ios-tools/vcpkg"
           export PKG_CONFIG_LIBDIR="$VCPKG/installed/arm64-ios/lib/pkgconfig:$VCPKG/installed/arm64-ios/share/pkgconfig"
-          cmake -S xboxrecomp -B build/ios-runtime -G Ninja \
+          cmake -S . -B build/ios-runtime -G Ninja \
             -DCMAKE_TOOLCHAIN_FILE="$VCPKG/scripts/buildsystems/vcpkg.cmake" \
             -DVCPKG_TARGET_TRIPLET=arm64-ios \
             -DVCPKG_OVERLAY_TRIPLETS="$PWD/ios/triplets" \
@@ -54,8 +56,8 @@ jobs:
             -DCMAKE_OSX_ARCHITECTURES=arm64 -DCMAKE_OSX_SYSROOT=iphoneos \
             -DCMAKE_OSX_DEPLOYMENT_TARGET=15.0 \
             -DCMAKE_TRY_COMPILE_TARGET_TYPE=STATIC_LIBRARY \
-            -DCMAKE_BUILD_TYPE=Release -DXBOXRECOMP_NV2A_VK=ON
-      - name: Build actual kernel, audio, input and NV2A runtime libraries
+            -DCMAKE_BUILD_TYPE=Release -DNGB_NV2A_VK=ON -DNGB_RENDERER_CHECK_ONLY=ON
+      - name: Build actual runtime and game Direct3D Vulkan renderer objects
         run: cmake --build build/ios-runtime --parallel 2
       - name: Preserve completed open-source packages even if a later compile fails
         if: always() && steps.dependency-cache.outputs.cache-hit != 'true'

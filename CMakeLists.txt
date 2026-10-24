@@ -41,6 +41,43 @@ set(XBOXRECOMP_DIR "${CMAKE_CURRENT_SOURCE_DIR}/xboxrecomp" CACHE PATH
     "Path to the xboxrecomp toolkit root directory")
 add_subdirectory(${XBOXRECOMP_DIR} ${CMAKE_BINARY_DIR}/xboxrecomp)
 
+# ── The Direct3D renderer (docs/renderer.md, src/d3d/NOTICE) ────
+
+if(NGB_NV2A_VK)
+    if(APPLE)
+        find_package(glslang CONFIG REQUIRED)
+    endif()
+    set(XRTP ${XBOXRECOMP_DIR}/third_party)
+    add_library(ngb_d3d OBJECT
+        src/d3d/hle.cpp
+        src/d3d/vk/backend.cpp
+        src/d3d/vk/spirv.cpp
+        src/d3d/gpu/shaders.cpp
+        src/d3d/gpu/vertex.cpp
+        src/d3d/gpu/texture.cpp)
+    target_include_directories(ngb_d3d PRIVATE
+        src
+        src/d3d src/d3d/compat
+        ${XBOXRECOMP_DIR}/src ${XBOXRECOMP_DIR}/src/nv2a_vk/host
+        ${XRTP}/Vulkan-Headers/include ${XRTP}/volk ${XRTP}/VulkanMemoryAllocator/include)
+    target_compile_definitions(ngb_d3d PRIVATE VK_NO_PROTOTYPES
+        VMA_STATIC_VULKAN_FUNCTIONS=0 VMA_DYNAMIC_VULKAN_FUNCTIONS=0)
+    if(APPLE)
+        target_link_libraries(ngb_d3d PRIVATE glslang::glslang glslang::glslang-default-resource-limits)
+    endif()
+    target_compile_features(ngb_d3d PRIVATE cxx_std_20)
+    target_compile_options(ngb_d3d PRIVATE -O2 -fno-strict-aliasing)
+endif()
+
+option(NGB_RENDERER_CHECK_ONLY "Compile the public renderer/runtime without private game sources" OFF)
+if(NGB_RENDERER_CHECK_ONLY)
+    if(NOT NGB_NV2A_VK)
+        message(FATAL_ERROR "The renderer check requires NGB_NV2A_VK")
+    endif()
+    message(STATUS "Renderer/runtime compilation only: no game executable or IPA")
+    return()
+endif()
+
 # ── Recompiled code ─────────────────────────────────────────────
 
 # CONFIGURE_DEPENDS: a regenerated tree can add or drop chunks.
@@ -145,34 +182,6 @@ else()
         -Wno-parentheses-equality -Wno-tautological-compare
         -Wno-incompatible-pointer-types-discards-qualifiers
     )
-endif()
-
-# ── The Direct3D renderer (docs/renderer.md, src/d3d/NOTICE) ────
-
-if(NGB_NV2A_VK)
-    if(APPLE)
-        find_package(glslang CONFIG REQUIRED)
-    endif()
-    set(XRTP ${XBOXRECOMP_DIR}/third_party)
-    add_library(ngb_d3d OBJECT
-        src/d3d/hle.cpp
-        src/d3d/vk/backend.cpp
-        src/d3d/vk/spirv.cpp
-        src/d3d/gpu/shaders.cpp
-        src/d3d/gpu/vertex.cpp
-        src/d3d/gpu/texture.cpp)
-    target_include_directories(ngb_d3d PRIVATE
-        src
-        ${XBOXRECOMP_DIR}/src
-        src/d3d src/d3d/compat ${XBOXRECOMP_DIR}/src/nv2a_vk/host
-        ${XRTP}/Vulkan-Headers/include ${XRTP}/volk ${XRTP}/VulkanMemoryAllocator/include)
-    target_compile_definitions(ngb_d3d PRIVATE VK_NO_PROTOTYPES
-        VMA_STATIC_VULKAN_FUNCTIONS=0 VMA_DYNAMIC_VULKAN_FUNCTIONS=0)
-    if(APPLE)
-        target_link_libraries(ngb_d3d PRIVATE glslang::glslang glslang::glslang-default-resource-limits)
-    endif()
-    target_compile_features(ngb_d3d PRIVATE cxx_std_20)
-    target_compile_options(ngb_d3d PRIVATE -O2 -fno-strict-aliasing)
 endif()
 
 # ── Executable ──────────────────────────────────────────────────
