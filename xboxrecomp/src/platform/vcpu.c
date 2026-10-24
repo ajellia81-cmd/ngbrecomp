@@ -266,6 +266,7 @@ static void yield_now(vcpu_thread *t)
 
 #if !defined(_WIN32)
 #ifdef __APPLE__
+#include <dlfcn.h>
 #include <mach-o/dyld.h>
 #include <mach-o/getsect.h>
 #include <sys/ucontext.h>
@@ -329,10 +330,18 @@ static void vcpu_init_once(void)
 
     memset(&sa, 0, sizeof(sa));
 #ifdef __APPLE__
+    /* LiveContainer loads the game as another Mach-O image. Image zero is
+     * then the host, whose text range cannot contain our guest spin loops. */
+    Dl_info image;
     unsigned long text_size = 0;
-    const uint8_t *text = getsegmentdata((const struct mach_header_64 *)_dyld_get_image_header(0), "__TEXT", &text_size);
+    const struct mach_header_64 *header = NULL;
+    if (dladdr((const void *)&vcpu_init_once, &image))
+        header = (const struct mach_header_64 *)image.dli_fbase;
+    const uint8_t *text = header ? getsegmentdata(header, "__TEXT", &text_size) : NULL;
     s_text_lo = (uintptr_t)text;
     s_text_hi = s_text_lo + text_size;
+    fprintf(stderr, "[VCPU] scheduler image text=%p size=%lu, preemption %s\n",
+            (const void *)text, text_size, text && text_size ? "enabled" : "unavailable");
     sa.sa_sigaction = preempt_signal;
     sa.sa_flags = SA_RESTART | SA_SIGINFO;
 #else

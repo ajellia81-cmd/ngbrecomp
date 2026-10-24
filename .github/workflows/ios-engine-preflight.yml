@@ -11,6 +11,7 @@ on:
       - 'ios/build_engine.sh'
       - 'ios/report_build_errors.py'
       - 'ios/app.m'
+      - 'ios/vcpu_image_test.c'
       - 'ios/target.cmake'
       - 'ios/Info.plist.in'
       - 'ios/package_ipa.sh'
@@ -49,11 +50,42 @@ jobs:
               -c "xboxrecomp/src/platform/$source.c" \
               -o "build/ios-platform/$source.o"
           done
+
           xcrun --sdk iphoneos ar rcs build/ios-platform/libngb-platform.a build/ios-platform/*.o
           xcrun --sdk iphoneos clang -target arm64-apple-ios15.0 \
             -isysroot "$SDK" -Ixboxrecomp/src -Wall -Wextra -Werror \
             -c ios/bringup/portability_smoke.c -o build/ios-platform/portability.o
           file build/ios-platform/*.o
+
+      - name: Check scheduler preemption when loaded as a separate image
+        shell: bash
+        run: |
+          set -euo pipefail
+          xcrun --sdk macosx clang -arch arm64 -std=c11 -O2 -dynamiclib \
+            -Ixboxrecomp/src -Ixboxrecomp/src/platform \
+            ios/vcpu_image_test.c xboxrecomp/src/platform/win32_compat.c \
+            xboxrecomp/src/platform/vcpu.c -o build/ios-platform/vcpu-image.dylib
+          xcrun --sdk macosx clang -arch arm64 -std=c11 -O2 -DNGB_VCPU_IMAGE_HOST \
+            ios/vcpu_image_test.c -o build/ios-platform/vcpu-image-host
+          build/ios-platform/vcpu-image-host "$PWD/build/ios-platform/vcpu-image.dylib"
+          # Reproduce the original image-zero bug and ensure this test detects it.
+          python3 - <<'PY'
+          from pathlib import Path
+          source = Path('xboxrecomp/src/platform/vcpu.c').read_text()
+          old = 'header = (const struct mach_header_64 *)image.dli_fbase;'
+          assert source.count(old) == 1
+          Path('build/ios-platform/vcpu-old-image.c').write_text(source.replace(
+              old, 'header = (const struct mach_header_64 *)_dyld_get_image_header(0);'))
+          PY
+          xcrun --sdk macosx clang -arch arm64 -std=c11 -O2 -dynamiclib \
+            -Ixboxrecomp/src -Ixboxrecomp/src/platform \
+            ios/vcpu_image_test.c xboxrecomp/src/platform/win32_compat.c \
+            build/ios-platform/vcpu-old-image.c -o build/ios-platform/vcpu-old-image.dylib
+          set +e
+          build/ios-platform/vcpu-image-host "$PWD/build/ios-platform/vcpu-old-image.dylib"
+          result=$?
+          set -e
+          test "$result" -eq 1
       - name: Link the actual scheduler against device and simulator system libraries
         shell: bash
         run: |
