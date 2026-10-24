@@ -19,6 +19,9 @@ PATCH_SHA256 = 'c7df8ebc34b75077e75647f89606ea31eef5860d21bf3416941b0c3e5bba19d2
 USA_SHA256 = '5fa3997b0d518a9db3867ca6ae2942c99e5349fd138f536ff56772e1a0202200'
 FONT_WRAPPERS = {0x001E6D30, 0x001E86A0}
 MANUAL_VARIANTS = FONT_WRAPPERS | {0x0021C660}
+# Verified static call/jump targets of this pinned patch, not device observations.
+CONTINUATIONS = (0x001E86A5, 0x0021C800, 0x0030E540, 0x0030E543,
+                 0x00DCA200, 0x00DCA400, 0x00DCA500, 0x00DCA840)
 
 
 def sha(data):
@@ -93,6 +96,10 @@ def prepare(source_path, archive_path, output):
     manual = json.loads((Path(__file__).resolve().parents[1] / 'src/manual_functions.json').read_text())
     manual = [address for address in manual if int(address, 16) not in MANUAL_VARIANTS]
     (output / 'manual-korean.json').write_text(json.dumps(manual))
+    (output / 'continuations.json').write_text(json.dumps([
+        {'start': f'0x{address:08X}', 'static_branch': True,
+         'note': 'Static Korean patch continuation; not runtime-observed'}
+        for address in CONTINUATIONS]))
     print('Korean candidate: all 17 output section hashes match the release plan')
     print('Korean candidate SHA-256:', sha(candidate))
     print('Korean candidate bytes:', len(candidate))
