@@ -24,7 +24,6 @@ jobs:
     env:
       VCPKG_DISABLE_METRICS: '1'
       VCPKG_MAX_CONCURRENCY: '2'
-      VCPKG_BINARY_SOURCES: 'clear;files,${{ runner.temp }}/ngb-dependency-cache,readwrite'
     steps:
       - uses: actions/checkout@v4
         with:
@@ -37,6 +36,7 @@ jobs:
       - name: Build device dependencies
         run: |
           mkdir -p "$RUNNER_TEMP/ngb-dependency-cache"
+          export VCPKG_BINARY_SOURCES="clear;files,$RUNNER_TEMP/ngb-dependency-cache,readwrite"
           bash ios/build_dependencies.sh "$RUNNER_TEMP/ngb-ios-tools"
       - name: Configure the existing full Xbox runtime for iPhoneOS
         shell: bash
