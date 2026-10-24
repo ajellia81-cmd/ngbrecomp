@@ -8,7 +8,9 @@ on:
       - '.github/workflows/ios-engine-preflight.yml'
       - 'ios/private_input.py'
       - 'ios/compile_generated.sh'
-      - 'ios/PRIVATE_BUILD.md'
+      - 'ios/build_engine.sh'
+      - 'ios/report_build_errors.py'
+      - 'CMakeLists.txt'
       - 'src/fibers.c'
       - 'src/port.h'
       - 'xboxrecomp/src/platform/**'
@@ -141,6 +143,18 @@ jobs:
           echo 'Production game fibers compiled for iPhoneOS ARM64; this is not a linked or playable IPA.'
       - name: Compile every generated game translation unit for iPhoneOS ARM64
         run: bash ios/compile_generated.sh build/ios-private/generated
+      - name: Restore only public device dependency packages
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ runner.temp }}/ngb-dependency-cache
+          key: iphoneos-arm64-vcpkg-0c2a9ace-xcode16-release-cf-v1
+      - name: Prepare device dependencies for whole-engine linking
+        run: |
+          mkdir -p "$RUNNER_TEMP/ngb-dependency-cache"
+          export VCPKG_BINARY_SOURCES="clear;files,$RUNNER_TEMP/ngb-dependency-cache,readwrite"
+          bash ios/build_dependencies.sh "$RUNNER_TEMP/ngb-ios-tools"
+      - name: Compile and link the original game engine target
+        run: bash ios/build_engine.sh "$RUNNER_TEMP/ngb-ios-tools" build/ios-private/engine
       - name: Remove private inputs, generated code and logs
         if: always()
         shell: bash
