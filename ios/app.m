@@ -32,8 +32,11 @@ static void import_progress(uint64_t done, uint64_t total, void *context)
 - (void)choose:(UIButton *)sender
 {
     if (self.importing) return;
+    /* Some Files providers classify ISO/XISO as disk images or dynamic types
+     * without public.data conformance. Let the importer validate the selection
+     * instead of disabling those files in the picker. */
     UIDocumentPickerViewController *picker = [[UIDocumentPickerViewController alloc]
-        initForOpeningContentTypes:@[sender.tag == 1 ? UTTypeData : UTTypeFolder] asCopy:NO];
+        initForOpeningContentTypes:@[sender.tag == 1 ? UTTypeItem : UTTypeFolder] asCopy:NO];
     picker.delegate = self;
     picker.allowsMultipleSelection = NO;
     [self.window.rootViewController presentViewController:picker animated:YES completion:nil];
