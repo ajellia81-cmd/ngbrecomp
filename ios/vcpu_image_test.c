@@ -3,9 +3,11 @@
 #ifdef NGB_VCPU_IMAGE_HOST
 #include <dlfcn.h>
 #include <stdio.h>
+#include <unistd.h>
 int main(int argc, char **argv)
 {
     if (argc != 2) return 2;
+    alarm(10);  /* A regression must fail rather than hang the test runner. */
     void *image = dlopen(argv[1], RTLD_NOW | RTLD_LOCAL);
     if (!image) { fprintf(stderr, "%s\n", dlerror()); return 2; }
     int (*run)(void) = (int (*)(void))dlsym(image, "ngb_vcpu_image_test");
@@ -33,7 +35,10 @@ static void *spinner(void *unused)
     (void)unused;
     vcpu_attach(VCPU_PRIO_NORMAL);
     atomic_store(&started, 1);
-    while (!atomic_load(&stop)) atomic_fetch_add(&iterations, 1);
+    while (!atomic_load(&stop)) {
+        (void)vcpu_game_clock_ns();
+        atomic_fetch_add(&iterations, 1);
+    }
     vcpu_detach();
     return NULL;
 }
@@ -41,6 +46,7 @@ static void *peer(void *unused)
 {
     (void)unused;
     vcpu_attach(VCPU_PRIO_NORMAL);
+    for (int i=0;i<100000;i++) (void)vcpu_game_clock_ns();
     atomic_store(&progressed, 1);
     vcpu_detach();
     return NULL;

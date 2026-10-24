@@ -43,6 +43,7 @@
 #include "nv2a_vk_share.h"   // the NV2A renderer's device and presenter (NGB_RENDERER=d3d)
 #ifdef NGB_IOS_APP
 #include "launcher.h"
+#include "platform/vcpu.h"
 #endif
 extern "C" {
 #include "quick_select.h"
@@ -3571,6 +3572,19 @@ void VulkanBackend::TraceFrame(Target& t) {
 
 void VulkanBackend::Present(const Surface& front) {
     presents_++;
+#ifdef NGB_IOS_APP
+    // Count actual guest Swap calls, not the presenter's repeated scanouts or
+    // display-link callbacks. Virtual time excludes background suspension.
+    static int64_t rate_start;
+    static uint32_t rate_frame;
+    int64_t rate_now=vcpu_game_clock_ns();
+    if (!rate_start) { rate_start=rate_now; rate_frame=presents_; }
+    if (rate_now-rate_start>=5000000000LL) {
+        std::fprintf(stderr,"[iOS FPS] guest Swap rate %.2f/s; simulation target 60 Hz; native target %u x %u\n",
+            double(presents_-rate_frame)*1e9/double(rate_now-rate_start),native_w_,native_h_);
+        rate_start=rate_now; rate_frame=presents_;
+    }
+#endif
     {   // NGB_TRACE_FILE=<file>: its appearing starts a recording too (headless tests)
         static const char* tf = std::getenv("NGB_TRACE_FILE");
         if (tf && access(tf, F_OK) == 0) {

@@ -57,7 +57,8 @@ def merge(original, translated, missing_seeds=None):
         if name in before and name not in changed and name not in roots: continue
         selected[name]=body
         code=TOKENS.sub('',body)
-        targets=set(re.findall(r'\bsub_([0-9A-Fa-f]{8})\s*\(',code))
+        # Continuations can appear as function-pointer values, not just calls.
+        targets=set(re.findall(r'\bsub_([0-9A-Fa-f]{8})\b',code))
         targets.update(re.findall(r'RECOMP_(?:CALL|TAIL)\(0x([0-9A-Fa-f]{8})u?\)',code))
         for address in targets:
             target='sub_'+address.upper()

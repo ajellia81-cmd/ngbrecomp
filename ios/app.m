@@ -469,6 +469,11 @@ int ngb_ios_prepare(void)
         }];
         [notifications addObserverForName:UIApplicationDidBecomeActiveNotification object:nil queue:NSOperationQueue.mainQueue
                               usingBlock:^(NSNotification *note) { (void)note; game_set_active(YES); }];
+        /* Import/patch work may have finished after the owner went Home.
+         * Do not launch the renderer before foreground permission returns. */
+        if (UIApplication.sharedApplication.applicationState!=UIApplicationStateActive)
+            game_set_active(NO);
+        ngb_ios_wait_foreground();
         return 1;
     }
 }

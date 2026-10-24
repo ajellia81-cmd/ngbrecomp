@@ -91,6 +91,7 @@ static __thread vcpu_thread *t_self;
 static pthread_mutex_t s_clock_lock = PTHREAD_MUTEX_INITIALIZER;
 static int64_t s_clock_offset, s_clock_stopped;
 static int s_clock_paused;
+static unsigned s_clock_sequence;
 static int64_t host_clock_ns(void)
 {
     struct timespec t;
@@ -99,22 +100,34 @@ static int64_t host_clock_ns(void)
 }
 long long vcpu_game_clock_ns(void)
 {
-    pthread_mutex_lock(&s_clock_lock);
-    int64_t now = s_clock_paused ? s_clock_stopped : host_clock_ns();
-    now -= s_clock_offset;
-    pthread_mutex_unlock(&s_clock_lock);
-    return now;
+    /* RDTSC reaches this without a host-lock wrapper. A reader mutex could be
+     * held when a guest is preempted, deadlocking the next guest on the same
+     * mutex. Writers are host lifecycle calls; readers must stay lock-free. */
+    for (;;) {
+        unsigned sequence=__atomic_load_n(&s_clock_sequence,__ATOMIC_ACQUIRE);
+        if (sequence&1) continue;
+        int paused=__atomic_load_n(&s_clock_paused,__ATOMIC_RELAXED);
+        int64_t stopped=__atomic_load_n(&s_clock_stopped,__ATOMIC_RELAXED);
+        int64_t offset=__atomic_load_n(&s_clock_offset,__ATOMIC_RELAXED);
+        int64_t now=paused ? stopped : host_clock_ns();
+        if (sequence==__atomic_load_n(&s_clock_sequence,__ATOMIC_ACQUIRE)) return now-offset;
+    }
 }
 void vcpu_game_clock_pause(int paused)
 {
     pthread_mutex_lock(&s_clock_lock);
-    if (paused && !s_clock_paused) {
-        s_clock_stopped = host_clock_ns();
-        s_clock_paused = 1;
-    } else if (!paused && s_clock_paused) {
-        s_clock_offset += host_clock_ns() - s_clock_stopped;
-        s_clock_paused = 0;
+    __atomic_add_fetch(&s_clock_sequence,1,__ATOMIC_ACQ_REL);
+    int was_paused=__atomic_load_n(&s_clock_paused,__ATOMIC_RELAXED);
+    if (paused && !was_paused) {
+        __atomic_store_n(&s_clock_stopped,host_clock_ns(),__ATOMIC_RELAXED);
+        __atomic_store_n(&s_clock_paused,1,__ATOMIC_RELAXED);
+    } else if (!paused && was_paused) {
+        int64_t offset=__atomic_load_n(&s_clock_offset,__ATOMIC_RELAXED);
+        offset+=host_clock_ns()-__atomic_load_n(&s_clock_stopped,__ATOMIC_RELAXED);
+        __atomic_store_n(&s_clock_offset,offset,__ATOMIC_RELAXED);
+        __atomic_store_n(&s_clock_paused,0,__ATOMIC_RELAXED);
     }
+    __atomic_add_fetch(&s_clock_sequence,1,__ATOMIC_RELEASE);
     pthread_mutex_unlock(&s_clock_lock);
 }
 #endif
