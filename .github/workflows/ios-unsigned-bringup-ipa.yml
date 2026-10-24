@@ -19,7 +19,7 @@ jobs:
           APP="build/ios/Payload/NGBBringup.app"
           mkdir -p "$APP"
           xcrun --sdk iphoneos clang -target arm64-apple-ios15.0 -isysroot "$SDK" -fobjc-arc -O2 \
-            ios/bringup/main.m -framework UIKit -framework Foundation \
+            ios/bringup/main.m ios/bringup/fiber_smoke.c -framework UIKit -framework Foundation \
             -Wl,-dead_strip -o "$APP/NGBBringup"
           cat > "$APP/Info.plist" <<'PLIST'
           <?xml version="1.0" encoding="UTF-8"?>
@@ -45,6 +45,8 @@ jobs:
           PLIST
           plutil -lint "$APP/Info.plist"
           file "$APP/NGBBringup"
+          xcrun --sdk iphoneos nm "$APP/NGBBringup" | grep ngb_ctx_switch_smoke || true
+          codesign --force --sign - --timestamp=none "$APP"
           (cd build/ios && zip -qry ../NGBBringup-unsigned.ipa Payload)
       - uses: actions/upload-artifact@v4
         with:
