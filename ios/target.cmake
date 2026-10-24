@@ -16,7 +16,7 @@ target_include_directories(${PROJECT_NAME} PRIVATE
     ${XBOXRECOMP_DIR}/third_party/volk ${XBOXRECOMP_DIR}/third_party/Vulkan-Headers/include)
 target_link_libraries(${PROJECT_NAME} PRIVATE SDL2::SDL2main
     "-framework UIKit" "-framework Foundation" "-framework GameController"
-    "-framework AVFoundation" "-framework UniformTypeIdentifiers" "-framework QuartzCore")
+    "-framework AVFoundation" "-framework UniformTypeIdentifiers")
 target_link_options(${PROJECT_NAME} PRIVATE "-Wl,-rpath,@executable_path/Frameworks")
 set_target_properties(${PROJECT_NAME} PROPERTIES
     MACOSX_BUNDLE TRUE

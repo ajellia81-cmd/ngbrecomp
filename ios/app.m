@@ -3,7 +3,6 @@
 #import <GameController/GameController.h>
 #import <AVFoundation/AVFoundation.h>
 #import <UniformTypeIdentifiers/UniformTypeIdentifiers.h>
-#import <QuartzCore/QuartzCore.h>
 #include <SDL.h>
 #define VK_NO_PROTOTYPES
 #include <volk.h>
@@ -18,7 +17,6 @@ extern void nv2a_vk_set_background(bool background);
 static BOOL gameActive = YES;
 static int previousAudioPause;
 static int screenWidth = 1, screenHeight = 1;
-static CADisplayLink *displayLink;
 
 void ngb_ios_screen_size(int *width, int *height)
 {
@@ -26,21 +24,6 @@ void ngb_ios_screen_size(int *width, int *height)
     *height = screenHeight;
 }
 
-@interface NGBDisplayClock : NSObject
-- (void)tick:(CADisplayLink *)link;
-@end
-@implementation NGBDisplayClock
-- (void)tick:(CADisplayLink *)link
-{
-    /* This requests the display cadence only. The Xbox simulation remains
-     * at 60 Hz; display-link callbacks are not new rendered game frames. */
-    static unsigned samples;
-    if (++samples == 240) {
-        double duration = link.targetTimestamp - link.timestamp;
-        fprintf(stderr, "[iOS] display-link cadence: %.1f Hz (not game FPS)\n", duration > 0 ? 1.0 / duration : 0);
-    }
-}
-@end
 
 /* Only the UI thread runs this. Guest and renderer threads can park without
  * preventing UIKit from delivering the did-become-active notification. */
@@ -55,7 +38,6 @@ static void game_set_active(BOOL active)
 {
     if (gameActive == active) return;
     gameActive = active;
-    displayLink.paused = !active;
     if (!active) {
         previousAudioPause = apu_host_paused;
         apu_host_pause(1);
@@ -355,15 +337,6 @@ static NGBTouch *touchControls;
 static void attach_controls(UIWindow *window)
 {
     if (![NSStringFromClass(window.class) hasPrefix:@"SDL"]) return;
-    if (!displayLink) {
-        UIScreen *screen = window.windowScene.screen ?: UIScreen.mainScreen;
-        NSInteger rate = MIN(120, screen.maximumFramesPerSecond);
-        displayLink = [CADisplayLink displayLinkWithTarget:[NGBDisplayClock new] selector:@selector(tick:)];
-        displayLink.preferredFrameRateRange = CAFrameRateRangeMake(rate, rate, rate);
-        displayLink.paused = !gameActive;
-        [displayLink addToRunLoop:NSRunLoop.mainRunLoop forMode:NSRunLoopCommonModes];
-        fprintf(stderr, "[iOS] requested display cadence: %ld Hz; guest clock remains 60 Hz\n", (long)rate);
-    }
     if (!window.rootViewController || touchControls.superview == window.rootViewController.view) return;
     [touchControls removeFromSuperview];
     touchControls = [[NGBTouch alloc] initWithFrame:window.rootViewController.view.bounds];
