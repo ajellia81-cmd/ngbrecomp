@@ -37,6 +37,26 @@ def normalized(body):
     return re.sub(r'\s+', '', re.sub(r'/\*.*?\*/|//[^\n]*', '', body, flags=re.S))
 
 
+def restore_wrapper_stack(name, body):
+    # These two pinned patch wrappers push flags solely for later restoration;
+    # they never inspect that stack word. The lifter retains caller conditions
+    # in caller-local snapshots, which C callees cannot overwrite. Reserve the
+    # real guest stack word so PUSHAD/locals/return addresses keep their offsets.
+    # This is NOT a general PUSHFD/POPFD implementation or an EFLAGS emulator.
+    pairs = {'sub_00E02E50': ('00E02E50','00E02F97'),
+             'sub_00E03430': ('00E03430','00E03459')}
+    if name not in pairs: return body
+    start,end=pairs[name]
+    for instruction,address,replacement in (
+        ('pushfd',start,'esp -= 4; /* unobserved saved flags; caller snapshots retained */'),
+        ('popfd',end,'esp += 4; /* discard saved flags word; caller snapshots retained */')):
+        old=f'RECOMP_UNIMPL("{instruction}", 0x{address}u); /* TODO: {instruction} */'
+        if body.count(old)!=1:
+            raise ValueError('Pinned Korean flags-wrapper shape changed')
+        body=body.replace(old,replacement)
+    return body
+
+
 def merge(original, translated, missing_seeds=None):
     before, after = functions(original), functions(translated)
     changed = {name: body for name, body in after.items()
@@ -74,6 +94,16 @@ def merge(original, translated, missing_seeds=None):
         return False
     if not selected or not any(int(name[4:], 16) >= 0x00DF0000 for name in selected):
         raise ValueError('Korean font/helper code was not generated')
+    # Reject new untranslated instructions. Existing unreachable baseline
+    # decoding artefacts are not introduced by the Korean adaptation.
+    baseline_unimplemented=set(re.findall(r'RECOMP_UNIMPL\("[^\"]*", (0x[0-9A-F]+)u\)',
+        '\n'.join(before.values())))
+    for name,body in selected.items():
+        body=restore_wrapper_stack(name,body)
+        unimplemented=set(re.findall(r'RECOMP_UNIMPL\("[^\"]*", (0x[0-9A-F]+)u\)',body))
+        if unimplemented-baseline_unimplemented:
+            raise ValueError('New Korean instruction remains untranslated; refusing an incomplete font helper')
+        selected[name]=body
     output = ['/* PRIVATE generated language variants: never commit. */',
               '#ifdef NGB_IOS_KOREAN', '#define RECOMP_GENERATED_CODE', '#include "recomp_funcs.h"',
               '#include "korean.h"', '#include <stddef.h>', '#include <math.h>']

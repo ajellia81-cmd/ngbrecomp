@@ -138,6 +138,8 @@ class SsePackedLifterTest(unittest.TestCase):
         packed = [
             ("movaps", [_xmm("xmm0"), _mem("eax")]),
             ("movups", [_xmm("xmm0"), _mem("eax")]),
+            ("movdqu", [_xmm("xmm0"), _mem("eax")]),
+            ("movdqa", [_mem("eax"), _xmm("xmm0")]),
             ("movlps", [_xmm("xmm0"), _mem("eax", 0, size=8)]),
             ("movhps", [_xmm("xmm0"), _mem("eax", 0, size=8)]),
             ("movlhps", [_xmm("xmm0"), _xmm("xmm1")]),
