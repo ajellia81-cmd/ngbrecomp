@@ -13,6 +13,7 @@ on:
       - 'ios/app.m'
       - 'ios/target.cmake'
       - 'ios/Info.plist.in'
+      - 'ios/package_ipa.sh'
       - 'src/main.c'
       - 'CMakeLists.txt'
       - 'src/fibers.c'
@@ -157,11 +158,48 @@ jobs:
           bash ios/build_dependencies.sh "$RUNNER_TEMP/ngb-ios-tools"
       - name: Compile and link the original game engine target
         run: bash ios/build_engine.sh "$RUNNER_TEMP/ngb-ios-tools" build/ios-private/engine
+      - name: Validate the real game bundle and package unsigned IPA privately
+        run: |
+          bash ios/package_ipa.sh build/ios-private/engine/NinjaGaidenBlack.app \
+            build/ios-private/package "$RUNNER_TEMP/ngb-ios-tools"
+      - name: Prepare private artifact delivery
+        id: delivery
+        env:
+          NGB_IPA_PASSWORD: ${{ secrets.NGB_IPA_PASSWORD }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -z "$NGB_IPA_PASSWORD" ]; then
+            echo 'ready=false' >> "$GITHUB_OUTPUT"
+            echo 'Game IPA was built, but not published. Add NGB_IPA_PASSWORD to deliver it as an encrypted artifact.'
+            exit 0
+          fi
+          if [ "${#NGB_IPA_PASSWORD}" -lt 16 ]; then
+            echo '::error::NGB_IPA_PASSWORD must contain at least 16 characters.'
+            exit 1
+          fi
+          if ! command -v 7zz >/dev/null; then brew install sevenzip; fi
+          mkdir -p build/private-delivery
+          ARCHIVE="$PWD/build/private-delivery/NinjaGaidenBlack-ios-arm64-unsigned.ipa.7z"
+          (cd build/ios-private/package && \
+            7zz a -t7z -mx=0 -mhe=on -p"$NGB_IPA_PASSWORD" -bso0 -bsp0 \
+              "$ARCHIVE" NinjaGaidenBlack-ios-arm64-unsigned.ipa)
+          7zz t -p"$NGB_IPA_PASSWORD" -bso0 -bsp0 \
+            build/private-delivery/NinjaGaidenBlack-ios-arm64-unsigned.ipa.7z
+          echo 'ready=true' >> "$GITHUB_OUTPUT"
+      - name: Upload encrypted game IPA only
+        if: steps.delivery.outputs.ready == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: NinjaGaidenBlack-iOS-ARM64-encrypted-IPA
+          path: build/private-delivery/*.ipa.7z
+          if-no-files-found: error
+          retention-days: 7
       - name: Remove private inputs, generated code and logs
         if: always()
         shell: bash
         run: |
-          rm -rf game_files src/recomp/gen xboxrecomp/.venv build/ios-private build/analysis
+          rm -rf game_files src/recomp/gen xboxrecomp/.venv build/ios-private build/private-delivery build/analysis
           rm -f recomp_log.txt "$RUNNER_TEMP/ngb-private.iso" "$RUNNER_TEMP/ngb-private.iso.part"
           rm -f "$RUNNER_TEMP/download-private.log" "$RUNNER_TEMP/ngb-pipeline-private.log" "$RUNNER_TEMP/ngb-fibers-private.log"
           rm -rf "$RUNNER_TEMP/ngb-input-tools"
