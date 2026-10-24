@@ -25,4 +25,6 @@ if ! cmake --build "$build" --target ninja_gaiden_black --parallel 2 \
     python3 "$root/ios/report_build_errors.py" "$build/compile-private.log"
     exit 1
 fi
-echo 'Original game target compiled and linked for iPhoneOS. App startup/packaging requires separate verification.'
+test -f "$build/NinjaGaidenBlack.app/NinjaGaidenBlack"
+test -f "$build/NinjaGaidenBlack.app/Frameworks/MoltenVK.framework/MoltenVK"
+echo 'Real iPhoneOS game app bundle linked with MoltenVK; physical-device startup remains unverified.'
