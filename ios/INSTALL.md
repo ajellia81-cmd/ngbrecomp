@@ -1,7 +1,8 @@
 # Download and first-device test
 
-This is an experimental real-engine build. The owner has reached game import,
-memory initialization and rendering of the game's disc-error screen in LiveContainer.
+This is an experimental real-engine build. The owner reports successful startup,
+New Game selection and working gameplay in LiveContainer after a restart following
+the first load. Background graphics corruption and continuing audio were also reported.
 A successful compile/package is not a gameplay result.
 
 ## Download the actual IPA
@@ -17,7 +18,8 @@ The artifact is retained for seven days. The unsigned IPA is 14,239,616 bytes an
 has SHA-256 `7c2b3859c05bcb25e507a6a42b9a13b484727b31fb628c4340250c1703861a9e`.
 Build source commit: `fd4617d1ef582f4ee255e76fbeb7adb0c186d856`.
 It contains the real engine and 11,740 lifted game functions, not NGBBringup.
-No game disc data is included. No developer certificate/provisioning profile is included.
+The Korean-enabled build contains the pinned translation capsule; the original
+game data must still be imported. No developer certificate/provisioning profile is included.
 
 ## LiveContainer
 
@@ -69,6 +71,21 @@ small input is working, but retain at least one complete game-data copy elsewher
 
 ## Controls and first-run evidence
 
+For a full native screen, select **iPhone Native** at the end of **Aspect Ratio**,
+then **iPhone Native** after **10x** in **Render Resolution**, in the main or pause
+recomp settings. The full-size rendering targets then use the actual drawable's
+content pixel dimensions; `[D3D] iPhone native render target` logs the result.
+Other aspect ratios keep their appropriate black bars. This mode is device-test
+pending. It does not change game timing. iOS hides window-size, window-mode and
+V-Sync selection; sync is fixed FIFO. Windows/macOS choices are retained.
+
+The display-link-only 120 Hz request has been removed. This build still uses
+the original 60 Hz guest clock and does not implement true 120 fps gameplay. Menus remain English: Korean progress
+reports were requested, not interface translation. The separately requested game
+translation uses an [isolated USA adaptation](KOREAN_PATCH.md). Select Korean in
+Startup → Text Language, then fully close and reopen the app. No archive upload
+is required; keep the original imported game data.
+
 Connect a supported controller for SDL's native iOS GameController backend.
 Without one, the native touch overlay supplies both sticks, D-pad, face buttons,
 White/Black, triggers, stick clicks, Back and Start. Physical-controller detection
@@ -88,13 +105,18 @@ the inactive file selection even after broadening the app's file type filter.
 
 The first startup failed at `CreateFileMapping failed (error 8)`. The sandbox
 temporary-file fix subsequently mapped all 28 RAM mirrors on the owner's phone.
-The next observed issue is the game's disc-error screen, despite successful opens
-of movie/font resources and `bgm.afs`. The Apple scheduler's separate-image text
-range fix needs a device retest. Do not delete and reimport game data just to
-test an updated IPA. Keep the app foreground: the supplied log also records
-Metal device loss when work is submitted from the background, a separate issue.
+The Apple scheduler's separate-image text-range fix subsequently allowed the owner
+to start and play the game. Do not delete and reimport data to test an updated IPA.
+The New Game loading log shows successful data reads and preparation of files in
+the emulated hard disk. The owner reported entering gameplay after restarting;
+the exact first-load duration has not been measured.
 
-Keep the game in the foreground during initial testing: coordinated guest/GPU
-background suspension/resume is unfinished. Real audio, rendering, timing and
-120 Hz behavior also remain unverified. This IPA has not yet satisfied the
-playable-on-iPhone completion criterion.
+The latest lifecycle change pauses guest execution/time, audio and GPU submissions
+on resign-active, and resumes on activation. It needs a physical-device retest:
+after installing the update, fully close any old process, start the game, go Home
+for several seconds, and return. Sound and game progression should stop while
+inactive, and graphics should remain intact on return. Repeat with screen lock.
+If it fails, retain `Documents/saves/log.txt`; `[iOS] inactive` and `[iOS] active`
+identify the transitions, and `VK_ERROR_DEVICE_LOST` identifies GPU loss.
+GPU recovery after an already lost device, extended suspension semantics and
+120 Hz behavior are not established. Keep a copy of saves before longer testing.

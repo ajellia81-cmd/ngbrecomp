@@ -1,9 +1,10 @@
 # Ninja Gaiden Black iOS port
 
-An experimental unsigned **real-engine IPA** has been built. The owner has run
-the import UI on a physical device; full engine initialization, title screen and
-gameplay are **not verified**. This is not a claim of
-a completed playable port. The older NGBBringup diagnostic app is a separate target.
+An experimental unsigned **real-engine IPA** has been built. The owner reports
+successful game startup, New Game selection and working gameplay in LiveContainer
+after restarting following the first load. Long-term reliability, performance and
+background resume still require testing. The older NGBBringup diagnostic app is
+a separate target.
 
 - Build source: `fd4617d1ef582f4ee255e76fbeb7adb0c186d856`, branch `ios-port`.
 - [Successful Actions run](https://github.com/ajellia81-cmd/ngbrecomp/actions/runs/40111477099).
@@ -50,6 +51,32 @@ triggers, D-pad, face/shoulder/stick buttons, Start and Back. Controls use runti
 bounds/safe-area insets and release held inputs when the app resigns active.
 No iPhone 18 screen dimensions were guessed or hard-coded.
 
+The upstream `packaging/appimage/ngb.png` supplies the iPhone AppIcon asset catalog.
+iOS adds **iPhone Native** after the existing aspect ratios and after the 1x-10x
+render-scale choices, in both main-menu and pause-menu recomp settings. The native
+aspect uses the device's real landscape pixel ratio. Native rendering fits the
+actual SDL drawable at the selected aspect and uses its exact pixel dimensions
+for full-size color/depth targets; intermediate effects and shadows retain their
+separate scale paths. Native aspect plus native rendering fills the drawable.
+Desktop window-size/display-mode rows are hidden on iOS, and FIFO sync is fixed,
+so its V-Sync choice is hidden too. Desktop builds keep their existing choices.
+
+True 120 fps means 120 distinct rendered scene frames while preserving game speed
+and physics. A display-link-only high-refresh request was removed at the owner's
+request. The Xbox vblank/simulation currently remains 60 Hz. True 120 fps is not
+implemented or measured; see [120FPS.md](120FPS.md) for the code audit and gates.
+
+The v1.2 translation has a restricted USA adaptation with isolated Korean code
+and data. Startup settings add Text Language: Japanese, English, Korean; restart
+to apply. See [KOREAN_PATCH.md](KOREAN_PATCH.md) for validation limits.
+
+On resign-active the iOS bridge now requests guest scheduler pause, freezes the
+guest monotonic clock, pauses APU/SDL audio, drains the Vulkan device and blocks
+new queue work and swapchain acquisition. The UI event thread keeps its run loop
+available for foreground notifications. On activation the gates reopen, virtual
+time resumes without the background interval, and audio reprimes. Menu audio
+pause state is preserved. This lifecycle path needs an owner-device retest.
+
 ## Verified results
 
 | Check | Observed result |
@@ -63,9 +90,11 @@ No iPhone 18 screen dimensions were guessed or hard-coded.
 | Encrypted delivery | 7z password/integrity test and artifact upload passed |
 | VM semantics | Allocation collision, protected writes, protection restoration and 64 MiB backing-file shared aliases passed on macOS and iPhone simulator |
 | Scheduler/thread regressions | Existing macOS and Linux regressions passed |
+| Lifecycle CPU/time | Loaded-image scheduler stops a noncooperative guest spin loop, freezes its clock and resumes; passed Linux and macOS |
+| Lifecycle audio | Actual SDL dummy device rejects queued data while paused and reprimes on resume; passed macOS |
 | Touch controller contract | SDL virtual pad button/stick/trigger mapping passed headless Linux checks; not an iPhone UI test |
 | Extraction helper | Cloud PowerShell 7.5.4 synthetic disc tests passed; real Windows execution not observed |
-| Owner device report | Import works with LiveContainer Fix File Picker; shared RAM fix maps 28/28 mirrors, reads the XBE and renders the game's disc-error screen; title/gameplay still not reached |
+| Owner device report | Import and startup work after shared-RAM and loaded-image scheduler fixes; owner reports New Game and working gameplay; background execution/audio and graphics corruption on return were also reported |
 
 [Simulator VM run](https://github.com/ajellia81-cmd/ngbrecomp/actions/runs/40109319653)
 and [runtime/renderer build](https://github.com/ajellia81-cmd/ngbrecomp/actions/runs/40099391364).
@@ -84,24 +113,26 @@ failure alone does not establish a production VM bug. Do not report all tests as
   screen. The Apple scheduler used image zero's text range, which belongs to the
   host in LiveContainer. It now identifies its own image with `dladdr`; the
   separate-image spin-loop regression tests both the fix and the old failure.
-  Whether that resolves the game's disc-error screen still needs a device retest.
-  Full game initialization, title screen, gameplay, performance, graphics accuracy,
-  real controller/touch behavior and audible output remain unverified.
+  The owner subsequently confirmed game startup and gameplay. Extended play,
+  measured performance, graphics accuracy and controller hotplug remain unverified.
 - The owner's LiveContainer startup log maps 28/28 RAM mirrors and verifies the
   tiled aperture alias. This is stronger evidence than the small-region simulator
   check, but does not establish every allocation or subsequent game state.
-- Vulkan 1.3/shared-device features, Metal presentation and GPU-specific behavior
-  need physical-device checks. No successful rendered game frame is claimed.
-- Robust coordinated guest-clock/GPU suspension and background resume are not
-  complete. Current lifecycle handling releases touch input and uses SDL audio
-  support; initial tests should keep the game in the foreground.
+- Rendering and audible output have owner-device evidence, but the log reports
+  `VK_ERROR_DEVICE_LOST` when submitting from background. The new lifecycle gates
+  prevent new GPU submissions and drain before losing foreground permission;
+  device pause/resume and screen-lock tests are still required. This does not
+  recreate a device that was already lost before the app became inactive.
+- Host condition-variable waits still use real-time deadlines. Not every guest
+  wait/timer behavior across a long suspension has been established, even though
+  guest execution, its monotonic counters and the NV2A virtual clock are paused.
 - 120 Hz presentation and preservation of game behavior at that rate have not
   been measured. The plist permits high refresh, but guest timing was not doubled.
 - Separate arcade executables and external archive extraction are not supported
   by this iOS app.
 
-These gaps mean the user's playable-on-device completion criterion remains open,
-even though a genuine game-engine IPA is now available.
+The real-engine build and owner-reported basic gameplay milestones are reached;
+the reliability, lifecycle and performance work above remains open.
 
 ## Private inputs and source history
 
