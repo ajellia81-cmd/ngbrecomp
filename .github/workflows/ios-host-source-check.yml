@@ -1,0 +1,33 @@
+name: iOS game host source compatibility
+on:
+  workflow_dispatch:
+  push:
+    branches: [ios-port]
+    paths:
+      - '.github/workflows/ios-host-source-check.yml'
+      - 'src/install.c'
+      - 'src/launch.c'
+      - 'src/port.h'
+permissions:
+  contents: read
+jobs:
+  host-sources:
+    runs-on: macos-15
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Compile real installer and image handoff sources against iPhoneOS
+        shell: bash
+        run: |
+          set -uo pipefail
+          SDK="$(xcrun --sdk iphoneos --show-sdk-path)"
+          mkdir -p build/ios-host
+          failed=0
+          for source in install launch; do
+            xcrun --sdk iphoneos clang -target arm64-apple-ios15.0 -isysroot "$SDK" \
+              -std=gnu11 -O2 -Ixboxrecomp/src -Isrc -c "src/$source.c" \
+              -o "build/ios-host/$source.o" || failed=1
+          done
+          exit "$failed"
