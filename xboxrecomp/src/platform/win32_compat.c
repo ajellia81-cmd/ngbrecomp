@@ -2007,7 +2007,25 @@ size_t view_take(const void *addr)
  * memfd_create for this; elsewhere an immediately-unlinked temp file does. */
 static int anon_map_fd(const char *name)
 {
-#if defined(__APPLE__)
+#if defined(__APPLE__) && TARGET_OS_IPHONE
+    /* Named POSIX shared memory is unavailable in an iOS app sandbox. An
+     * unlinked file in the app's temporary directory still supports MAP_SHARED
+     * aliases, which the Xbox RAM mirrors require. */
+    (void)name;
+    const char *temporary = getenv("TMPDIR");
+    if (!temporary || !*temporary) { errno = ENOENT; return -1; }
+    char path[4096];
+    int length = snprintf(path, sizeof path, "%s/ngb-map-XXXXXX", temporary);
+    if (length < 0 || (size_t)length >= sizeof path) { errno = ENAMETOOLONG; return -1; }
+    int fd = mkstemp(path);
+    if (fd >= 0 && unlink(path) != 0) {
+        int saved = errno;
+        close(fd);
+        errno = saved;
+        return -1;
+    }
+    return fd;
+#elif defined(__APPLE__)
     static volatile LONG map_counter = 0;
     char shm_name[32];
     LONG seq = InterlockedIncrement(&map_counter);
@@ -2029,9 +2047,15 @@ HANDLE CreateFileMappingA(HANDLE file, LPSECURITY_ATTRIBUTES sa, DWORD protect,
     if (size == 0) { SetLastError(ERROR_INVALID_PARAMETER); return NULL; }
 
     int fd = anon_map_fd(name);
-    if (fd < 0) { SetLastError(ERROR_NOT_ENOUGH_MEMORY); return NULL; }
+    if (fd < 0) {
+        fprintf(stderr, "CreateFileMapping: backing file failed: %s (errno %d)\n", strerror(errno), errno);
+        SetLastError(ERROR_NOT_ENOUGH_MEMORY); return NULL;
+    }
     if (ftruncate(fd, (off_t)size) != 0) {
+        int saved = errno;
         close(fd);
+        fprintf(stderr, "CreateFileMapping: sizing %zu bytes failed: %s (errno %d)\n",
+                (size_t)size, strerror(saved), saved);
         SetLastError(ERROR_NOT_ENOUGH_MEMORY);
         return NULL;
     }

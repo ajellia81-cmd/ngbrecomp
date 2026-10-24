@@ -81,8 +81,16 @@ fails, retain LiveContainer's error/crash details and the app log if present und
 which stage was reached; these distinguish loader, data, VM and renderer failures.
 Do not include personal saves or game content in a public issue.
 
-If the file picker fails, the official LiveContainer README describes its
-app-specific **Fix File Picker** option. This setting was not changed by the agent.
+If files cannot be selected, enable the app-specific **Fix File Picker** option
+in LiveContainer, then relaunch. The first device report confirmed this resolves
+the inactive file selection even after broadening the app's file type filter.
+
+The first device import reached 100%, and the following launch read the complete
+4,571,136-byte XBE. It then exited at `CreateFileMapping failed (error 8)` before
+the Xbox memory layout initialized. The iOS backing implementation now uses an
+unlinked sandbox temporary file instead of named POSIX shared memory, and logs
+the underlying OS error on failure. This change still needs a device retest;
+do not delete and reimport the game data just to test the new IPA.
 
 Keep the game in the foreground during initial testing: coordinated guest/GPU
 background suspension/resume is unfinished. Real audio, rendering, timing and
