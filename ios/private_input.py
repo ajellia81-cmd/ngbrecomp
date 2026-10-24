@@ -13,6 +13,7 @@ from pathlib import Path
 import re
 import shutil
 import sys
+import time
 from urllib.parse import parse_qs, urlsplit
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -79,12 +80,28 @@ def main():
                 raise ValueError("Runner needs at least 10 GiB free before download")
             stage = "import downloader"
             import gdown
+            public_output = sys.stdout
+            reported = [0]
+
+            def progress(done, total):
+                if done - reported[0] >= 512 * (1 << 20):
+                    reported[0] = done
+                    print("Downloaded disc MiB:", done // (1 << 20), file=public_output, flush=True)
+
             # Download diagnostics can contain the private URL. Keep them private.
             with (args.iso.parent / "download-private.log").open("w") as log:
                 with contextlib.redirect_stdout(log), contextlib.redirect_stderr(log):
                     stage = "download disc from Drive"
-                    result = gdown.download(id=file_id, output=str(args.iso),
-                                            quiet=True, use_cookies=False)
+                    for attempt in range(3):
+                        try:
+                            result = gdown.download(id=file_id, output=str(args.iso),
+                                                    quiet=True, use_cookies=False,
+                                                    progress=progress, timeout=(30, 120), retries=1)
+                            break
+                        except gdown.exceptions.FileURLRetrievalError:
+                            if attempt == 2:
+                                raise
+                            time.sleep(30 * (attempt + 1))
             if result is None:
                 raise ValueError("Drive download failed; check sharing or download quota")
             print("Downloaded disc bytes:", args.iso.stat().st_size, flush=True)
@@ -101,11 +118,15 @@ def main():
         print("Private input preparation failed at stage:", stage, file=sys.stderr)
         print("Failure category:", type(error).__name__, file=sys.stderr)
         # Classify common provider failures without emitting their private URL.
-        detail = str(error).lower()
+        # gdown's outer message always mentions permissions. Its chained
+        # provider error is more specific; never misreport boilerplate as proof.
+        detail = str(error.__cause__ or error).lower()
         if "too many users" in detail or "quota" in detail:
             print("Drive reports a download quota/rate limit.", file=sys.stderr)
+        elif isinstance(error, ValueError):
+            pass
         elif "anyone with the link" in detail or "permission" in detail:
-            print("Drive could not supply an anonymous download; check link sharing.", file=sys.stderr)
+            print("Drive did not supply an anonymous download URL; the error alone does not establish a permission problem.", file=sys.stderr)
         return 1
     return 0
 

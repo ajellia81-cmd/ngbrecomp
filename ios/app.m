@@ -148,7 +148,7 @@ static void import_progress(uint64_t done, uint64_t total, void *context)
     [[UIBezierPath bezierPathWithOvalInRect:CGRectMake(center.x + self.position.x * radius * 1.5 - radius,
         center.y + self.position.y * radius * 1.5 - radius, radius * 2, radius * 2)] fill];
 }
-- (void)move:(UITouch *)touch
+- (void)updateTouch:(UITouch *)touch
 {
     CGPoint p = [touch locationInView:self];
     CGFloat radius = self.bounds.size.width / 2;
@@ -163,9 +163,9 @@ static void import_progress(uint64_t done, uint64_t total, void *context)
     [self setNeedsDisplay];
 }
 - (void)touchesBegan:(NSSet<UITouch *> *)touches withEvent:(UIEvent *)event
-{ (void)event; if (!self.tracking) { self.tracking = touches.anyObject; [self move:self.tracking]; } }
+{ (void)event; if (!self.tracking) { self.tracking = touches.anyObject; [self updateTouch:self.tracking]; } }
 - (void)touchesMoved:(NSSet<UITouch *> *)touches withEvent:(UIEvent *)event
-{ (void)event; if ([touches containsObject:self.tracking]) [self move:self.tracking]; }
+{ (void)event; if ([touches containsObject:self.tracking]) [self updateTouch:self.tracking]; }
 - (void)reset
 {
     self.tracking = nil;
@@ -320,7 +320,7 @@ int ngb_ios_prepare(void)
         PFN_vkGetInstanceProcAddr loader = module ? (PFN_vkGetInstanceProcAddr)dlsym(module, "vkGetInstanceProcAddr") : NULL;
         if (!loader) { fprintf(stderr, "Cannot load the bundled MoltenVK framework.\n"); return 0; }
         volkInitializeCustom(loader);
-        SDL_SetHint(SDL_HINT_VULKAN_LIBRARY, framework.fileSystemRepresentation);
+        setenv("SDL_VULKAN_LIBRARY", framework.fileSystemRepresentation, 1);
         SDL_SetHint(SDL_HINT_ORIENTATIONS, "LandscapeLeft LandscapeRight");
         [AVAudioSession.sharedInstance setCategory:AVAudioSessionCategoryAmbient error:nil];
         [AVAudioSession.sharedInstance setPreferredSampleRate:48000 error:nil];

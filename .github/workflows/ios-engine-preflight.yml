@@ -102,7 +102,7 @@ jobs:
       - name: Prepare isolated download and generation tools
         run: |
           python3 -m venv "$RUNNER_TEMP/ngb-input-tools"
-          "$RUNNER_TEMP/ngb-input-tools/bin/pip" install 'gdown==5.2.0'
+          "$RUNNER_TEMP/ngb-input-tools/bin/pip" install 'gdown==6.4.2'
           python3 -m venv xboxrecomp/.venv
           xboxrecomp/.venv/bin/pip install 'capstone==5.0.3'
       - name: Download disc and validate the supported executable
