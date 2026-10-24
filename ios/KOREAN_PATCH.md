@@ -15,7 +15,11 @@ release installer supports USA or that gameplay/fonts are correct on iOS.
 CI retains the original generated functions and adds reachable Korean variants,
 including the added font helpers. Dispatch selects variants only during a Korean
 boot. Japanese and English retain the original executable and data. Missing new
-continuations stop generation; they are not replaced by empty stubs. Manual font
+continuations and newly untranslated instructions stop generation; they are not
+replaced by empty stubs. SSE2 packed moves preserve all 128 XMM bits. Two pinned
+flags-save wrappers reserve their unobserved guest-stack flags word while caller
+conditions remain in caller-local snapshots; this is not a general architectural
+EFLAGS implementation. Manual font
 hooks retain the host instrumentation around their translated bodies.
 
 The IPA contains a private patch capsule. It contains game-derived data, so the
