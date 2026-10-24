@@ -1,20 +1,21 @@
 # Download and first-device test
 
-This is an experimental real-engine build. No physical iPhone or LiveContainer
-startup has been observed. A successful compile/package is not a gameplay result.
+This is an experimental real-engine build. The owner has reached game import and
+XBE loading in LiveContainer, followed by a shared-memory initialization failure.
+A successful compile/package is not a gameplay result.
 
 ## Download the actual IPA
 
-1. Open the [encrypted game artifact](https://github.com/ajellia81-cmd/ngbrecomp/actions/runs/40103624524/artifacts/12563917080)
-   while signed into GitHub. It is from [Actions run 40103624524, attempt 2](https://github.com/ajellia81-cmd/ngbrecomp/actions/runs/40103624524).
+1. Open the [encrypted game artifact](https://github.com/ajellia81-cmd/ngbrecomp/actions/runs/40109319605/artifacts/12565279136)
+   while signed into GitHub. It is from [Actions run 40109319605](https://github.com/ajellia81-cmd/ngbrecomp/actions/runs/40109319605).
 2. Extract GitHub's outer ZIP. It contains `NinjaGaidenBlack-ios-arm64-unsigned.ipa.7z`.
 3. Open the inner archive with a 7z-capable tool such as 7-Zip and enter the same
    password stored in `NGB_IPA_PASSWORD`. Do not upload the password to an issue or chat.
 4. Extract `NinjaGaidenBlack-ios-arm64-unsigned.ipa`. Import this file, not the ZIP/7z.
 
-The artifact is retained for seven days. The unsigned IPA is 14,239,945 bytes and
-has SHA-256 `1f54f2e8514b3e234f9142567bbc938bb1242665210070689b54bc749bdce5f3`.
-Build source commit: `9e28c13556311063e58d209c351f4e12bddb6916`.
+The artifact is retained for seven days. The unsigned IPA is 14,239,326 bytes and
+has SHA-256 `11fa222715d30b9947e7e844ac9d27c5c5131213fe9baedfa8dddcd6e7fa01bd`.
+Build source commit: `f6268ed5807d3b190ace9d558e4a58c2d52532e8`.
 It contains the real engine and 11,740 lifted game functions, not NGBBringup.
 No game disc data is included. No developer certificate/provisioning profile is included.
 

@@ -1,16 +1,17 @@
 # Ninja Gaiden Black iOS port
 
-An experimental unsigned **real-engine IPA** has been built. Physical-device
-startup, title screen and gameplay are **not verified**; this is not a claim of
+An experimental unsigned **real-engine IPA** has been built. The owner has run
+the import UI on a physical device; full engine initialization, title screen and
+gameplay are **not verified**. This is not a claim of
 a completed playable port. The older NGBBringup diagnostic app is a separate target.
 
-- Build source: `9e28c13556311063e58d209c351f4e12bddb6916`, branch `ios-port`.
-- [Successful Actions run, attempt 2](https://github.com/ajellia81-cmd/ngbrecomp/actions/runs/40103624524).
-- [Encrypted IPA artifact](https://github.com/ajellia81-cmd/ngbrecomp/actions/runs/40103624524/artifacts/12563917080).
-- Unsigned IPA: **14,239,945 bytes**, containing **11,740 linked lifted game functions**,
+- Build source: `f6268ed5807d3b190ace9d558e4a58c2d52532e8`, branch `ios-port`.
+- [Successful Actions run](https://github.com/ajellia81-cmd/ngbrecomp/actions/runs/40109319605).
+- [Encrypted IPA artifact](https://github.com/ajellia81-cmd/ngbrecomp/actions/runs/40109319605/artifacts/12565279136).
+- Unsigned IPA: **14,239,326 bytes**, containing **11,740 linked lifted game functions**,
   the real engine/runtime, SDL UIKit entry point and MoltenVK framework.
-- IPA SHA-256: `1f54f2e8514b3e234f9142567bbc938bb1242665210070689b54bc749bdce5f3`.
-- GitHub artifact ZIP SHA-256: `e7aa0e62154ba30ecd9e806c3b12eaa0344b89bf284c199a6d2b83873599a392`.
+- IPA SHA-256: `11fa222715d30b9947e7e844ac9d27c5c5131213fe9baedfa8dddcd6e7fa01bd`.
+- GitHub artifact ZIP SHA-256: `5f5f091f7f3a0e8fd7f2d831cee7a0c858faa6fcc2a9c388afe2e2f93f79af7f`.
 
 See [INSTALL.md](INSTALL.md) for download, LiveContainer import and game data.
 The download is an encrypted 7z inside GitHub's artifact ZIP. It expires seven
@@ -60,12 +61,13 @@ No iPhone 18 screen dimensions were guessed or hard-coded.
 | UIKit game app | Bundle linked with real engine, SDL UIKit entry and MoltenVK |
 | IPA | iPhoneOS platform and engine symbols checked; ZIP integrity passed |
 | Encrypted delivery | 7z password/integrity test and artifact upload passed |
-| VM semantics | Allocation collision, protected writes and protection restoration passed on macOS and iPhone simulator |
+| VM semantics | Allocation collision, protected writes, protection restoration and 64 MiB backing-file shared aliases passed on macOS and iPhone simulator |
 | Scheduler/thread regressions | Existing macOS and Linux regressions passed |
 | Touch controller contract | SDL virtual pad button/stick/trigger mapping passed headless Linux checks; not an iPhone UI test |
 | Extraction helper | Cloud PowerShell 7.5.4 synthetic disc tests passed; real Windows execution not observed |
+| Owner device report | Import UI and selection work with LiveContainer Fix File Picker; import reaches 100%, subsequent startup reads the supported XBE then fails at shared RAM backing creation |
 
-[Simulator VM run](https://github.com/ajellia81-cmd/ngbrecomp/actions/runs/40097568525)
+[Simulator VM run](https://github.com/ajellia81-cmd/ngbrecomp/actions/runs/40109319653)
 and [runtime/renderer build](https://github.com/ajellia81-cmd/ngbrecomp/actions/runs/40099391364).
 The macOS runner used Xcode 16.4/iPhoneOS 18.5 SDK with a deployment target of iOS 15.
 A deployment target is not validation on iOS 27. Windows and desktop macOS full-game
@@ -77,8 +79,11 @@ failure alone does not establish a production VM bug. Do not report all tests as
 
 ## Unverified and remaining work
 
-- No iPhone 18 Pro Max/iOS 27 device or LiveContainer run was available. App launch,
-  full game initialization, title screen, gameplay, performance, graphics accuracy,
+- The owner supplied a LiveContainer startup log ending with
+  `xbox_MemoryLayoutInit: CreateFileMapping failed (error 8)`. The iOS backing-file
+  change replaces named shared memory with an unlinked sandbox temporary file;
+  a device retest is required before calling this startup failure resolved.
+  Full game initialization, title screen, gameplay, performance, graphics accuracy,
   real controller/touch behavior and audible output remain unverified.
 - The real LiveContainer host must permit the runtime's roughly 4 GiB guest virtual
   reservation. Small-region VM behavior in a simulator does not establish that.
