@@ -5,13 +5,13 @@ the import UI on a physical device; full engine initialization, title screen and
 gameplay are **not verified**. This is not a claim of
 a completed playable port. The older NGBBringup diagnostic app is a separate target.
 
-- Build source: `f6268ed5807d3b190ace9d558e4a58c2d52532e8`, branch `ios-port`.
-- [Successful Actions run](https://github.com/ajellia81-cmd/ngbrecomp/actions/runs/40109319605).
-- [Encrypted IPA artifact](https://github.com/ajellia81-cmd/ngbrecomp/actions/runs/40109319605/artifacts/12565279136).
-- Unsigned IPA: **14,239,326 bytes**, containing **11,740 linked lifted game functions**,
+- Build source: `fd4617d1ef582f4ee255e76fbeb7adb0c186d856`, branch `ios-port`.
+- [Successful Actions run](https://github.com/ajellia81-cmd/ngbrecomp/actions/runs/40111477099).
+- [Encrypted IPA artifact](https://github.com/ajellia81-cmd/ngbrecomp/actions/runs/40111477099/artifacts/12566663991).
+- Unsigned IPA: **14,239,616 bytes**, containing **11,740 linked lifted game functions**,
   the real engine/runtime, SDL UIKit entry point and MoltenVK framework.
-- IPA SHA-256: `11fa222715d30b9947e7e844ac9d27c5c5131213fe9baedfa8dddcd6e7fa01bd`.
-- GitHub artifact ZIP SHA-256: `5f5f091f7f3a0e8fd7f2d831cee7a0c858faa6fcc2a9c388afe2e2f93f79af7f`.
+- IPA SHA-256: `7c2b3859c05bcb25e507a6a42b9a13b484727b31fb628c4340250c1703861a9e`.
+- GitHub artifact ZIP SHA-256: `736d3287655d958d044a7c1e258cf6268d20a022513a46eaaf68b7a4e9291ba4`.
 
 See [INSTALL.md](INSTALL.md) for download, LiveContainer import and game data.
 The download is an encrypted 7z inside GitHub's artifact ZIP. It expires seven
@@ -65,7 +65,7 @@ No iPhone 18 screen dimensions were guessed or hard-coded.
 | Scheduler/thread regressions | Existing macOS and Linux regressions passed |
 | Touch controller contract | SDL virtual pad button/stick/trigger mapping passed headless Linux checks; not an iPhone UI test |
 | Extraction helper | Cloud PowerShell 7.5.4 synthetic disc tests passed; real Windows execution not observed |
-| Owner device report | Import UI and selection work with LiveContainer Fix File Picker; import reaches 100%, subsequent startup reads the supported XBE then fails at shared RAM backing creation |
+| Owner device report | Import works with LiveContainer Fix File Picker; shared RAM fix maps 28/28 mirrors, reads the XBE and renders the game's disc-error screen; title/gameplay still not reached |
 
 [Simulator VM run](https://github.com/ajellia81-cmd/ngbrecomp/actions/runs/40109319653)
 and [runtime/renderer build](https://github.com/ajellia81-cmd/ngbrecomp/actions/runs/40099391364).
@@ -79,14 +79,17 @@ failure alone does not establish a production VM bug. Do not report all tests as
 
 ## Unverified and remaining work
 
-- The owner supplied a LiveContainer startup log ending with
-  `xbox_MemoryLayoutInit: CreateFileMapping failed (error 8)`. The iOS backing-file
-  change replaces named shared memory with an unlinked sandbox temporary file;
-  a device retest is required before calling this startup failure resolved.
+- The owner confirmed the shared-memory fix gets past startup. A subsequent log
+  opens movie/font resources and `bgm.afs`, then the game displays its disc-error
+  screen. The Apple scheduler used image zero's text range, which belongs to the
+  host in LiveContainer. It now identifies its own image with `dladdr`; the
+  separate-image spin-loop regression tests both the fix and the old failure.
+  Whether that resolves the game's disc-error screen still needs a device retest.
   Full game initialization, title screen, gameplay, performance, graphics accuracy,
   real controller/touch behavior and audible output remain unverified.
-- The real LiveContainer host must permit the runtime's roughly 4 GiB guest virtual
-  reservation. Small-region VM behavior in a simulator does not establish that.
+- The owner's LiveContainer startup log maps 28/28 RAM mirrors and verifies the
+  tiled aperture alias. This is stronger evidence than the small-region simulator
+  check, but does not establish every allocation or subsequent game state.
 - Vulkan 1.3/shared-device features, Metal presentation and GPU-specific behavior
   need physical-device checks. No successful rendered game frame is claimed.
 - Robust coordinated guest-clock/GPU suspension and background resume are not

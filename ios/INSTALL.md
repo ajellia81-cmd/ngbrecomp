@@ -1,21 +1,21 @@
 # Download and first-device test
 
-This is an experimental real-engine build. The owner has reached game import and
-XBE loading in LiveContainer, followed by a shared-memory initialization failure.
+This is an experimental real-engine build. The owner has reached game import,
+memory initialization and rendering of the game's disc-error screen in LiveContainer.
 A successful compile/package is not a gameplay result.
 
 ## Download the actual IPA
 
-1. Open the [encrypted game artifact](https://github.com/ajellia81-cmd/ngbrecomp/actions/runs/40109319605/artifacts/12565279136)
-   while signed into GitHub. It is from [Actions run 40109319605](https://github.com/ajellia81-cmd/ngbrecomp/actions/runs/40109319605).
+1. Open the [encrypted game artifact](https://github.com/ajellia81-cmd/ngbrecomp/actions/runs/40111477099/artifacts/12566663991)
+   while signed into GitHub. It is from [Actions run 40111477099](https://github.com/ajellia81-cmd/ngbrecomp/actions/runs/40111477099).
 2. Extract GitHub's outer ZIP. It contains `NinjaGaidenBlack-ios-arm64-unsigned.ipa.7z`.
 3. Open the inner archive with a 7z-capable tool such as 7-Zip and enter the same
    password stored in `NGB_IPA_PASSWORD`. Do not upload the password to an issue or chat.
 4. Extract `NinjaGaidenBlack-ios-arm64-unsigned.ipa`. Import this file, not the ZIP/7z.
 
-The artifact is retained for seven days. The unsigned IPA is 14,239,326 bytes and
-has SHA-256 `11fa222715d30b9947e7e844ac9d27c5c5131213fe9baedfa8dddcd6e7fa01bd`.
-Build source commit: `f6268ed5807d3b190ace9d558e4a58c2d52532e8`.
+The artifact is retained for seven days. The unsigned IPA is 14,239,616 bytes and
+has SHA-256 `7c2b3859c05bcb25e507a6a42b9a13b484727b31fb628c4340250c1703861a9e`.
+Build source commit: `fd4617d1ef582f4ee255e76fbeb7adb0c186d856`.
 It contains the real engine and 11,740 lifted game functions, not NGBBringup.
 No game disc data is included. No developer certificate/provisioning profile is included.
 
@@ -86,12 +86,13 @@ If files cannot be selected, enable the app-specific **Fix File Picker** option
 in LiveContainer, then relaunch. The first device report confirmed this resolves
 the inactive file selection even after broadening the app's file type filter.
 
-The first device import reached 100%, and the following launch read the complete
-4,571,136-byte XBE. It then exited at `CreateFileMapping failed (error 8)` before
-the Xbox memory layout initialized. The iOS backing implementation now uses an
-unlinked sandbox temporary file instead of named POSIX shared memory, and logs
-the underlying OS error on failure. This change still needs a device retest;
-do not delete and reimport the game data just to test the new IPA.
+The first startup failed at `CreateFileMapping failed (error 8)`. The sandbox
+temporary-file fix subsequently mapped all 28 RAM mirrors on the owner's phone.
+The next observed issue is the game's disc-error screen, despite successful opens
+of movie/font resources and `bgm.afs`. The Apple scheduler's separate-image text
+range fix needs a device retest. Do not delete and reimport game data just to
+test an updated IPA. Keep the app foreground: the supplied log also records
+Metal device loss when work is submitted from the background, a separate issue.
 
 Keep the game in the foreground during initial testing: coordinated guest/GPU
 background suspension/resume is unfinished. Real audio, rendering, timing and
