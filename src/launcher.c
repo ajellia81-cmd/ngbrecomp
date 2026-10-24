@@ -153,6 +153,7 @@ void ngb_settings_load(NgbSettings *s)
     s->scale = 1;
     s->vsync = 0;
     s->show_fps = 0;
+    s->text_language = 1;
     s->anisotropy = 16;
     s->msaa = 1;
     s->shadow_scale = 4;
@@ -213,6 +214,9 @@ void ngb_settings_load(NgbSettings *s)
             s->smooth_glow = atoi(val) != 0;
         } else if (!strcmp(key, "movie_ratio")) {
             s->movie_43 = !strcmp(val, "4:3");
+        } else if (!strcmp(key, "text_language")) {
+            int language=atoi(val);
+            s->text_language=language<0 ? 0 : language>2 ? 2 : language;
         } else if (!strcmp(key, "show_fps")) {
             s->show_fps = atoi(val) != 0;
         } else if (!strcmp(key, "quick_menu_freeze")) {
@@ -245,6 +249,9 @@ void ngb_settings_save(const NgbSettings *s)
     fprintf(f, "window = %dx%d\n", s->width, s->height);
     fprintf(f, "fullscreen = %d\n", s->fullscreen);
     fprintf(f, "render_scale = %d\n", s->scale);
+#ifdef NGB_IOS_KOREAN
+    fprintf(f, "text_language = %d\n", s->text_language);
+#endif
     fprintf(f, "vsync = %d\n", s->vsync);
     fprintf(f, "show_fps = %d\n", s->show_fps);
     fprintf(f, "anisotropic_filtering = %d\n", s->anisotropy);

@@ -10,6 +10,82 @@
 #include <math.h>
 #include "../src/install.h"
 #include "platform/vcpu.h"
+#ifdef NGB_IOS_KOREAN
+#include "../src/launcher.h"
+extern BOOL ngb_prepare_korean(NSString *, NSString *, NSString *, void (^)(NSString *), NSError **);
+static int koreanActive;
+int ngb_korean_active(void) { return koreanActive; }
+
+void ngb_ios_language_changed(void)
+{
+    fprintf(stderr,"[iOS] text language saved; close and relaunch to apply\n");
+}
+
+static NSString *prepare_language(NSString *documents, NSString *original)
+{
+    NgbSettings settings; ngb_settings_load(&settings);
+    setenv("NGB_TEXT_LANGUAGE",settings.text_language==1 ? "English" : "Japanese",1);
+    if (settings.text_language!=2) return original;
+    NSString *destination=[documents stringByAppendingPathComponent:@"korean-game"];
+    NSString *assets=[NSBundle.mainBundle.resourcePath stringByAppendingPathComponent:@"KoreanPatch"];
+    UIWindow *window=[[UIWindow alloc] initWithFrame:UIScreen.mainScreen.bounds];
+    window.rootViewController=[UIViewController new];
+    window.rootViewController.view.backgroundColor=UIColor.systemBackgroundColor;
+    UILabel *status=[UILabel new]; status.numberOfLines=0; status.textAlignment=NSTextAlignmentCenter;
+    status.text=@"Preparing Korean game data…\nThe original game files will be preserved.";
+    status.translatesAutoresizingMaskIntoConstraints=NO;
+    [window.rootViewController.view addSubview:status];
+    [NSLayoutConstraint activateConstraints:@[
+        [status.centerXAnchor constraintEqualToAnchor:window.rootViewController.view.centerXAnchor],
+        [status.centerYAnchor constraintEqualToAnchor:window.rootViewController.view.centerYAnchor],
+        [status.widthAnchor constraintLessThanOrEqualToConstant:520]]];
+    [window makeKeyAndVisible];
+    __block BOOL done=NO, ok=NO;
+    dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED,0), ^{
+        NSError *error=nil;
+        BOOL result=ngb_prepare_korean(original,destination,assets,^(NSString *message) {
+            dispatch_async(dispatch_get_main_queue(), ^{ status.text=message; });
+        },&error);
+        dispatch_async(dispatch_get_main_queue(), ^{
+            ok=result;
+            if (ok) { done=YES; return; }
+            fprintf(stderr,"[Korean] preparation failed: %s\n",error.localizedDescription.UTF8String);
+            UIAlertController *alert=[UIAlertController alertControllerWithTitle:@"Korean Data Not Prepared"
+                message:error.localizedDescription ?: @"The original game was preserved."
+                preferredStyle:UIAlertControllerStyleAlert];
+            [alert addAction:[UIAlertAction actionWithTitle:@"Continue in English" style:UIAlertActionStyleDefault
+                handler:^(UIAlertAction *action) { (void)action; done=YES; }]];
+            [window.rootViewController presentViewController:alert animated:YES completion:nil];
+        });
+    });
+    while (!done) @autoreleasepool {
+        [NSRunLoop.currentRunLoop runUntilDate:[NSDate dateWithTimeIntervalSinceNow:0.05]];
+    }
+    window.hidden=YES;
+    if (!ok) {
+        settings.text_language=1; ngb_settings_save(&settings);
+        setenv("NGB_TEXT_LANGUAGE","English",1);
+        return original;
+    }
+    // The title installs AFS files on its emulated HDD. Keep that cache per
+    // language while sharing UserData/TitleData so progress is retained.
+    NSFileManager *fm=NSFileManager.defaultManager;
+    NSString *saves=[documents stringByAppendingPathComponent:@"saves"];
+    NSString *localizedSaves=[documents stringByAppendingPathComponent:@"saves-korean"];
+    [fm createDirectoryAtPath:localizedSaves withIntermediateDirectories:YES attributes:nil error:nil];
+    for (NSString *name in @[@"UserData",@"TitleData"]) {
+        NSString *source=[saves stringByAppendingPathComponent:name];
+        NSString *target=[localizedSaves stringByAppendingPathComponent:name];
+        [fm createDirectoryAtPath:source withIntermediateDirectories:YES attributes:nil error:nil];
+        if (![fm fileExistsAtPath:target])
+            [fm createSymbolicLinkAtPath:target withDestinationPath:source error:nil];
+    }
+    setenv("NGB_SAVE_DIR",localizedSaves.fileSystemRepresentation,1);
+    koreanActive=1;
+    fprintf(stderr,"[Korean] verified text/font code and private archive overlay selected\n");
+    return destination;
+}
+#endif
 
 extern void apu_host_pause(int paused);
 extern volatile int apu_host_paused;
@@ -368,6 +444,10 @@ int ngb_ios_prepare(void)
             NGBImport *importer = [NGBImport new]; importer.destination = game;
             if (![importer run]) return 0;
         }
+#ifdef NGB_IOS_KOREAN
+        game=prepare_language(documents,game);
+        setenv("NGB_GAME_DIR",game.fileSystemRepresentation,1);
+#endif
         NSString *framework = [NSBundle.mainBundle.privateFrameworksPath stringByAppendingPathComponent:@"MoltenVK.framework/MoltenVK"];
         void *module = dlopen(framework.fileSystemRepresentation, RTLD_NOW | RTLD_LOCAL);
         PFN_vkGetInstanceProcAddr loader = module ? (PFN_vkGetInstanceProcAddr)dlsym(module, "vkGetInstanceProcAddr") : NULL;

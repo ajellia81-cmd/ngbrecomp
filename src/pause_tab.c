@@ -77,7 +77,7 @@ void ngb_pc_set_setting(int which, int value);
 /* The settings, numbered as ngb_pc_setting has them. */
 enum { S_RENDER, S_TEXTURE, S_SHADOW, S_DISPLAY, S_VSYNC, S_FPS, S_WINDOW, S_ASPECT,
        S_SKIP, S_LAUNCHER, S_MSAA, S_HEALTH, S_NINPO, S_ESSENCE, S_ALLDIFF, S_SCARABS, S_ALLCOST, S_EXTRACOST,
-       S_GLOW, S_QUICKFREEZE, S_QUICKSCALE, S_INFITEMS, S_INFAMMO, S_POSAUDIO, S_HUD, S_COUNT };
+       S_GLOW, S_QUICKFREEZE, S_QUICKSCALE, S_INFITEMS, S_INFAMMO, S_POSAUDIO, S_HUD, S_TEXTLANG, S_COUNT };
 
 static const char *const s_label[S_COUNT] = {
     "Render Resolution", "Anisotropic Filtering", "Shadow Resolution",
@@ -85,7 +85,7 @@ static const char *const s_label[S_COUNT] = {
     "Skip Intros", "Settings at Startup", "Anti-Aliasing (MSAA)",
     "Infinite Health", "Infinite Ninpo", "Infinite Essence", "All Difficulties",
     "Golden Scarabs", "All Costumes", "Extra Costume", "Smoother Glow", "Quick Menu Pause",
-    "Quick Menu", "Infinite Items", "Infinite Projectiles", "Positional Audio", "HUD",
+    "Quick Menu", "Infinite Items", "Infinite Projectiles", "Positional Audio", "HUD", "Text Language",
 };
 static const char *const s_help[S_COUNT] = {
     "Draws the game at a multiple of the console's resolution.",
@@ -113,6 +113,7 @@ static const char *const s_help[S_COUNT] = {
     "Shuriken, smoke bombs, arrows and spears are not used up. For this session only.",
     "Sounds placed left and right. Console: the sound chip's filters. Panning: their placement only, clearer.",
     "The health and Ninpo bar, weapons and the rest drawn over play. Off: a clear screen.",
+    "Japanese, English or Korean text. Close and relaunch the game to apply. Speech language is separate.",
 };
 
 /* The categories: the strip's words, their rows. */
@@ -128,7 +129,11 @@ static const signed char s_cat_rows[CATS][CAT_ROWS] = {
 #else
     { S_ASPECT, S_WINDOW, S_DISPLAY, S_VSYNC, S_FPS, S_HUD, S_POSAUDIO },
 #endif
-    { S_SKIP, S_ALLDIFF, S_ALLCOST, -1 },
+    { S_SKIP,
+#ifdef NGB_IOS_KOREAN
+      S_TEXTLANG,
+#endif
+      S_ALLDIFF, S_ALLCOST, -1 },
     { S_QUICKSCALE, S_QUICKFREEZE, -1 },
     { S_HEALTH, S_NINPO, S_ESSENCE, S_SCARABS, S_INFITEMS, S_INFAMMO, -1 },
     { -1 },
@@ -183,6 +188,7 @@ static void value_text(int row, char *out, size_t n)
 {
     int v = ngb_pc_setting(row);
     switch (row) {
+    case S_TEXTLANG: snprintf(out,n,"%s",v==0 ? "Japanese" : v==2 ? "Korean" : "English"); break;
     case S_RENDER:
 #ifdef NGB_IOS_APP
         if (v == NGB_RENDER_SCALE_IPHONE_NATIVE) { snprintf(out, n, "iPhone Native"); break; }
@@ -218,6 +224,7 @@ static void change(int row, int step)
 {
     int v = ngb_pc_setting(row);
     switch (row) {
+    case S_TEXTLANG: ngb_pc_set_setting(25,(v+(step>0 ? 1 : 2))%3); break;
     case S_RENDER:
         v += step;
         ngb_pc_set_setting(0, v < 1 ? NGB_RENDER_SCALE_COUNT : v > NGB_RENDER_SCALE_COUNT ? 1 : v);

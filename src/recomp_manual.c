@@ -126,6 +126,11 @@ static void icall_hist(uint32_t va)
 
 recomp_func_t recomp_lookup_manual(uint32_t xbox_va)
 {
+#ifdef NGB_IOS_KOREAN
+    extern recomp_func_t ngb_korean_lookup(unsigned address);
+    recomp_func_t translated = ngb_korean_lookup(xbox_va);
+    if (translated) return translated;
+#endif
     icall_hist(xbox_va);
     /*
      * TODO: Add your overrides here. Examples:

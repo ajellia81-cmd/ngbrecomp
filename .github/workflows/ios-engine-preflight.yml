@@ -15,6 +15,17 @@ on:
       - 'ios/audio_pause_test.c'
       - 'ios/build_icons.swift'
       - 'ios/native_settings_test.c'
+      - 'ios/prepare_korean.py'
+      - 'ios/merge_korean_codegen.py'
+      - 'ios/korean.m'
+      - 'ios/korean_archive_test.m'
+      - 'tools/pipeline.sh'
+      - 'src/korean.h'
+      - 'src/menu_mouse.c'
+      - 'src/main_menu.c'
+      - 'src/recomp_manual.c'
+      - 'src/install.c'
+      - 'xboxrecomp/src/kernel/kernel_xbox.c'
       - 'ios/target.cmake'
       - 'ios/Info.plist.in'
       - 'ios/package_ipa.sh'
@@ -136,11 +147,14 @@ jobs:
             xboxrecomp/src/apu/apu_sdl_out.c $(pkg-config --libs sdl2) \
             -o build/ios-platform/audio-pause
           SDL_AUDIODRIVER=dummy build/ios-platform/audio-pause
-          xcrun --sdk macosx clang -arch arm64 -std=c11 -O2 -DNGB_IOS_APP=1 \
+          xcrun --sdk macosx clang -arch arm64 -std=c11 -O2 -DNGB_IOS_APP=1 -DNGB_IOS_KOREAN=1 \
             -Isrc -Ixboxrecomp/src $(pkg-config --cflags sdl2) \
             ios/native_settings_test.c src/launcher.c $(pkg-config --libs sdl2) \
             -o build/ios-platform/native-settings
           build/ios-platform/native-settings
+          xcrun --sdk macosx clang -arch arm64 -fobjc-arc -std=gnu11 \
+            -framework Foundation ios/korean_archive_test.m -o build/ios-platform/korean-archive
+          build/ios-platform/korean-archive
 
   private-recompilation:
     # Standard GitHub-hosted runner: never the owner's PC or a paid larger runner.
@@ -191,6 +205,37 @@ jobs:
               raise SystemExit('No generated game C files')
           print('Generated game C translation units:', len(sources))
           PY
+      - name: Prepare verified Korean variants without replacing original game functions
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 ios/prepare_korean.py --source game_files/default.xbe \
+            --zip "$RUNNER_TEMP/ngb-korean-patch.zip" --download --output "$RUNNER_TEMP/ngb-korean"
+          export NGB_RECOMP_XBE="$RUNNER_TEMP/ngb-korean/korean.xbe"
+          export NGB_RECOMP_GEN_DIR="$RUNNER_TEMP/ngb-korean/gen"
+          export NGB_RECOMP_MANUAL="$RUNNER_TEMP/ngb-korean/manual-korean.json"
+          export NGB_RECOMP_ANALYSIS="$RUNNER_TEMP/ngb-korean/analysis.json"
+          ready=0
+          for pass in 1 2 3 4 5 6; do
+            if [ -s "$RUNNER_TEMP/ngb-korean/continuations.json" ]; then
+              export NGB_RECOMP_EXTRA_SEEDS="$RUNNER_TEMP/ngb-korean/continuations.json"
+            fi
+            if ! bash tools/pipeline.sh > "$RUNNER_TEMP/ngb-korean-pipeline-private.log" 2>&1; then
+              echo '::error::Private Korean code generation failed; raw game-derived logs are withheld.'
+              exit 1
+            fi
+            set +e
+            python3 ios/merge_korean_codegen.py --original src/recomp/gen --translated "$NGB_RECOMP_GEN_DIR" \
+              --missing-seeds "$RUNNER_TEMP/ngb-korean/continuations.json"
+            result=$?
+            set -e
+            if [ "$result" -eq 0 ]; then ready=1; break; fi
+            if [ "$result" -ne 2 ]; then exit "$result"; fi
+          done
+          if [ "$ready" -ne 1 ]; then
+            echo '::error::Korean continuations remain untranslated; refusing to substitute stubs.'
+            exit 1
+          fi
       - name: Compile production game fibers with real generated headers
         shell: bash
         run: |
@@ -218,7 +263,9 @@ jobs:
           export VCPKG_BINARY_SOURCES="clear;files,$RUNNER_TEMP/ngb-dependency-cache,readwrite"
           bash ios/build_dependencies.sh "$RUNNER_TEMP/ngb-ios-tools"
       - name: Compile and link the original game engine target
-        run: bash ios/build_engine.sh "$RUNNER_TEMP/ngb-ios-tools" build/ios-private/engine
+        run: |
+          export NGB_KOREAN_ASSET_DIR="$RUNNER_TEMP/ngb-korean/KoreanPatch"
+          bash ios/build_engine.sh "$RUNNER_TEMP/ngb-ios-tools" build/ios-private/engine
       - name: Validate the real game bundle and package unsigned IPA privately
         run: |
           bash ios/package_ipa.sh build/ios-private/engine/NinjaGaidenBlack.app \
@@ -264,4 +311,6 @@ jobs:
           rm -f recomp_log.txt "$RUNNER_TEMP/ngb-private.iso" "$RUNNER_TEMP/ngb-private.iso.part"
           rm -f "$RUNNER_TEMP/download-private.log" "$RUNNER_TEMP/ngb-pipeline-private.log" "$RUNNER_TEMP/ngb-fibers-private.log"
           rm -rf "$RUNNER_TEMP/ngb-input-tools"
+          rm -rf "$RUNNER_TEMP/ngb-korean"
+          rm -f "$RUNNER_TEMP/ngb-korean-patch.zip" "$RUNNER_TEMP/ngb-korean-pipeline-private.log"
     # Deliberately no upload-artifact, cache, commit, or release of game-derived files.

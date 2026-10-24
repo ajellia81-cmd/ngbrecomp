@@ -139,9 +139,11 @@ NTSTATUS __stdcall xbox_ExQueryNonVolatileSetting(
 
     switch (ValueIndex) {
     case XC_LANGUAGE:
-        /* English = 1 */
+        /* Optional host text locale. Speech language remains the title's own
+         * setting; Korean variants use the Japanese text/font path. */
         if (ValueLength >= sizeof(ULONG)) {
-            *(PULONG)Value = 1;
+            const char *language = getenv("NGB_TEXT_LANGUAGE");
+            *(PULONG)Value = language && !strcmp(language,"Japanese") ? 2 : 1;
             if (Type) *Type = 4; /* REG_DWORD */
             if (ResultLength) *ResultLength = sizeof(ULONG);
         }

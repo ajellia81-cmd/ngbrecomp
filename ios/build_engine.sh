@@ -16,6 +16,7 @@ if ! cmake -S "$root" -B "$build" -G Ninja \
     -DCMAKE_OSX_DEPLOYMENT_TARGET=15.0 -DCMAKE_TRY_COMPILE_TARGET_TYPE=STATIC_LIBRARY \
     -DCMAKE_DISABLE_FIND_PACKAGE_Qt6=TRUE -DCMAKE_BUILD_TYPE=Release \
     -DNGB_MOLTENVK_ROOT="$tools/moltenvk/MoltenVK" \
+    -DNGB_IOS_KOREAN=ON -DNGB_KOREAN_ASSET_DIR="${NGB_KOREAN_ASSET_DIR:?Verified Korean capsule required}" \
     -DNGB_NV2A_VK=ON > "$build/configure-private.log" 2>&1; then
     python3 "$root/ios/report_build_errors.py" "$build/configure-private.log"
     exit 1

@@ -72,6 +72,12 @@ void ngb_general_page_init(void)
             MEM32(0x436190) = va;
         }
     }
+#ifdef NGB_IOS_KOREAN
+    /* The Korean drawer has its own language-aware layout continuation.
+     * Keep its matching original General row table, including Flag Select. */
+    extern int ngb_korean_active(void);
+    if (ngb_korean_active()) return;
+#endif
     uint32_t pages = MEM32(0x42A28C);
     for (uint32_t p = pages; MEM8(p) != 0xFF; p += 0x18) {
         if (MEM8(p) != 1 || MEM8(p + 2) != 6)

@@ -62,7 +62,7 @@ void ngb_settings_size_at(int aspect, int i, int *w, int *h);
 enum { ROW_SCREEN, ROW_MOVIE, ROW_PC, ROW_DEFAULT, ROW_EXIT,
        ROW_RENDER, ROW_TEXTURE, ROW_SHADOW, ROW_DISPLAY, ROW_VSYNC, ROW_FPS, ROW_WINDOW, ROW_ASPECT, ROW_BACK,
        ROW_SKIP, ROW_LAUNCHER, ROW_MSAA, ROW_HEALTH, ROW_NINPO, ROW_ESSENCE, ROW_ALLDIFF, ROW_SCARABS, ROW_ALLCOST, ROW_EXTRACOST,
-       ROW_GLOW, ROW_QUICKFREEZE, ROW_QUICKSCALE, ROW_INFITEMS, ROW_INFAMMO, ROW_POSAUDIO, ROW_HUD,
+       ROW_GLOW, ROW_QUICKFREEZE, ROW_QUICKSCALE, ROW_INFITEMS, ROW_INFAMMO, ROW_POSAUDIO, ROW_HUD, ROW_TEXTLANG,
 };
 
 static int is_ours(int page) { return page >= PAGE_GFX && page < PAGE_GFX + N_OURS; }
@@ -80,7 +80,11 @@ static const uint8_t s_rows_disp[] = { ROW_ASPECT,
 #endif
                                        ROW_FPS, ROW_HUD, ROW_POSAUDIO,
                                        ROW_BACK };
-static const uint8_t s_rows_start[] = { ROW_SKIP, ROW_ALLDIFF, ROW_ALLCOST, ROW_BACK };
+static const uint8_t s_rows_start[] = { ROW_SKIP,
+#ifdef NGB_IOS_KOREAN
+    ROW_TEXTLANG,
+#endif
+    ROW_ALLDIFF, ROW_ALLCOST, ROW_BACK };
 static const uint8_t s_rows_game[] = { ROW_QUICKSCALE, ROW_QUICKFREEZE, ROW_BACK };
 static const uint8_t s_rows_cheat[] = { ROW_HEALTH, ROW_NINPO, ROW_ESSENCE, ROW_SCARABS, ROW_INFITEMS, ROW_INFAMMO, ROW_BACK };
 static const uint8_t s_rows_ctrl[] = { ROW_BACK };
@@ -178,6 +182,11 @@ static const struct { const uint8_t *kinds; int n; } s_ours[N_OURS] = {
 #define T_WSIZE0   0x20140            /* + aspect * 8 + index: "1280 x 720" */
 
 static const struct { uint32_t id; const char *text; } s_text[] = {
+#ifdef NGB_IOS_KOREAN
+    { 0x20200, "Text Language" },
+    { 0x20201, "Japanese, English or Korean text. Apply by closing and relaunching the game. Speech language is separate." },
+    { 0x20210, "Japanese" }, { 0x20211, "English" }, { 0x20212, "Korean" },
+#endif
     { T_QUICKFREEZE, "Quick Menu Pause" },
     { T_POSAUDIO, "Positional Audio" },
     { T_POSCONSOLE, "Console" },
@@ -306,6 +315,7 @@ static uint32_t make_rows(const uint8_t *kinds, int n)
         case ROW_VSYNC:   src = 0x429984; max = 3; break;
         case ROW_WINDOW:  src = 0x429984; max = 6; break;
         case ROW_ASPECT:  src = 0x429984; max = ASPECT_COUNT - 1; break;
+        case ROW_TEXTLANG: src = 0x429984; max = 2; break;
         case ROW_EXTRACOST: src = 0x429984; max = 3; break;
         case ROW_QUICKSCALE: src = 0x429984; max = 10; break;
         default:          src = 0x429984; break;          /* a value, 0-1 */
@@ -326,7 +336,7 @@ static uint32_t make_labels(const uint8_t *kinds, int n)
                                    T_RENDER, T_TEXTURE, T_SHADOW, T_DISPLAY, T_VSYNC,
                                    T_FPS, T_WINDOWSZ, T_ASPECT, 0x20005, T_SKIP, T_LAUNCHER, T_MSAA,
                                    T_HEALTH, T_NINPO, T_ESSENCE, T_ALLDIFF, T_SCARABS, T_ALLCOST, T_EXTRACOST,
-                                   T_GLOW, T_QUICKFREEZE, T_QUICKSCALE, T_INFITEMS, T_INFAMMO, T_POSAUDIO, T_HUD };
+                                   T_GLOW, T_QUICKFREEZE, T_QUICKSCALE, T_INFITEMS, T_INFAMMO, T_POSAUDIO, T_HUD, 0x20200 };
     uint32_t va = xbox_HeapAlloc(4 * n, 4);
     for (int i = 0; i < n; i++)
         MEM32(va + 4 * i) = id[kinds[i]];
@@ -694,6 +704,7 @@ static int row_kind(int row)
 static uint32_t pc_value_id(int row, uint32_t movie_id)
 {
     switch (row_kind(row)) {
+    case ROW_TEXTLANG: return 0x20210u+(uint32_t)ngb_pc_setting(25);
     case ROW_QUICKFREEZE: return ngb_pc_setting(19) ? T_ON : T_OFF;
     case ROW_POSAUDIO: return ngb_pc_setting(23) == 2 ? T_POSPAN : ngb_pc_setting(23) ? T_POSCONSOLE : T_OFF;
     case ROW_HUD:     return ngb_pc_setting(24) ? T_ON : T_OFF;
@@ -744,11 +755,12 @@ static int pc_value_change(int row, int delta)
 {
     int kind = row_kind(row);
     int step = delta > 0 ? 1 : -1;
-    if ((kind < ROW_RENDER || kind > ROW_ASPECT) && (kind < ROW_SKIP || kind > ROW_HUD))
+    if ((kind < ROW_RENDER || kind > ROW_ASPECT) && (kind < ROW_SKIP || kind > ROW_TEXTLANG))
         return 0;
     if (!delta)
         return 1;
     switch (kind) {
+    case ROW_TEXTLANG: ngb_pc_set_setting(25,(ngb_pc_setting(25)+(step>0 ? 1 : 2))%3); break;
     case ROW_QUICKFREEZE: ngb_pc_set_setting(19, !ngb_pc_setting(19)); break;
     case ROW_POSAUDIO: ngb_pc_set_setting(23, (ngb_pc_setting(23) + (step > 0 ? 1 : 2)) % 3); break;
     case ROW_HUD: ngb_pc_set_setting(24, !ngb_pc_setting(24)); break;
@@ -1873,7 +1885,7 @@ void sub_00220870(void)
                                            D_EXTRACOST & 0xFFFF, D_GLOW & 0xFFFF,
                                            D_QUICKFREEZE & 0xFFFF, D_QUICKSCALE & 0xFFFF,
                                            D_INFITEMS & 0xFFFF, D_INFAMMO & 0xFFFF, D_POSAUDIO & 0xFFFF,
-                                           D_HUD & 0xFFFF };
+                                           D_HUD & 0xFFFF, 0x0201 };
     RECOMP_ENTRY(0x00220870u);
     uint32_t out = ecx;
     uint32_t level = MEM16(0x8DE430), tab = MEM16(0x8DE4CC), row = MEM16(0x8DE468);
@@ -1936,5 +1948,11 @@ float ngb_hud_shape(void)
     if (stretch)
         return 1.0f;
     int a = ngb_pc_setting(7);
+#ifdef NGB_IOS_APP
+    if (a == ASPECT_IPHONE) {
+        NgbSettings settings = {0}; settings.aspect = a;
+        return (float)((4.0/3.0)/ngb_settings_aspect_ratio(&settings));
+    }
+#endif
     return a == 1 ? 0.75f : a == 2 ? 0.8333333f : a == 3 ? 0.5625f : 1.0f;
 }

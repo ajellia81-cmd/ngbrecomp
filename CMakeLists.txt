@@ -160,12 +160,14 @@ add_library(ngb_gen OBJECT ${RECOMP_GEN_SOURCES}
     ${CMAKE_CURRENT_SOURCE_DIR}/src/d3d/d3d_orig.c
     ${NGB_FONT_SOURCES})
 target_include_directories(ngb_gen PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/src
     ${XBOXRECOMP_DIR}/third_party/stb
     ${CMAKE_CURRENT_SOURCE_DIR}/src/recomp/gen
     ${XBOXRECOMP_DIR}/include
     ${XBOXRECOMP_DIR}/src
     ${XBOXRECOMP_DIR}/src/kernel
 )
+option(NGB_IOS_KOREAN "Include verified private Korean code/data variants" OFF)
 target_link_libraries(ngb_gen PRIVATE platform)
 if(NGB_NV2A_VK)
     find_package(SDL2 REQUIRED)   # SDL's key codes (src/pause_tab.c's key prompts)

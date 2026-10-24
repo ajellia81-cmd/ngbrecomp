@@ -115,6 +115,7 @@ int ngb_pc_setting(int which)
     }
     switch (which) {
     case 0:  return s_running.scale;
+    case 25: return s_running.text_language;
     case 1:  return s_running.anisotropy;
     case 2:  return s_running.shadow_scale;
     case 3:  return s_running.fullscreen;
@@ -144,6 +145,14 @@ void ngb_pc_set_setting(int which, int value)
     }
     ngb_pc_setting(0);
     switch (which) {
+#ifdef NGB_IOS_KOREAN
+    case 25: {
+        s_running.text_language=value<0 ? 0 : value>2 ? 2 : value;
+        extern void ngb_ios_language_changed(void);
+        ngb_ios_language_changed();
+        break;
+    }
+#endif
     case 14: s_running.all_difficulties = value; ngb_set_all_difficulties(value); break;
     case 16: s_running.all_costumes = value; ngb_set_all_costumes(value); break;
     case 17: s_running.movie_43 = !!value; break;   /* the next movie (src/pc_menu.c) */
