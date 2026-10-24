@@ -38,6 +38,7 @@ endif()
 # -- a thread made ready above the running one runs at once -- hang or spin
 # without it.
 option(XBOXRECOMP_WIN_VCPU "Windows: guest threads on one virtual CPU (platform/vcpu.h)" OFF)
+option(XBOXRECOMP_NV2A_VK "Build the NV2A Vulkan renderer (from xemu)" OFF)
 
 # Platform: Win32/NT type vocabulary + POSIX implementation of generic
 # Win32 host primitives. Carries no Xbox semantics; provides the foundation
@@ -48,7 +49,19 @@ add_subdirectory(src/platform)
 add_subdirectory(src/kernel)
 
 # Graphics: D3D8 → D3D11 compatibility layer
-add_subdirectory(src/d3d)
+if(CMAKE_SYSTEM_NAME STREQUAL "iOS")
+    if(NOT XBOXRECOMP_NV2A_VK)
+        message(FATAL_ERROR "iOS requires the Vulkan renderer; the legacy desktop OpenGL 3.3 backend is unavailable")
+    endif()
+    # This title draws through src/d3d/vk and NV2A, not the separate legacy
+    # D3D8/OpenGL library. Keep its header vocabulary for shared video code;
+    # an accidental use of a legacy D3D entry point must fail at link time.
+    add_library(xbox_d3d8 INTERFACE)
+    target_include_directories(xbox_d3d8 INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/src/d3d)
+    target_link_libraries(xbox_d3d8 INTERFACE platform)
+else()
+    add_subdirectory(src/d3d)
+endif()
 
 # Audio: DirectSound → software mixer compatibility
 add_subdirectory(src/audio)
@@ -71,7 +84,6 @@ add_subdirectory(src/video)
 
 # GPU: xemu's NV2A model with its Vulkan renderer, for titles whose own D3D
 # drives the GPU through pushbuffers. Opt-in; Linux only for now.
-option(XBOXRECOMP_NV2A_VK "Build the NV2A Vulkan renderer (from xemu)" OFF)
 if(XBOXRECOMP_NV2A_VK)
     # VMA is C++; enabled here so the consuming project links as C++ too.
     enable_language(CXX)

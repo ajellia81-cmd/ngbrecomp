@@ -16,7 +16,7 @@ fi
 git -C "$toolroot/vcpkg" fetch --depth 1 origin "$revision"
 git -C "$toolroot/vcpkg" checkout --detach FETCH_HEAD
 bash "$toolroot/vcpkg/bootstrap-vcpkg.sh" -disableMetrics
-"$toolroot/vcpkg/vcpkg" install --triplet arm64-ios \
+"$toolroot/vcpkg/vcpkg" install --triplet arm64-ios --overlay-triplets="$root/ios/triplets" \
     'sdl2[vulkan]' glib glslang
 bash "$root/xboxrecomp/third_party/fetch.sh"
 echo 'iPhoneOS SDL2, GLib and glslang prepared. MoltenVK runtime packaging remains separate.'

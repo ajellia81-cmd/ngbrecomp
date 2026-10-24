@@ -7,6 +7,7 @@ on:
     paths:
       - '.github/workflows/ios-runtime-build.yml'
       - 'ios/build_dependencies.sh'
+      - 'ios/triplets/**'
       - 'xboxrecomp/src/**'
       - 'xboxrecomp/CMakeLists.txt'
 
@@ -29,10 +30,11 @@ jobs:
         with:
           persist-credentials: false
       - name: Restore open-source dependency cache (never game code)
-        uses: actions/cache@v4
+        id: dependency-cache
+        uses: actions/cache/restore@v4
         with:
           path: ${{ runner.temp }}/ngb-dependency-cache
-          key: iphoneos-arm64-vcpkg-0c2a9ace-xcode16-v1
+          key: iphoneos-arm64-vcpkg-0c2a9ace-xcode16-release-cf-v1
       - name: Build device dependencies
         run: |
           mkdir -p "$RUNNER_TEMP/ngb-dependency-cache"
@@ -47,6 +49,7 @@ jobs:
           cmake -S xboxrecomp -B build/ios-runtime -G Ninja \
             -DCMAKE_TOOLCHAIN_FILE="$VCPKG/scripts/buildsystems/vcpkg.cmake" \
             -DVCPKG_TARGET_TRIPLET=arm64-ios \
+            -DVCPKG_OVERLAY_TRIPLETS="$PWD/ios/triplets" \
             -DCMAKE_SYSTEM_NAME=iOS -DCMAKE_SYSTEM_PROCESSOR=arm64 \
             -DCMAKE_OSX_ARCHITECTURES=arm64 -DCMAKE_OSX_SYSROOT=iphoneos \
             -DCMAKE_OSX_DEPLOYMENT_TARGET=15.0 \
@@ -54,4 +57,10 @@ jobs:
             -DCMAKE_BUILD_TYPE=Release -DXBOXRECOMP_NV2A_VK=ON
       - name: Build actual kernel, audio, input and NV2A runtime libraries
         run: cmake --build build/ios-runtime --parallel 2
+      - name: Preserve completed open-source packages even if a later compile fails
+        if: always() && steps.dependency-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ runner.temp }}/ngb-dependency-cache
+          key: iphoneos-arm64-vcpkg-0c2a9ace-xcode16-release-cf-v1
     # Only the isolated vcpkg cache contains binaries; no game inputs are used here.
