@@ -33,7 +33,8 @@ before displaying its Run workflow control; do not modify master just for this.
    Extract only `default.xbe`, validating the size and FNV-1a fingerprint from
    `src/install.c`. The full disc is then removed to free space.
 4. Reuse `tools/pipeline.sh` to generate the real private game sources. Compile
-   `src/fibers.c` with their real headers for iPhoneOS ARM64.
+   `src/fibers.c` with their real headers and compile every generated game C
+   translation unit for iPhoneOS ARM64. Keep the resulting archive private.
 5. Delete private inputs, generated C and raw logs. Publish no ISO, XBE, generated
    C, game-derived object, cache or artifact. Public logs contain only sanitized
    status, counts and the computed disc hash.
@@ -49,6 +50,12 @@ Actual Drive download, source generation and iPhoneOS compilation must be checke
 in the run results; workflow installation alone is not success. Full engine
 compilation/linking, renderer/input/lifecycle integration, private IPA delivery
 and LiveContainer device execution remain separate requirements in `README.md`.
+
+The separate `iOS full runtime build` workflow builds open-source SDL2, GLib and
+glslang for iPhoneOS via a pinned vcpkg revision, then compiles the existing Xbox
+runtime, including its NV2A Vulkan path. Its isolated dependency cache contains
+only open-source libraries, never game code. It does not package MoltenVK or an
+IPA and does not consume the owner's disc.
 
 The complete extracted disc directory is still needed at runtime. Extracting
 only the XBE here does not supply runtime data. Each runner is disposable, so do

@@ -7,6 +7,7 @@ on:
     paths:
       - '.github/workflows/ios-engine-preflight.yml'
       - 'ios/private_input.py'
+      - 'ios/compile_generated.sh'
       - 'ios/PRIVATE_BUILD.md'
       - 'src/fibers.c'
       - 'src/port.h'
@@ -138,6 +139,8 @@ jobs:
             exit 1
           fi
           echo 'Production game fibers compiled for iPhoneOS ARM64; this is not a linked or playable IPA.'
+      - name: Compile every generated game translation unit for iPhoneOS ARM64
+        run: bash ios/compile_generated.sh build/ios-private/generated
       - name: Remove private inputs, generated code and logs
         if: always()
         shell: bash

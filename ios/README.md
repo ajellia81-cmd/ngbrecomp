@@ -58,10 +58,12 @@ These are existing desktop Apple paths, not evidence of iOS execution.
    presentation through an iOS Metal-backed surface. Existing Vulkan
    portability-enumeration code is useful but insufficient. The D3D backend
    requests Vulkan 1.3, dynamic rendering, synchronization2 and push descriptors.
-   The NV2A renderer additionally requests geometry shaders in
-   `xemu/pgraph/vk/instance.c`. Query capabilities and implement a supported
-   path before claiming MoltenVK compatibility; linking MoltenVK alone is
-   not a renderer port.
+   Reuse the existing Apple `NGB_RENDERER=d3d` path: in
+   `xemu/pgraph/vk/instance.c` it already relaxes NV2A draw-feature requirements,
+   including geometry shaders, unless `NGB_D3D_KEEP_NV2A` is set. The reference
+   NV2A drawing path still requires those features. Query capabilities and
+   verify the shared device/presenter before claiming MoltenVK compatibility;
+   linking MoltenVK alone is not a renderer port.
 5. Replace desktop installer dialogs and subprocess/re-execution paths
    (`fork`, `execvp`, `popen`, `execv` in `src/install.c`) with sandboxed
    import and in-process startup. Wire application lifecycle and audio-session

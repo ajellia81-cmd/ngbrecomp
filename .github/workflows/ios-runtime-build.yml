@@ -1,0 +1,57 @@
+name: iOS full runtime build
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ios-port]
+    paths:
+      - '.github/workflows/ios-runtime-build.yml'
+      - 'ios/build_dependencies.sh'
+      - 'xboxrecomp/src/**'
+      - 'xboxrecomp/CMakeLists.txt'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ios-runtime-build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  runtime-arm64:
+    runs-on: macos-15
+    timeout-minutes: 90
+    env:
+      VCPKG_DISABLE_METRICS: '1'
+      VCPKG_MAX_CONCURRENCY: '2'
+      VCPKG_BINARY_SOURCES: 'clear;files,${{ runner.temp }}/ngb-dependency-cache,readwrite'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Restore open-source dependency cache (never game code)
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/ngb-dependency-cache
+          key: iphoneos-arm64-vcpkg-0c2a9ace-xcode16-v1
+      - name: Build device dependencies
+        run: |
+          mkdir -p "$RUNNER_TEMP/ngb-dependency-cache"
+          bash ios/build_dependencies.sh "$RUNNER_TEMP/ngb-ios-tools"
+      - name: Configure the existing full Xbox runtime for iPhoneOS
+        shell: bash
+        run: |
+          set -euo pipefail
+          VCPKG="$RUNNER_TEMP/ngb-ios-tools/vcpkg"
+          export PKG_CONFIG_LIBDIR="$VCPKG/installed/arm64-ios/lib/pkgconfig:$VCPKG/installed/arm64-ios/share/pkgconfig"
+          cmake -S xboxrecomp -B build/ios-runtime -G Ninja \
+            -DCMAKE_TOOLCHAIN_FILE="$VCPKG/scripts/buildsystems/vcpkg.cmake" \
+            -DVCPKG_TARGET_TRIPLET=arm64-ios \
+            -DCMAKE_SYSTEM_NAME=iOS -DCMAKE_SYSTEM_PROCESSOR=arm64 \
+            -DCMAKE_OSX_ARCHITECTURES=arm64 -DCMAKE_OSX_SYSROOT=iphoneos \
+            -DCMAKE_OSX_DEPLOYMENT_TARGET=15.0 \
+            -DCMAKE_TRY_COMPILE_TARGET_TYPE=STATIC_LIBRARY \
+            -DCMAKE_BUILD_TYPE=Release -DXBOXRECOMP_NV2A_VK=ON
+      - name: Build actual kernel, audio, input and NV2A runtime libraries
+        run: cmake --build build/ios-runtime --parallel 2
+    # Only the isolated vcpkg cache contains binaries; no game inputs are used here.

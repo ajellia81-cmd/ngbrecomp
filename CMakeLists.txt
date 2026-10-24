@@ -163,6 +163,7 @@ if(NGB_NV2A_VK)
         src/d3d/gpu/texture.cpp)
     target_include_directories(ngb_d3d PRIVATE
         src
+        ${XBOXRECOMP_DIR}/src
         src/d3d src/d3d/compat ${XBOXRECOMP_DIR}/src/nv2a_vk/host
         ${XRTP}/Vulkan-Headers/include ${XRTP}/volk ${XRTP}/VulkanMemoryAllocator/include)
     target_compile_definitions(ngb_d3d PRIVATE VK_NO_PROTOTYPES
@@ -294,6 +295,7 @@ if(NOT WIN32)
         set(CMAKE_AUTORCC ON)
         add_executable(ngb-setup src/setup/ngb_setup.cpp src/setup/setup.qrc src/install.c)
         target_link_libraries(ngb-setup PRIVATE Qt6::Widgets)
+        target_include_directories(ngb-setup PRIVATE ${XBOXRECOMP_DIR}/src)
         set_target_properties(ngb-setup PROPERTIES CXX_STANDARD 17
             RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR})
         message(STATUS "ngb-setup: Qt ${Qt6_VERSION}")
