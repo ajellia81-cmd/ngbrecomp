@@ -67,31 +67,45 @@ def main():
     parser.add_argument("--iso", type=Path, required=True)
     parser.add_argument("--download", action="store_true")
     args = parser.parse_args()
+    stage = "validate download link"
     try:
         if args.download:
             file_id = drive_id(os.environ.get("NGB_DISC_URL", ""))
             # Leave space for the image and generated C; avoid extracting the full disc.
-            if shutil.disk_usage(args.iso.parent).free < 10 * (1 << 30):
+            stage = "check runner storage"
+            free = shutil.disk_usage(args.iso.parent).free
+            print("Runner free storage (GiB):", round(free / (1 << 30), 2), flush=True)
+            if free < 10 * (1 << 30):
                 raise ValueError("Runner needs at least 10 GiB free before download")
+            stage = "import downloader"
             import gdown
             # Download diagnostics can contain the private URL. Keep them private.
             with (args.iso.parent / "download-private.log").open("w") as log:
                 with contextlib.redirect_stdout(log), contextlib.redirect_stderr(log):
+                    stage = "download disc from Drive"
                     result = gdown.download(id=file_id, output=str(args.iso),
                                             quiet=True, use_cookies=False)
             if result is None:
                 raise ValueError("Drive download failed; check sharing or download quota")
+            print("Downloaded disc bytes:", args.iso.stat().st_size, flush=True)
+        stage = "validate disc and retail executable"
         digest = prepare(args.iso, ROOT / "game_files",
                          os.environ.get("NGB_DISC_SHA256") or None)
         print("Supported retail executable verified; private compilation input prepared.")
         print("Disc SHA-256:", digest)
         if not os.environ.get("NGB_DISC_SHA256"):
             print("No independently supplied disc hash; this is a computed hash only.")
-    except Exception:
+    except Exception as error:
         # Provider exceptions and XisoError can contain URLs or data paths.
         # Never print their text into the public Actions log.
-        print("Private input preparation failed. Check the input, sharing, hash and free space.",
-              file=sys.stderr)
+        print("Private input preparation failed at stage:", stage, file=sys.stderr)
+        print("Failure category:", type(error).__name__, file=sys.stderr)
+        # Classify common provider failures without emitting their private URL.
+        detail = str(error).lower()
+        if "too many users" in detail or "quota" in detail:
+            print("Drive reports a download quota/rate limit.", file=sys.stderr)
+        elif "anyone with the link" in detail or "permission" in detail:
+            print("Drive could not supply an anonymous download; check link sharing.", file=sys.stderr)
         return 1
     return 0
 
