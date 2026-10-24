@@ -14,11 +14,29 @@ inputs or derived artifacts. No PC connection or chat ISO upload is needed.
 The first production compile exposed the iPhoneOS SDK's unsupported
 `mach_vm.h` header. The shared `platform/apple_vm.h` now selects public
 pointer-sized `vm_*` functions for iOS and retains `mach_vm_*` on macOS.
-Production VM/scheduler and portability-header compilation passed in
-[run 40095946063](https://github.com/ajellia81-cmd/ngbrecomp/actions/runs/40095946063).
-The private download job failed; a subsequent metadata check showed the input
-was owner-only (`shared: false`). Download, source generation, full linking and
-device execution remain unverified. A passing platform job is not an IPA.
+Production VM/scheduler and portability-header compilation, device/simulator
+link checks, macOS scheduler/thread regressions, ISO validation, generation of
+48 real game C units, production fiber compilation, and compilation of **all
+48 generated units** passed in
+[run 40096836664](https://github.com/ajellia81-cmd/ngbrecomp/actions/runs/40096836664).
+The initial owner-only Drive link was corrected by the owner; it is no longer
+the build blocker.
+
+Real allocation-collision checks and protected-memory writes with protection
+restoration passed on macOS and an iPhone simulator in
+[run 40097568525](https://github.com/ajellia81-cmd/ngbrecomp/actions/runs/40097568525).
+Neither is a physical-device/LiveContainer result.
+
+The separate complete-runtime build exposed a GLib/libintl CoreFoundation link
+dependency. The iOS dependency triplet now supplies that framework and selects
+Release-only static libraries. Its rebuild must be checked separately. The iOS
+runtime also selects the existing Vulkan path instead of the desktop-only
+OpenGL 3.3 legacy compatibility backend; an accidental dependency on a legacy
+D3D8 implementation will fail at link time rather than use a placeholder.
+
+Full handwritten-engine compilation/linking, MoltenVK application integration,
+IPA packaging and gameplay remain unverified. Passing generated-code and VM
+jobs is not a playable IPA.
 
 ## Source audit (2026-10-24)
 
