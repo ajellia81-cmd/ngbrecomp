@@ -10,6 +10,10 @@ on:
       - 'ios/compile_generated.sh'
       - 'ios/build_engine.sh'
       - 'ios/report_build_errors.py'
+      - 'ios/app.m'
+      - 'ios/target.cmake'
+      - 'ios/Info.plist.in'
+      - 'src/main.c'
       - 'CMakeLists.txt'
       - 'src/fibers.c'
       - 'src/port.h'
@@ -141,8 +145,6 @@ jobs:
             exit 1
           fi
           echo 'Production game fibers compiled for iPhoneOS ARM64; this is not a linked or playable IPA.'
-      - name: Compile every generated game translation unit for iPhoneOS ARM64
-        run: bash ios/compile_generated.sh build/ios-private/generated
       - name: Restore only public device dependency packages
         uses: actions/cache/restore@v4
         with:

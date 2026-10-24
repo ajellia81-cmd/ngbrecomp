@@ -464,6 +464,10 @@ static int run(char *const argv[])
 #else
 static int run(char *const argv[])
 {
+#ifdef NGB_IOS_APP
+    (void)argv;
+    return -1;  /* iOS imports ISO/folders in process, never archive subprocesses. */
+#else
     pid_t pid;
     int status, rc;
     if (s_cancel)
@@ -478,6 +482,7 @@ static int run(char *const argv[])
          : WIFEXITED(status) ? WEXITSTATUS(status) : -1;
     s_child = 0;
     return rc;
+#endif
 }
 #endif
 
@@ -675,6 +680,10 @@ static int pick_disc(char *out, size_t n)
 /* Ask with a desktop file dialog when there is one (zenity, kdialog). */
 static int pick_disc(char *out, size_t n)
 {
+#ifdef NGB_IOS_APP
+    (void)out; (void)n;
+    return 0;  /* UIKit has already imported and validated the game directory. */
+#else
     const char *cmds[] = {
         "zenity --file-selection --title='Ninja Gaiden Black: choose your disc image "
         "(.iso, .7z, .zip) or its default.xbe' 2>/dev/null",
@@ -694,6 +703,7 @@ static int pick_disc(char *out, size_t n)
         }
     }
     return 0;
+#endif
 }
 #endif
 
@@ -815,6 +825,10 @@ int ngb_install(const char *src, const char *installed, char *out, size_t n)
 static int run_setup(const char *exe_dir, const char *installed,
                      char *out, size_t n)
 {
+#ifdef NGB_IOS_APP
+    (void)exe_dir; (void)installed; (void)out; (void)n;
+    return -1;
+#else
     char cmd[8400];
     FILE *p;
     int status;
@@ -842,6 +856,7 @@ static int run_setup(const char *exe_dir, const char *installed,
         out[0] = 0;
     }
     return WEXITSTATUS(status) == 0 && out[0] ? 1 : 0;
+#endif
 }
 #endif
 
@@ -1006,7 +1021,9 @@ int ngb_portable_enable(void)
  * start (src/main.c) -- with the disc image or folder chosen, so it is not asked for twice. */
 static void restart_portable(const char *src)
 {
-#if defined(_WIN32)
+#if defined(NGB_IOS_APP)
+    (void)src;   /* The signed iOS bundle is never a portable writable install. */
+#elif defined(_WIN32)
     wchar_t self[MAX_PATH], wsrc[4096], cmd[8400];
     STARTUPINFOW si;
     PROCESS_INFORMATION pi;

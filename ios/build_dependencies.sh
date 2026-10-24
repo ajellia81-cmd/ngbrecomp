@@ -19,4 +19,11 @@ bash "$toolroot/vcpkg/bootstrap-vcpkg.sh" -disableMetrics
 "$toolroot/vcpkg/vcpkg" install --triplet arm64-ios --overlay-triplets="$root/ios/triplets" \
     'sdl2[vulkan]' glib glslang
 bash "$root/xboxrecomp/third_party/fetch.sh"
-echo 'iPhoneOS SDL2, GLib and glslang prepared. MoltenVK runtime packaging remains separate.'
+mkdir -p "$toolroot/moltenvk"
+curl --fail --location --retry 3 --silent --show-error \
+    https://github.com/KhronosGroup/MoltenVK/releases/download/v1.4.2/MoltenVK-ios.tar \
+    -o "$toolroot/moltenvk/MoltenVK-ios.tar"
+printf '%s  %s\n' b5d947b1660e6e9fed40b9cd2387e160aaab9e80b775c0cef7e14059405178c1 \
+    "$toolroot/moltenvk/MoltenVK-ios.tar" | shasum -a 256 -c -
+tar -xf "$toolroot/moltenvk/MoltenVK-ios.tar" -C "$toolroot/moltenvk"
+echo 'iPhoneOS SDL2, GLib, glslang and the verified MoltenVK framework prepared.'

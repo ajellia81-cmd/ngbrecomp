@@ -15,6 +15,8 @@ def summaries(text):
         if re.search(r":\d+:\d+: (?:fatal )?error:", line):
             # Discard source context lines and redact quoted expressions/values.
             yield re.sub(r"'[^']*'|\"[^\"]*\"", "<symbol>", line)[:300]
+        elif re.fullmatch(r'\s*"_[A-Za-z][A-Za-z0-9_]*", referenced from:', line) and '"_sub_' not in line:
+            yield line.strip()  # Public host API names only; no source snippets.
         elif line.startswith(("CMake Error", "Undefined symbols for architecture", "ld: ", "clang: error:")):
             yield re.sub(r"'[^']*'|\"[^\"]*\"", "<symbol>", line)[:300]
 

@@ -527,7 +527,10 @@ void ngb_keep_game_for_restart(void);   /* src/main.c */
 static void restart_program(void)
 {
     ngb_keep_game_for_restart();
-#if !defined(_WIN32)
+#if defined(NGB_IOS_APP)
+    fprintf(stderr, "[MENU] Soft reset did not finish; relaunch the app from LiveContainer.\n");
+    return;
+#elif !defined(_WIN32)
     char self[4096];
     long n = ngb_exe_path(self, sizeof self);
     if (n > 0 && s_argv) {

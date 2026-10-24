@@ -10,6 +10,7 @@ on:
       - 'ios/triplets/**'
       - 'CMakeLists.txt'
       - 'src/d3d/**'
+      - 'ios/app.m'
       - 'xboxrecomp/src/**'
       - 'xboxrecomp/CMakeLists.txt'
 
@@ -59,6 +60,18 @@ jobs:
             -DCMAKE_BUILD_TYPE=Release -DNGB_NV2A_VK=ON -DNGB_RENDERER_CHECK_ONLY=ON
       - name: Build actual runtime and game Direct3D Vulkan renderer objects
         run: cmake --build build/ios-runtime --parallel 2
+      - name: Compile the real UIKit import and touch input bridge
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDK="$(xcrun --sdk iphoneos --show-sdk-path)"
+          VCPKG="$RUNNER_TEMP/ngb-ios-tools/vcpkg"
+          xcrun --sdk iphoneos clang -target arm64-apple-ios15.0 -isysroot "$SDK" \
+            -fobjc-arc -std=gnu11 -Wall -Wextra -Werror=implicit-function-declaration \
+            -Werror=objc-method-access -Ixboxrecomp/src \
+            -I"$VCPKG/installed/arm64-ios/include/SDL2" \
+            -Ixboxrecomp/third_party/volk -Ixboxrecomp/third_party/Vulkan-Headers/include \
+            -c ios/app.m -o build/ios-runtime/ios-app.o
       - name: Preserve completed open-source packages even if a later compile fails
         if: always() && steps.dependency-cache.outputs.cache-hit != 'true'
         uses: actions/cache/save@v4

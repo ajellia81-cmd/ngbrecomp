@@ -233,6 +233,10 @@ else()
     target_link_libraries(${PROJECT_NAME} PRIVATE ${CMAKE_DL_LIBS} m)
 endif()
 
+if(CMAKE_SYSTEM_NAME STREQUAL "iOS")
+    include(ios/target.cmake)
+endif()
+
 # ── First-run setup window (Qt) ─────────────────────────────────
 # ngb-setup asks for the player's disc and installs it (src/install.c); the
 # game runs it from beside itself when it finds no game files. Optional:
@@ -298,7 +302,7 @@ endfunction()
 ngb_arcade_program(ninja_trilogy NinjaTrilogy gen_trilogy NinjaTrilogy.xbe)
 ngb_arcade_program(ninja_tomoe NinjaTomoe gen_tomoe NinjaTomoe.xbe)
 
-if(NOT WIN32)
+if(NOT WIN32 AND NOT CMAKE_SYSTEM_NAME STREQUAL "iOS")
     find_package(Qt6 QUIET COMPONENTS Widgets)
     if(Qt6_FOUND)
         set(CMAKE_AUTORCC ON)

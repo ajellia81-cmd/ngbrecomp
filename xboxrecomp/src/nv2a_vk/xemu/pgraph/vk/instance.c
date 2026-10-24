@@ -182,7 +182,8 @@ static bool create_instance(PGRAPHState *pg, Error **errp)
     PGRAPHVkState *r = pg->vk_renderer_state;
     VkResult result;
 
-    result = volkInitialize();
+    /* iOS seeds volk from its bundled MoltenVK framework before game startup. */
+    result = volkGetInstanceVersion() ? VK_SUCCESS : volkInitialize();
     if (result != VK_SUCCESS) {
         error_setg(errp, "volkInitialize failed");
         return false;

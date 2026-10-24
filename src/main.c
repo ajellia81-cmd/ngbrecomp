@@ -1045,6 +1045,10 @@ static void portable_init(void)
 
 int main(int argc, char **argv)
 {
+#ifdef NGB_IOS_APP
+    extern int ngb_ios_prepare(void);
+    if (!ngb_ios_prepare()) return 1;
+#endif
     portable_init();   /* before anything picks a folder (the log's, first) */
 #if !defined(_WIN32)
     /* No terminal and no file of the player's own (the Mac's Finder, Steam on Linux -- a Steam Deck in Game

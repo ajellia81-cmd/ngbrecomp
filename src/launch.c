@@ -227,6 +227,11 @@ static int program_for(const char *path, char *out, size_t n)
 
 static void launch_image(const char *path, const void *page, size_t len)
 {
+#ifdef NGB_IOS_APP
+    (void)path; (void)page; (void)len;
+    fprintf(stderr, "[LAUNCH] Separate arcade executables are unavailable in the iOS app.\n");
+    return;
+#else
     char prog[4200], file[4200], win[64];
     if (!program_for(path, prog, sizeof prog)) {
         fprintf(stderr, "[LAUNCH] no program for %s\n", path);
@@ -284,6 +289,7 @@ static void launch_image(const char *path, const void *page, size_t len)
         fprintf(stderr, "[LAUNCH] could not start %s (error %lu)\n", prog, GetLastError());
     }
 #endif
+#endif /* !NGB_IOS_APP */
 }
 
 void ngb_launch_init(const char *game_dir, const char *save_dir, int width, int height, int fullscreen)
