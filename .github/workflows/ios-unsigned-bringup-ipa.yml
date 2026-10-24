@@ -18,7 +18,7 @@ jobs:
           SDK="$(xcrun --sdk iphoneos --show-sdk-path)"
           APP="build/ios/Payload/NGBBringup.app"
           mkdir -p "$APP"
-          xcrun --sdk iphoneos clang -target arm64-apple-ios15.0 -isysroot "$SDK" -fobjc-arc -O2 \
+          xcrun --sdk iphoneos clang -target arm64-apple-ios15.0 -isysroot "$SDK" -Ixboxrecomp/src -fobjc-arc -O2 \
             ios/bringup/main.m ios/bringup/fiber_smoke.c -framework UIKit -framework Foundation -framework GameController \
             -Wl,-dead_strip -o "$APP/NGBBringup"
           cat > "$APP/Info.plist" <<'PLIST'

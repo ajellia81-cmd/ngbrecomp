@@ -6,6 +6,8 @@ on:
     paths:
       - '.github/workflows/ios-arm64-bringup.yml'
       - 'ios/bringup/**'
+      - 'src/port.h'
+      - 'xboxrecomp/src/platform/apple_vm.h'
 jobs:
   iphoneos-arm64-compile:
     runs-on: macos-15
@@ -22,7 +24,7 @@ jobs:
       - name: Compile production portability header for iPhoneOS
         run: |
           SDK="$(xcrun --sdk iphoneos --show-sdk-path)"
-          xcrun --sdk iphoneos clang -target arm64-apple-ios15.0 -isysroot "$SDK" -Wall -Wextra -Werror -c ios/bringup/portability_smoke.c -o build/ios-bringup/portability_smoke.o
+          xcrun --sdk iphoneos clang -target arm64-apple-ios15.0 -isysroot "$SDK" -Ixboxrecomp/src -Wall -Wextra -Werror -c ios/bringup/portability_smoke.c -o build/ios-bringup/portability_smoke.o
       - name: Check iOS simulator ARM64 compilation
         run: |
           SDK="$(xcrun --sdk iphonesimulator --show-sdk-path)"

@@ -34,8 +34,7 @@
 #if defined(__APPLE__)
 #include <sys/sysctl.h>
 #include <sys/stat.h>
-#include <mach/mach.h>
-#include <mach/mach_vm.h>
+#include "apple_vm.h"
 #else
 #include <sys/sysinfo.h>
 #endif
@@ -1402,15 +1401,15 @@ size_t view_take(const void *addr);
 
 static void *mach_map_fixed(void *address, size_t size, int prot)
 {
-    mach_vm_address_t addr = (mach_vm_address_t)(uintptr_t)address;
-    mach_vm_size_t len = (size + vm_page_size - 1) & ~((mach_vm_size_t)vm_page_size - 1);
+    ngb_vm_address_t addr = (ngb_vm_address_t)(uintptr_t)address;
+    ngb_vm_size_t len = (size + vm_page_size - 1) & ~((ngb_vm_size_t)vm_page_size - 1);
     vm_prot_t vmprot = VM_PROT_NONE;
 
     if (prot & PROT_READ)  vmprot |= VM_PROT_READ;
     if (prot & PROT_WRITE) vmprot |= VM_PROT_WRITE;
     if (prot & PROT_EXEC)  vmprot |= VM_PROT_EXECUTE;
 
-    kern_return_t kr = mach_vm_map(
+    kern_return_t kr = ngb_vm_map(
         mach_task_self(),
         &addr,
         len,

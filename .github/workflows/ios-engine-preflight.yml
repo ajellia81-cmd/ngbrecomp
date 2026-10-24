@@ -9,6 +9,7 @@ on:
       - 'ios/private_input.py'
       - 'ios/PRIVATE_BUILD.md'
       - 'src/fibers.c'
+      - 'src/port.h'
       - 'xboxrecomp/src/platform/**'
 
 permissions:
@@ -41,6 +42,9 @@ jobs:
               -o "build/ios-platform/$source.o"
           done
           xcrun --sdk iphoneos ar rcs build/ios-platform/libngb-platform.a build/ios-platform/*.o
+          xcrun --sdk iphoneos clang -target arm64-apple-ios15.0 \
+            -isysroot "$SDK" -Ixboxrecomp/src -Wall -Wextra -Werror \
+            -c ios/bringup/portability_smoke.c -o build/ios-platform/portability.o
           file build/ios-platform/*.o
 
   private-recompilation:

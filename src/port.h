@@ -66,8 +66,7 @@ static inline int unsetenv(const char *name) { return _putenv_s(name, ""); }
 #endif
 
 #elif defined(__APPLE__)
-#include <mach/mach.h>
-#include <mach/mach_vm.h>
+#include "platform/apple_vm.h"
 #include <mach-o/dyld.h>
 #include <sys/stat.h>
 #include <unistd.h>
@@ -93,33 +92,33 @@ static inline void ngb_macos_dir(char *out, size_t n, const char *name, int make
 
 static inline int ngb_mem_read(const void *addr, void *dst, size_t len)
 {
-    mach_vm_size_t done = 0;
-    return mach_vm_read_overwrite(mach_task_self(), (mach_vm_address_t)addr, len,
-                                  (mach_vm_address_t)dst, &done) == KERN_SUCCESS
+    ngb_vm_size_t done = 0;
+    return ngb_vm_read_overwrite(mach_task_self(), (ngb_vm_address_t)addr, len,
+                                  (ngb_vm_address_t)dst, &done) == KERN_SUCCESS
         && done == len;
 }
 static inline int ngb_mem_write(void *addr, const void *src, size_t len)
 {
-    mach_vm_address_t region = (mach_vm_address_t)addr;
-    mach_vm_size_t span = 0;
+    ngb_vm_address_t region = (ngb_vm_address_t)addr;
+    ngb_vm_size_t span = 0;
     vm_region_basic_info_data_64_t info;
     mach_msg_type_number_t count = VM_REGION_BASIC_INFO_COUNT_64;
     mach_port_t object = MACH_PORT_NULL;
-    if (mach_vm_region(mach_task_self(), &region, &span, VM_REGION_BASIC_INFO_64,
+    if (ngb_vm_region(mach_task_self(), &region, &span, VM_REGION_BASIC_INFO_64,
                        (vm_region_info_t)&info, &count, &object) != KERN_SUCCESS)
         return 0;
     if (object)
         mach_port_deallocate(mach_task_self(), object);
-    if ((mach_vm_address_t)addr < region || (mach_vm_address_t)addr + len > region + span)
+    if ((ngb_vm_address_t)addr < region || (ngb_vm_address_t)addr + len > region + span)
         return 0;
     if (!(info.protection & VM_PROT_WRITE) &&
-        mach_vm_protect(mach_task_self(), (mach_vm_address_t)addr, len, FALSE,
+        ngb_vm_protect(mach_task_self(), (ngb_vm_address_t)addr, len, FALSE,
                         info.protection | VM_PROT_WRITE | VM_PROT_COPY) != KERN_SUCCESS)
         return 0;
-    int ok = mach_vm_write(mach_task_self(), (mach_vm_address_t)addr, (vm_offset_t)src,
+    int ok = ngb_vm_write(mach_task_self(), (ngb_vm_address_t)addr, (vm_offset_t)src,
                            (mach_msg_type_number_t)len) == KERN_SUCCESS;
     if (!(info.protection & VM_PROT_WRITE))
-        mach_vm_protect(mach_task_self(), (mach_vm_address_t)addr, len, FALSE, info.protection);
+        ngb_vm_protect(mach_task_self(), (ngb_vm_address_t)addr, len, FALSE, info.protection);
     return ok;
 }
 #else /* Linux */
