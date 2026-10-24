@@ -57,6 +57,20 @@ class PrivateInputTests(unittest.TestCase):
             self.assertEqual((base / "out/default.xbe").read_bytes(), payload)
             self.assertEqual([p.name for p in (base / "out").iterdir()], ["default.xbe"])
 
+    def test_small_raw_executable_input_uses_the_same_fingerprint_gate(self):
+        payload = b"XBEH-synthetic-test-input"
+        with tempfile.TemporaryDirectory() as directory:
+            base = Path(directory)
+            source = base / "default.xbe"
+            source.write_bytes(payload)
+            with self.assertRaises(ValueError):
+                private_input.prepare(source, base / "rejected")
+            self.assertFalse((base / "rejected").exists())
+            with patch.object(private_input, "XBE_SIZE", len(payload)), \
+                 patch.object(private_input, "XBE_FNV", private_input.fnv1a(payload)):
+                private_input.prepare(source, base / "accepted")
+            self.assertEqual((base / "accepted/default.xbe").read_bytes(), payload)
+
 
 if __name__ == "__main__":
     unittest.main()
