@@ -1,0 +1,53 @@
+name: iOS unsigned bring-up IPA
+on:
+  workflow_dispatch:
+  push:
+    branches: [ios-port]
+    paths:
+      - '.github/workflows/ios-unsigned-bringup-ipa.yml'
+      - 'ios/bringup/**'
+jobs:
+  unsigned-ipa:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Compile UIKit iPhoneOS ARM64 harness
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDK="$(xcrun --sdk iphoneos --show-sdk-path)"
+          APP="build/ios/Payload/NGBBringup.app"
+          mkdir -p "$APP"
+          xcrun --sdk iphoneos clang -target arm64-apple-ios15.0 -isysroot "$SDK" -fobjc-arc -O2 \
+            ios/bringup/main.m -framework UIKit -framework Foundation \
+            -Wl,-dead_strip -o "$APP/NGBBringup"
+          cat > "$APP/Info.plist" <<'PLIST'
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0"><dict>
+            <key>CFBundleIdentifier</key><string>com.ngbrecomp.bringup</string>
+            <key>CFBundleName</key><string>NGB Bring-up</string>
+            <key>CFBundleDisplayName</key><string>NGB Bring-up</string>
+            <key>CFBundleExecutable</key><string>NGBBringup</string>
+            <key>CFBundlePackageType</key><string>APPL</string>
+            <key>CFBundleShortVersionString</key><string>0.0.1</string>
+            <key>CFBundleVersion</key><string>1</string>
+            <key>LSRequiresIPhoneOS</key><true/>
+            <key>MinimumOSVersion</key><string>15.0</string>
+            <key>UIDeviceFamily</key><array><integer>1</integer><integer>2</integer></array>
+            <key>UILaunchScreen</key><dict/>
+            <key>UISupportedInterfaceOrientations</key><array>
+              <string>UIInterfaceOrientationPortrait</string>
+              <string>UIInterfaceOrientationLandscapeLeft</string>
+              <string>UIInterfaceOrientationLandscapeRight</string>
+            </array>
+          </dict></plist>
+          PLIST
+          plutil -lint "$APP/Info.plist"
+          file "$APP/NGBBringup"
+          (cd build/ios && zip -qry ../NGBBringup-unsigned.ipa Payload)
+      - uses: actions/upload-artifact@v4
+        with:
+          name: NGBBringup-unsigned-IPA
+          path: build/NGBBringup-unsigned.ipa
+          if-no-files-found: error
