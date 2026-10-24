@@ -1331,6 +1331,13 @@ static bool present_external_now(bool wait_image)
 
 static void present_locked(PGRAPHState *pg, bool on_pfifo)
 {
+    /* An external producer claims its picture before taking this lock. A tick
+     * which was already queued must not scan out that same picture again. */
+    if (on_pfifo && nv2a_vk_draws_off() && !__atomic_load_n(&s_quality_set,__ATOMIC_ACQUIRE) &&
+        __atomic_load_n(&s_ext_image,__ATOMIC_ACQUIRE)!=VK_NULL_HANDLE &&
+        __atomic_load_n(&nv2a_ext_presented,__ATOMIC_ACQUIRE)==__atomic_load_n(&nv2a_ext_pictures,__ATOMIC_ACQUIRE))
+        return;
+
     PGRAPHVkState *r = pg->vk_renderer_state;
     VkCommandBuffer cmd;
     uint32_t idx;

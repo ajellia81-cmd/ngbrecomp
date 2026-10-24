@@ -1125,6 +1125,8 @@ VOut main(VIn i) {
             n.pos=lerp(p.pos,n.pos,motion.x);
             n.tc0=lerp(p.tc0,n.tc0,motion.x); n.tc1=lerp(p.tc1,n.tc1,motion.x);
             n.tc2=lerp(p.tc2,n.tc2,motion.x); n.tc3=lerp(p.tc3,n.tc3,motion.x);
+            n.d0=lerp(p.d0,n.d0,motion.x); n.d1=lerp(p.d1,n.d1,motion.x);
+            n.b0=lerp(p.b0,n.b0,motion.x); n.b1=lerp(p.b1,n.b1,motion.x);
             n.fogamt=lerp(p.fogamt,n.fogamt,motion.x);
         }
     }
