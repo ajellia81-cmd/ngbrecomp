@@ -67,6 +67,7 @@ def merge(original, translated, missing_seeds=None):
             previous=json.loads(missing_seeds.read_text()) if missing_seeds.exists() else []
             missing.update(int(item['start'],16) for item in previous)
             missing_seeds.write_text(json.dumps([{'start':f'0x{address:08X}',
+                'static_branch':True,
                 'note':'Static Korean patch continuation; not runtime-observed'} for address in sorted(missing)]))
         print('Korean native continuations need actual translation:',len(missing))
         return False

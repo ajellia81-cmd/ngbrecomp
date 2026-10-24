@@ -39,7 +39,8 @@ class Disassembler:
                  force: bool = False,
                  extra_sections: Optional[list] = None,
                  seed_functions: Optional[list] = None,
-                 observed_seeds: Optional[set] = None):
+                 observed_seeds: Optional[set] = None,
+                 static_branch_seeds: Optional[set] = None):
         self.xbe_path = xbe_path
         self.analysis_json = analysis_json
         self.output_dir = output_dir or config.DEFAULT_OUTPUT_DIR
@@ -52,6 +53,9 @@ class Disassembler:
         # Seeds a run actually reached (see _load_seed_functions). They are
         # not guesses, so the mid-instruction guard below does not apply.
         self.observed_seeds = observed_seeds or set()
+        # Explicit direct branch continuations from a verified patch. Keep this
+        # separate from runtime observations: these addresses were not executed.
+        self.static_branch_seeds = static_branch_seeds or set()
 
         # Components (initialized during run)
         self.image: Optional[BinaryImage] = None
@@ -71,6 +75,7 @@ class Disassembler:
         probes_after_padding for the cases behind each.
         """
         return (addr in self.observed_seeds
+                or addr in getattr(self, 'static_branch_seeds', set())
                 or self.engine.probes_as_prologue(addr)
                 or self.engine.probes_after_padding(addr))
 
