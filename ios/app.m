@@ -1,5 +1,6 @@
 /* UIKit services around the real SDL/main.c engine, not a separate harness. */
 #import <UIKit/UIKit.h>
+#import <QuartzCore/QuartzCore.h>
 #import <GameController/GameController.h>
 #import <AVFoundation/AVFoundation.h>
 #import <UniformTypeIdentifiers/UniformTypeIdentifiers.h>
@@ -10,6 +11,31 @@
 #include <math.h>
 #include "../src/install.h"
 #include "platform/vcpu.h"
+static int displayMilliHz=60000;
+static unsigned motionEpoch;
+double ngb_ios_display_hz(void) { return __atomic_load_n(&displayMilliHz,__ATOMIC_RELAXED)/1000.0; }
+unsigned ngb_ios_motion_epoch(void) { return __atomic_load_n(&motionEpoch,__ATOMIC_RELAXED); }
+@interface NGBDisplayCadence : NSObject
+@property(nonatomic,strong) CADisplayLink *link;
+- (void)tick:(CADisplayLink *)link;
+@end
+@implementation NGBDisplayCadence
+- (void)tick:(CADisplayLink *)link {
+    CFTimeInterval duration=link.targetTimestamp-link.timestamp;
+    if (duration>0 && duration<1) __atomic_store_n(&displayMilliHz,(int)lrint(1000.0/duration),__ATOMIC_RELAXED);
+}
+@end
+static NGBDisplayCadence *displayCadence;
+static void request_display_cadence(void) {
+    if (displayCadence) return;
+    displayCadence=[NGBDisplayCadence new];
+    displayCadence.link=[CADisplayLink displayLinkWithTarget:displayCadence selector:@selector(tick:)];
+    float maximum=(float)UIScreen.mainScreen.maximumFramesPerSecond;
+    __atomic_store_n(&displayMilliHz,(int)(maximum*1000),__ATOMIC_RELAXED);
+    displayCadence.link.preferredFrameRateRange=CAFrameRateRangeMake(maximum>=100 ? 80 : maximum,maximum,maximum);
+    [displayCadence.link addToRunLoop:NSRunLoop.mainRunLoop forMode:NSRunLoopCommonModes];
+}
+
 #ifdef NGB_IOS_KOREAN
 #include "../src/launcher.h"
 extern BOOL ngb_prepare_korean(NSString *, NSString *, NSString *, void (^)(NSString *), NSError **);
@@ -423,6 +449,7 @@ static void attach_controls(UIWindow *window)
 int ngb_ios_prepare(void)
 {
     @autoreleasepool {
+        request_display_cadence();
         CGSize pixels = UIScreen.mainScreen.nativeBounds.size;
         screenWidth = (int)MAX(pixels.width, pixels.height);
         screenHeight = (int)MIN(pixels.width, pixels.height);
@@ -465,7 +492,7 @@ int ngb_ios_prepare(void)
                                   usingBlock:^(NSNotification *note) { (void)note; [touchControls refresh]; }];
         [notifications addObserverForName:UIApplicationWillResignActiveNotification object:nil queue:NSOperationQueue.mainQueue
                               usingBlock:^(NSNotification *note) {
-            (void)note; [touchControls releaseInputs]; game_set_active(NO);
+            (void)note; __atomic_add_fetch(&motionEpoch,1,__ATOMIC_RELAXED); [touchControls releaseInputs]; game_set_active(NO);
         }];
         [notifications addObserverForName:UIApplicationDidBecomeActiveNotification object:nil queue:NSOperationQueue.mainQueue
                               usingBlock:^(NSNotification *note) { (void)note; game_set_active(YES); }];

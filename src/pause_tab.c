@@ -77,7 +77,7 @@ void ngb_pc_set_setting(int which, int value);
 /* The settings, numbered as ngb_pc_setting has them. */
 enum { S_RENDER, S_TEXTURE, S_SHADOW, S_DISPLAY, S_VSYNC, S_FPS, S_WINDOW, S_ASPECT,
        S_SKIP, S_LAUNCHER, S_MSAA, S_HEALTH, S_NINPO, S_ESSENCE, S_ALLDIFF, S_SCARABS, S_ALLCOST, S_EXTRACOST,
-       S_GLOW, S_QUICKFREEZE, S_QUICKSCALE, S_INFITEMS, S_INFAMMO, S_POSAUDIO, S_HUD, S_TEXTLANG, S_COUNT };
+       S_GLOW, S_QUICKFREEZE, S_QUICKSCALE, S_INFITEMS, S_INFAMMO, S_POSAUDIO, S_HUD, S_TEXTLANG, S_SMOOTH, S_COUNT };
 
 static const char *const s_label[S_COUNT] = {
     "Render Resolution", "Anisotropic Filtering", "Shadow Resolution",
@@ -85,7 +85,7 @@ static const char *const s_label[S_COUNT] = {
     "Skip Intros", "Settings at Startup", "Anti-Aliasing (MSAA)",
     "Infinite Health", "Infinite Ninpo", "Infinite Essence", "All Difficulties",
     "Golden Scarabs", "All Costumes", "Extra Costume", "Smoother Glow", "Quick Menu Pause",
-    "Quick Menu", "Infinite Items", "Infinite Projectiles", "Positional Audio", "HUD", "Text Language",
+    "Quick Menu", "Infinite Items", "Infinite Projectiles", "Positional Audio", "HUD", "Text Language", "Smooth Motion",
 };
 static const char *const s_help[S_COUNT] = {
     "Draws the game at a multiple of the console's resolution.",
@@ -114,6 +114,7 @@ static const char *const s_help[S_COUNT] = {
     "Sounds placed left and right. Console: the sound chip's filters. Panning: their placement only, clearer.",
     "The health and Ninpo bar, weapons and the rest drawn over play. Off: a clear screen.",
     "Japanese, English or Korean text. Close and relaunch the game to apply. Speech language is separate.",
+    "Experimental intermediate 3D scenes at 120 Hz; game logic stays 60 Hz.\nRequires MSAA Off and Smoother Glow Off. Actual fps depends on GPU load.",
 };
 
 /* The categories: the strip's words, their rows. */
@@ -125,7 +126,7 @@ static const char *const s_cat_name[CATS] = { "Graphics", "Display & Audio", "St
 static const signed char s_cat_rows[CATS][CAT_ROWS] = {
     { S_RENDER, S_TEXTURE, S_MSAA, S_SHADOW, S_GLOW, -1 },   /* -1 ends a page shorter than CAT_ROWS */
 #ifdef NGB_IOS_APP
-    { S_ASPECT, S_FPS, S_HUD, S_POSAUDIO, -1 },
+    { S_ASPECT, S_SMOOTH, S_FPS, S_HUD, S_POSAUDIO, -1 },
 #else
     { S_ASPECT, S_WINDOW, S_DISPLAY, S_VSYNC, S_FPS, S_HUD, S_POSAUDIO },
 #endif

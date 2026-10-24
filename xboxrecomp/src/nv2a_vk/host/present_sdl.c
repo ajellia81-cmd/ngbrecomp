@@ -83,19 +83,26 @@ volatile int64_t nv2a_ext_set_us;   /* when the newest one came */
 /* How many pictures the other renderer has handed over, and the count when
  * the one presented last came (nv2a_host.c's vblank thread paces them). */
 volatile unsigned nv2a_ext_pictures, nv2a_ext_presented;
-static bool present_external_now(void);
+static bool present_external_now(bool wait_image);
 static volatile int s_quality_set;
 
-void nv2a_present_set_external(VkImage image, uint32_t width, uint32_t height)
+static bool set_external(VkImage image, uint32_t width, uint32_t height, bool wait_image)
 {
     __atomic_store_n(&s_ext_set_us, g_get_monotonic_time(), __ATOMIC_RELAXED);
     __atomic_store_n(&s_ext_w, width, __ATOMIC_RELAXED);
     __atomic_store_n(&s_ext_h, height, __ATOMIC_RELAXED);
     __atomic_store_n(&s_ext_image, image, __ATOMIC_RELEASE);
-    if (image) {
-        __atomic_add_fetch(&nv2a_ext_pictures, 1, __ATOMIC_RELEASE);
-        present_external_now();
-    }
+    if (!image) return false;
+    __atomic_add_fetch(&nv2a_ext_pictures, 1, __ATOMIC_RELEASE);
+    return present_external_now(wait_image);
+}
+void nv2a_present_set_external(VkImage image, uint32_t width, uint32_t height)
+{
+    (void)set_external(image,width,height,false);
+}
+bool nv2a_present_set_external_wait(VkImage image, uint32_t width, uint32_t height)
+{
+    return set_external(image,width,height,true);
 }
 
 /* The picture to show or read: the external one when set (top down, BGRA,
@@ -1285,6 +1292,7 @@ static void present_locked(PGRAPHState *pg, bool on_pfifo);
  * own picture) and from the other renderer's thread (its picture, the moment
  * it hands it over: nv2a_present_set_external) -- one at a time. */
 static pthread_mutex_t s_present_mu = PTHREAD_MUTEX_INITIALIZER;
+static bool s_external_wait; /* protected by s_present_mu */
 static PGRAPHState *volatile s_pg;
 
 void nv2a_host_vk_present(PGRAPHState *pg)
@@ -1300,7 +1308,7 @@ void nv2a_host_vk_present(PGRAPHState *pg)
  * no wait for the PFIFO thread, which is busy with the next frame's
  * commands by then (presented through it, they came out unevenly, and at
  * the tick a whole refresh late). False to leave it to the tick. */
-static bool present_external_now(void)
+static bool present_external_now(bool wait_image)
 {
     static int on = -1;
     PGRAPHState *pg = s_pg;
@@ -1312,9 +1320,13 @@ static bool present_external_now(void)
     __atomic_store_n(&nv2a_ext_presented, __atomic_load_n(&nv2a_ext_pictures, __ATOMIC_ACQUIRE),
                      __ATOMIC_RELEASE);
     pthread_mutex_lock(&s_present_mu);
+    unsigned long before=nv2a_host_presents;
+    s_external_wait=wait_image;
     present_locked(pg, false);
+    s_external_wait=false;
+    bool submitted=nv2a_host_presents!=before;
     pthread_mutex_unlock(&s_present_mu);
-    return true;
+    return submitted;
 }
 
 static void present_locked(PGRAPHState *pg, bool on_pfifo)
@@ -1393,7 +1405,7 @@ static void present_locked(PGRAPHState *pg, bool on_pfifo)
     vkWaitForFences(r->device, 1, &s_fence[f], VK_TRUE, UINT64_MAX);
 
     nv2a_vk_queue_lock();
-    res = vkAcquireNextImageKHR(r->device, s_swapchain, 0, s_acquired[f],
+    res = vkAcquireNextImageKHR(r->device, s_swapchain, s_external_wait ? 50000000 : 0, s_acquired[f],
                                 VK_NULL_HANDLE, &idx);
     nv2a_vk_queue_unlock();
     if (res == VK_ERROR_OUT_OF_DATE_KHR) {

@@ -62,7 +62,7 @@ void ngb_settings_size_at(int aspect, int i, int *w, int *h);
 enum { ROW_SCREEN, ROW_MOVIE, ROW_PC, ROW_DEFAULT, ROW_EXIT,
        ROW_RENDER, ROW_TEXTURE, ROW_SHADOW, ROW_DISPLAY, ROW_VSYNC, ROW_FPS, ROW_WINDOW, ROW_ASPECT, ROW_BACK,
        ROW_SKIP, ROW_LAUNCHER, ROW_MSAA, ROW_HEALTH, ROW_NINPO, ROW_ESSENCE, ROW_ALLDIFF, ROW_SCARABS, ROW_ALLCOST, ROW_EXTRACOST,
-       ROW_GLOW, ROW_QUICKFREEZE, ROW_QUICKSCALE, ROW_INFITEMS, ROW_INFAMMO, ROW_POSAUDIO, ROW_HUD, ROW_TEXTLANG,
+       ROW_GLOW, ROW_QUICKFREEZE, ROW_QUICKSCALE, ROW_INFITEMS, ROW_INFAMMO, ROW_POSAUDIO, ROW_HUD, ROW_TEXTLANG, ROW_SMOOTH,
 };
 
 static int is_ours(int page) { return page >= PAGE_GFX && page < PAGE_GFX + N_OURS; }
@@ -77,6 +77,9 @@ static const uint8_t s_rows_gfx[] = { ROW_RENDER, ROW_TEXTURE, ROW_MSAA, ROW_SHA
 static const uint8_t s_rows_disp[] = { ROW_ASPECT,
 #ifndef NGB_IOS_APP
                                        ROW_WINDOW, ROW_DISPLAY, ROW_VSYNC,
+#endif
+#ifdef NGB_IOS_APP
+                                       ROW_SMOOTH,
 #endif
                                        ROW_FPS, ROW_HUD, ROW_POSAUDIO,
                                        ROW_BACK };
@@ -182,6 +185,8 @@ static const struct { const uint8_t *kinds; int n; } s_ours[N_OURS] = {
 #define T_WSIZE0   0x20140            /* + aspect * 8 + index: "1280 x 720" */
 
 static const struct { uint32_t id; const char *text; } s_text[] = {
+    { 0x20220, "Smooth Motion" },
+    { 0x20221, "Experimental intermediate 3D scenes at 120 Hz. Game logic stays 60 Hz. Requires MSAA Off and Smoother Glow Off. Sustained 120 fps depends on GPU load." },
 #ifdef NGB_IOS_KOREAN
     { 0x20200, "Text Language" },
     { 0x20201, "Japanese, English or Korean text. Apply by closing and relaunching the game. Speech language is separate." },
@@ -336,7 +341,7 @@ static uint32_t make_labels(const uint8_t *kinds, int n)
                                    T_RENDER, T_TEXTURE, T_SHADOW, T_DISPLAY, T_VSYNC,
                                    T_FPS, T_WINDOWSZ, T_ASPECT, 0x20005, T_SKIP, T_LAUNCHER, T_MSAA,
                                    T_HEALTH, T_NINPO, T_ESSENCE, T_ALLDIFF, T_SCARABS, T_ALLCOST, T_EXTRACOST,
-                                   T_GLOW, T_QUICKFREEZE, T_QUICKSCALE, T_INFITEMS, T_INFAMMO, T_POSAUDIO, T_HUD, 0x20200 };
+                                   T_GLOW, T_QUICKFREEZE, T_QUICKSCALE, T_INFITEMS, T_INFAMMO, T_POSAUDIO, T_HUD, 0x20200, 0x20220 };
     uint32_t va = xbox_HeapAlloc(4 * n, 4);
     for (int i = 0; i < n; i++)
         MEM32(va + 4 * i) = id[kinds[i]];
@@ -704,6 +709,7 @@ static int row_kind(int row)
 static uint32_t pc_value_id(int row, uint32_t movie_id)
 {
     switch (row_kind(row)) {
+    case ROW_SMOOTH: return ngb_pc_setting(26) ? T_ON : T_OFF;
     case ROW_TEXTLANG: return 0x20210u+(uint32_t)ngb_pc_setting(25);
     case ROW_QUICKFREEZE: return ngb_pc_setting(19) ? T_ON : T_OFF;
     case ROW_POSAUDIO: return ngb_pc_setting(23) == 2 ? T_POSPAN : ngb_pc_setting(23) ? T_POSCONSOLE : T_OFF;
@@ -755,11 +761,12 @@ static int pc_value_change(int row, int delta)
 {
     int kind = row_kind(row);
     int step = delta > 0 ? 1 : -1;
-    if ((kind < ROW_RENDER || kind > ROW_ASPECT) && (kind < ROW_SKIP || kind > ROW_TEXTLANG))
+    if ((kind < ROW_RENDER || kind > ROW_ASPECT) && (kind < ROW_SKIP || kind > ROW_SMOOTH))
         return 0;
     if (!delta)
         return 1;
     switch (kind) {
+    case ROW_SMOOTH: ngb_pc_set_setting(26,!ngb_pc_setting(26)); break;
     case ROW_TEXTLANG: ngb_pc_set_setting(25,(ngb_pc_setting(25)+(step>0 ? 1 : 2))%3); break;
     case ROW_QUICKFREEZE: ngb_pc_set_setting(19, !ngb_pc_setting(19)); break;
     case ROW_POSAUDIO: ngb_pc_set_setting(23, (ngb_pc_setting(23) + (step > 0 ? 1 : 2)) % 3); break;
@@ -1885,7 +1892,7 @@ void sub_00220870(void)
                                            D_EXTRACOST & 0xFFFF, D_GLOW & 0xFFFF,
                                            D_QUICKFREEZE & 0xFFFF, D_QUICKSCALE & 0xFFFF,
                                            D_INFITEMS & 0xFFFF, D_INFAMMO & 0xFFFF, D_POSAUDIO & 0xFFFF,
-                                           D_HUD & 0xFFFF, 0x0201 };
+                                           D_HUD & 0xFFFF, 0x0201, 0x0221 };
     RECOMP_ENTRY(0x00220870u);
     uint32_t out = ecx;
     uint32_t level = MEM16(0x8DE430), tab = MEM16(0x8DE4CC), row = MEM16(0x8DE468);

@@ -116,6 +116,7 @@ int ngb_pc_setting(int which)
     switch (which) {
     case 0:  return s_running.scale;
     case 25: return s_running.text_language;
+    case 26: return s_running.smooth_motion;
     case 1:  return s_running.anisotropy;
     case 2:  return s_running.shadow_scale;
     case 3:  return s_running.fullscreen;
@@ -145,6 +146,7 @@ void ngb_pc_set_setting(int which, int value)
     }
     ngb_pc_setting(0);
     switch (which) {
+    case 26: s_running.smooth_motion=!!value; break;
 #ifdef NGB_IOS_KOREAN
     case 25: {
         s_running.text_language=value<0 ? 0 : value>2 ? 2 : value;

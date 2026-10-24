@@ -26,6 +26,7 @@ typedef struct NgbSettings {
     int scale;           /* render scale 1..10 */
     int vsync;
     int show_fps;        /* frame rate and frame time overlay */
+    int smooth_motion;   /* render-only intermediate 3D scenes; iOS */
     int text_language;   /* 0 Japanese, 1 English, 2 Korean; next launch */
     int anisotropy;      /* 0 the console's texture filtering; 2, 4, 8, 16 trilinear + anisotropic */
     int msaa;            /* MSAA samples: 1 (off), 2, 4, 8 */

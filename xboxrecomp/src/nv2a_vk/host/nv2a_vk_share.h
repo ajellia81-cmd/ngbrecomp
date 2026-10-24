@@ -53,6 +53,9 @@ void nv2a_quality_get(int *render_scale, int *anisotropy, int *shadow_scale, int
  * a 2D BGRA colour image in TRANSFER_SRC_OPTIMAL, rows top down, left valid
  * until the next call. VK_NULL_HANDLE goes back to the renderer's picture. */
 void nv2a_present_set_external(VkImage image, uint32_t width, uint32_t height);
+/* Ordered intermediate scenes: wait up to 50 ms for a swapchain image instead
+ * of immediately dropping it. Returns whether a presentation was submitted. */
+bool nv2a_present_set_external_wait(VkImage image, uint32_t width, uint32_t height);
 
 #ifdef __cplusplus
 }

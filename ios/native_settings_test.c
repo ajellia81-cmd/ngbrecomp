@@ -26,10 +26,15 @@ int main(void)
     ngb_settings_change(&settings, 3, 1);
     CHECK(settings.scale == NGB_RENDER_SCALE_IPHONE_NATIVE);
     CHECK(ngb_settings_runtime_scale(&settings) == 3);
+    CHECK(settings.smooth_motion==1);
+    settings.smooth_motion=0;
     settings.text_language=2;
     ngb_settings_save(&settings);
     ngb_settings_load(&settings);
     CHECK(settings.scale == NGB_RENDER_SCALE_IPHONE_NATIVE && settings.aspect == ASPECT_IPHONE);
+    CHECK(settings.smooth_motion==0);
+    settings.smooth_motion=1; ngb_settings_save(&settings); ngb_settings_load(&settings);
+    CHECK(settings.smooth_motion==1);
 #ifdef NGB_IOS_KOREAN
     CHECK(settings.text_language==2);
     settings.text_language=0; ngb_settings_save(&settings); ngb_settings_load(&settings);

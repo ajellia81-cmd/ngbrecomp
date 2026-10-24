@@ -154,6 +154,9 @@ void ngb_settings_load(NgbSettings *s)
     s->vsync = 0;
     s->show_fps = 0;
     s->text_language = 1;
+#ifdef NGB_IOS_APP
+    s->smooth_motion = 1;
+#endif
     s->anisotropy = 16;
     s->msaa = 1;
     s->shadow_scale = 4;
@@ -214,6 +217,8 @@ void ngb_settings_load(NgbSettings *s)
             s->smooth_glow = atoi(val) != 0;
         } else if (!strcmp(key, "movie_ratio")) {
             s->movie_43 = !strcmp(val, "4:3");
+        } else if (!strcmp(key, "smooth_motion")) {
+            s->smooth_motion=atoi(val)!=0;
         } else if (!strcmp(key, "text_language")) {
             int language=atoi(val);
             s->text_language=language<0 ? 0 : language>2 ? 2 : language;
@@ -254,6 +259,7 @@ void ngb_settings_save(const NgbSettings *s)
 #endif
     fprintf(f, "vsync = %d\n", s->vsync);
     fprintf(f, "show_fps = %d\n", s->show_fps);
+    fprintf(f, "smooth_motion = %d\n", s->smooth_motion);
     fprintf(f, "anisotropic_filtering = %d\n", s->anisotropy);
     fprintf(f, "msaa = %d\n", s->msaa);
     fprintf(f, "unlock_all_difficulties = %d\n", s->all_difficulties);

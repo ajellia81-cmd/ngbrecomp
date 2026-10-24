@@ -15,6 +15,7 @@ on:
       - 'ios/audio_pause_test.c'
       - 'ios/build_icons.swift'
       - 'ios/native_settings_test.c'
+      - 'ios/motion_test.cpp'
       - 'ios/prepare_korean.py'
       - 'ios/merge_korean_codegen.py'
       - 'ios/korean.m'
@@ -36,7 +37,8 @@ on:
       - 'src/pc_menu.c'
       - 'src/pause_tab.c'
       - 'src/ingame_menu.c'
-      - 'src/d3d/vk/backend.cpp'
+      - 'src/d3d/vk/**'
+      - 'src/d3d/gpu/**'
       - 'packaging/appimage/ngb.png'
       - 'src/fibers.c'
       - 'src/port.h'
@@ -155,6 +157,21 @@ jobs:
           xcrun --sdk macosx clang -arch arm64 -fobjc-arc -std=gnu11 \
             -framework Foundation ios/korean_archive_test.m -o build/ios-platform/korean-archive
           build/ios-platform/korean-archive
+
+
+      - name: Compile actual Smooth Motion shaders and retained-pose tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! command -v glslangValidator >/dev/null; then brew install glslang; fi
+          mkdir -p build/ios-platform/motion
+          xcrun --sdk macosx clang++ -arch arm64 -std=c++20 -O2 -DNGB_SMOOTH_MOTION=1 \
+            -Isrc/d3d ios/motion_test.cpp src/d3d/gpu/shaders.cpp -o build/ios-platform/motion-test
+          build/ios-platform/motion-test build/ios-platform/motion
+          for shader in build/ios-platform/motion/*.vert.hlsl; do
+            glslangValidator -D -V --target-env vulkan1.1 --auto-map-locations \
+              -S vert -e main "$shader" -o "$shader.spv"
+          done
 
   private-recompilation:
     # Standard GitHub-hosted runner: never the owner's PC or a paid larger runner.

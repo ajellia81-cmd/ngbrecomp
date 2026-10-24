@@ -1,4 +1,6 @@
 #include "gpu/shaders.h"
+#include "gpu/motion.h"
+#include <regex>
 #include "gpu/vertex.h"
 
 #include <algorithm>
@@ -64,7 +66,6 @@ const char* kCommonTail = R"(    float4 spread[4];
     float4 uvc[4];
     float4 uvg[4];
     float4 qsnap;
-};
 )";
 
 const ShaderHooks& Hooks() {
@@ -72,7 +73,17 @@ const ShaderHooks& Hooks() {
     return g_shader_hooks ? *g_shader_hooks : plain;
 }
 
-std::string Common() { return kCommonHead + Hooks().Constants() + kCommonTail; }
+std::string Common() {
+    std::string s=kCommonHead + Hooks().Constants() + kCommonTail;
+#ifdef NGB_SMOOTH_MOTION
+    s += R"(float4 motion_vc[192];
+    float4x4 motion_wvp, motion_wv, motion_wvn;
+    float4x4 motion_wvb[4], motion_wvbn[4], motion_pv;
+    float4 motion;
+)";
+#endif
+    return s+"};\n";
+}
 
 // vertex programs
 
@@ -1088,3 +1099,39 @@ std::string QuadHlsl(std::string s) {
     return s;
 }
 }  // namespace gpu
+
+#ifdef NGB_SMOOTH_MOTION
+namespace gpu {
+std::string MotionVertexHlsl(std::string s) {
+    const std::string entry="VOut main(VIn i)";
+    size_t start=s.find(entry);
+    if (start==std::string::npos) return {}; // never silently advertise an unwrapped shader
+    std::string body=s.substr(start);
+    body.replace(0,entry.size(),"VOut motion_previous(VIn i)");
+    for (const char* name : {"c","wvp","wv","wvn","wvb","wvbn","pv"}) {
+        std::string replacement=std::string("motion_")+(std::string(name)=="c" ? "vc" : name);
+        body=std::regex_replace(body,std::regex(std::string(R"(\b)")+name+R"(\b)"),replacement);
+    }
+    s.replace(start,entry.size(),"VOut motion_current(VIn i)");
+    s += body;
+    s += R"(
+VOut main(VIn i) {
+    VOut n=motion_current(i);
+    if (motion.x>0 && motion.x<1) {
+        VOut p=motion_previous(i);
+        // A projection discontinuity/cut must not sweep geometry across the screen.
+        if (p.pos.w*n.pos.w>0.000001 && all(isfinite(p.pos)) && all(isfinite(n.pos)) &&
+            all(abs(p.pos.xy/p.pos.w-n.pos.xy/n.pos.w)<float2(0.35,0.35))) {
+            n.pos=lerp(p.pos,n.pos,motion.x);
+            n.tc0=lerp(p.tc0,n.tc0,motion.x); n.tc1=lerp(p.tc1,n.tc1,motion.x);
+            n.tc2=lerp(p.tc2,n.tc2,motion.x); n.tc3=lerp(p.tc3,n.tc3,motion.x);
+            n.fogamt=lerp(p.fogamt,n.fogamt,motion.x);
+        }
+    }
+    return n;
+}
+)";
+    return s;
+}
+}
+#endif

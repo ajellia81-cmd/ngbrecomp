@@ -68,7 +68,7 @@ if(NGB_NV2A_VK)
     target_compile_features(ngb_d3d PRIVATE cxx_std_20)
     target_compile_options(ngb_d3d PRIVATE -O2 -fno-strict-aliasing)
     if(CMAKE_SYSTEM_NAME STREQUAL "iOS")
-        target_compile_definitions(ngb_d3d PRIVATE NGB_IOS_APP=1)
+        target_compile_definitions(ngb_d3d PRIVATE NGB_IOS_APP=1 NGB_SMOOTH_MOTION=1)
     endif()
 endif()
 

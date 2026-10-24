@@ -38,6 +38,7 @@
 #include "gpu/shaders.h"
 #include "gpu/texture.h"
 #include "gpu/vertex.h"
+#include "gpu/motion.h"
 #include "kernel/kernel.h"
 #include "vk/spirv.h"
 #include "nv2a_vk_share.h"   // the NV2A renderer's device and presenter (NGB_RENDERER=d3d)
@@ -52,6 +53,10 @@ int ngb_pc_setting(int which);
 
 extern "C" volatile int ngb_nv2a_logdraws;   // xemu pgraph/vk/draw.c
 
+#if defined(NGB_SMOOTH_MOTION) && defined(NGB_IOS_APP)
+extern "C" double ngb_ios_display_hz(void);
+extern "C" unsigned ngb_ios_motion_epoch(void);
+#endif
 namespace gpu {
 namespace {
 
@@ -343,6 +348,39 @@ public:
     void VisibilityEnd(uint32_t report_va) override;
 
 private:
+#ifdef NGB_SMOOTH_MOTION
+    struct MotionDraw {
+        Target *rt=nullptr,*ds=nullptr;
+        VkPipeline pipeline=VK_NULL_HANDLE;
+        std::array<std::array<float,4>,192> vc{};
+        DrawConstants dc{};
+        std::array<std::vector<uint8_t>,16> vertices;
+        std::array<uint32_t,16> strides{};
+        std::vector<uint8_t> indices;
+        std::array<VkDescriptorImageInfo,4> images{},samplers{};
+        std::array<Image*,4> target_images{};
+        VkViewport viewport{}; VkRect2D scissor{};
+        float blend[4]{},line=1;
+        uint32_t stencil=0,buffers=0,index_count=0,draw_count=0;
+        int32_t base_vertex=0;
+        bool index16=false,lines=false;
+    };
+    struct MotionTarget { Image *source=nullptr; Image initial,final; uint32_t seen=0; };
+    bool motion_capture_=false,motion_valid_=false,motion_endpoint_=false;
+    uint64_t motion_cpu_bytes_=0,motion_gpu_bytes_=0;
+    unsigned motion_epoch_=0;
+    uint32_t motion_3d_=0,motion_changed_=0,motion_pictures_=0;
+    int64_t motion_last_ns_=0,motion_log_ns_=0;
+    std::vector<std::function<void()>> motion_commands_;
+    std::unordered_map<VkImage,MotionTarget> motion_targets_;
+    MotionHistory motion_history_;
+    Image motion_display_;
+    void MotionTouch(Target *target);
+    void MotionCopyImage(Image& from,Image& to);
+    void MotionReplay(const MotionDraw& draw);
+    void MotionPresent(const Surface& front,Image& endpoint,float bars,float bars_y);
+    void MotionFinish();
+#endif
     // device: the NV2A renderer's, shared, when NGB_RENDERER=d3d (its presenter then shows our
     // frames in the game window); else one of our own, drawing unseen (mirror mode)
     bool CreateInstance();
@@ -897,6 +935,10 @@ VulkanBackend::~VulkanBackend() {
         d_.vkDeviceWaitIdle(dev_);
     }
     if (dev_) {
+#ifdef NGB_SMOOTH_MOTION
+        for (auto& [key,target]:motion_targets_) { DestroyImage(target.initial); DestroyImage(target.final); }
+        DestroyImage(motion_display_);
+#endif
         for (auto& image:continuous_glow_) DestroyImage(image);
         for (auto& image:glow_soft_) DestroyImage(image);
         DestroyImage(quick_background_);
@@ -1182,8 +1224,16 @@ Target* VulkanBackend::EnsureTarget(const Surface& s, bool depth) {
     if (it != targets_.end()) {
         if (it->second.gw == w && it->second.gh == h && it->second.img.w == iw && it->second.img.h == ih &&
             it->second.samples == samples)
-            return &it->second;
+            {
+#ifdef NGB_SMOOTH_MOTION
+                MotionTouch(&it->second);
+#endif
+                return &it->second;
+            }
         if (bound_rt_ == &it->second || bound_ds_ == &it->second) EndRendering();
+#ifdef NGB_SMOOTH_MOTION
+        motion_valid_=false; // target pointer/image identities change at resize
+#endif
         Target old = it->second;   // its picture goes on into the new images (a scale or MSAA change)
         targets_.erase(it);
         Target* t = MakeTarget(s, depth, key, w, h, iw, ih, samples);
@@ -1226,7 +1276,11 @@ Target* VulkanBackend::MakeTarget(const Surface&, bool depth, uint64_t key, uint
         DestroyImage(t.img);
         return nullptr;
     }
-    return &(targets_[key] = t);
+    Target *result=&(targets_[key] = t);
+#ifdef NGB_SMOOTH_MOTION
+    MotionTouch(result);
+#endif
+    return result;
 }
 
 void VulkanBackend::FillMs(Target& t) {
@@ -1695,6 +1749,15 @@ void VulkanBackend::Clear(const State& s, uint32_t count, const uint8_t* rects, 
     if (trace_)
         std::fprintf(trace_, "%u clear rt %08X flags %X color %08X rects %u n %u\n", presents_, s.rt.data, flags, color, count, n);
     if (n) d_.vkCmdClearAttachments(cmd_, n, at, uint32_t(rs.size()), rs.data());
+#ifdef NGB_SMOOTH_MOTION
+    if (n && motion_capture_ && motion_valid_) {
+        std::vector<VkClearAttachment> attachments(at,at+n);
+        motion_commands_.push_back([this,brt,bds,rs,attachments] {
+            BeginRendering(brt,bds);
+            d_.vkCmdClearAttachments(cmd_,uint32_t(attachments.size()),attachments.data(),uint32_t(rs.size()),rs.data());
+        });
+    }
+#endif
 }
 
 // a texture stage: a target the title draws into and reads back, or a texture from guest memory
@@ -1721,6 +1784,9 @@ VkImageView VulkanBackend::BindTexture(const State& s, int stage, TexInfo& info,
                          d.data, d.format, d.width, d.height, d.levels, tit->second.gw, tit->second.gh);
     } else if (tit != targets_.end() && !d.cube && d.depth == 1) {
         Target& t = tit->second;
+#ifdef NGB_SMOOTH_MOTION
+        MotionTouch(&t);
+#endif
         if ((d.width != t.gw || d.height != t.gh) && told_size_.size() < 32 && told_size_.insert(d.data).second)
             std::fprintf(stderr, "[D3D] texture @%08X fmt %X %ux%u reads a target of %ux%u\n", d.data, d.format, d.width,
                          d.height, t.gw, t.gh);
@@ -1743,6 +1809,15 @@ VkImageView VulkanBackend::BindTexture(const State& s, int stage, TexInfo& info,
             c.extent = {t.img.w, t.img.h, 1};
             d_.vkCmdCopyImage(cmd_, t.img.image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, t.fb.image,
                               VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &c);
+#ifdef NGB_SMOOTH_MOTION
+            if (motion_capture_ && motion_valid_) {
+                Target *target=&t;
+                motion_commands_.push_back([this,target] {
+                    EndRendering(); MotionCopyImage(target->img,target->fb);
+                    Barrier(target->fb,VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+                });
+            }
+#endif
             Barrier(t.fb, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
             from_target = true;
             return t.fb.view;
@@ -2435,6 +2510,10 @@ void VulkanBackend::Draw(const State& s, uint32_t prim, uint32_t start, uint32_t
             CacheRecord('F', vkey, b, sizeof(b));
         }
     }
+#ifdef NGB_SMOOTH_MOTION
+    const bool motion_shader=motion_capture_ && !a.pretransformed && !quad && !points;
+    if (motion_shader) vkey ^= 0x534D4F4F54483031ull;
+#endif
     async_now_ = async_;
     VkShaderModule vmod = Module(vkey, [&] {
         std::string src = prog ? VertexProgramHlsl(s.vs->program, a.regs, a.decode)
@@ -2450,6 +2529,9 @@ void VulkanBackend::Draw(const State& s, uint32_t prim, uint32_t start, uint32_t
             std::snprintf(path, sizeof(path), "%s/vs_%016llx.hlsl", dump, (unsigned long long)vkey);
             if (FILE* f = std::fopen(path, "w")) { std::fputs(src.c_str(), f); std::fclose(f); }
         }
+#ifdef NGB_SMOOTH_MOTION
+        if (motion_shader) src=MotionVertexHlsl(std::move(src));
+#endif
         return src;
     }, true);
 
@@ -2980,6 +3062,9 @@ void VulkanBackend::Draw(const State& s, uint32_t prim, uint32_t start, uint32_t
             if ((fk.types >> (i * 2)) & 3) LightToView(s.lights[size_t(i)], s.transforms[2].data(), c.lt[i]);
     }
     VkDeviceSize vc;
+#ifdef NGB_SMOOTH_MOTION
+    auto motion_vc=s.vsc;
+#endif
     if (points && !prog) {   // the point sizes for PointHlsl, in registers fixed function leaves unused
         auto v = s.vsc;
         float vh = s.viewport.h > 0 ? float(s.viewport.h) : float(gh);
@@ -2988,6 +3073,9 @@ void VulkanBackend::Draw(const State& s, uint32_t prim, uint32_t start, uint32_t
         v[190] = {Bits(s.rs[kRsPointSize]), Bits(s.rs[kRsPointSizeMin]), std::min(mx, point_max_ / c.surf[3]),
                   s.rs[kRsPointScaleEnable] ? 1.0f : 0.0f};
         v[191] = {Bits(s.rs[kRsPointScaleA]), Bits(s.rs[kRsPointScaleB]), Bits(s.rs[kRsPointScaleC]), vh};
+#ifdef NGB_SMOOTH_MOTION
+        motion_vc=v;
+#endif
         vc = Upload(v.data(), sizeof(v), ringAlign_);
     } else {
         vc = Upload(s.vsc.data(), sizeof(s.vsc), ringAlign_);
@@ -3107,6 +3195,56 @@ void VulkanBackend::Draw(const State& s, uint32_t prim, uint32_t start, uint32_t
         d_.vkCmdDraw(cmd_, a.draw_count, 1, 0, 0);
     }
     if (visq != ~0u) d_.vkCmdEndQuery(cmd_, vis_pool_[slot_], visq);
+#ifdef NGB_SMOOTH_MOTION
+    if (motion_capture_ && motion_valid_) {
+        uint64_t estimate=sizeof(MotionDraw)+ibytes;
+        for (uint32_t b=0;b<a.buffer_count;b++) estimate+=a.buffers[b].bytes;
+        if (estimate+motion_cpu_bytes_>96u*1024u*1024u) motion_valid_=false;
+    }
+    if (motion_capture_ && motion_valid_) {
+        auto packet=std::make_shared<MotionDraw>();
+        packet->rt=rt; packet->ds=ds; packet->pipeline=pipe;
+        packet->vc=motion_vc; packet->dc=c; packet->viewport=vpt; packet->scissor=sc;
+        packet->buffers=a.buffer_count; packet->index_count=a.index_count;
+        packet->index16=a.index16; packet->base_vertex=a.base_vertex; packet->draw_count=a.draw_count;
+        packet->lines=Lines(k); packet->line=wide_lines_ ? std::clamp(Bits(s.rs[kRsLineWidth])*sx,1.0f,line_max_) : 1.0f;
+        packet->stencil=SimpleState(s,kMStencilRef)&0xFF; std::memcpy(packet->blend,bf,sizeof bf);
+        uint64_t identity=Hash(&k,sizeof k);
+        identity=Hash(&s.viewport,sizeof s.viewport,identity);
+        identity=Hash(a.elements.data(),sizeof a.elements,identity);
+        size_t bytes=sizeof(MotionDraw);
+        for (uint32_t b=0;b<a.buffer_count;b++) {
+            const auto& buffer=a.buffers[b];
+            packet->vertices[b].assign(buffer.src,buffer.src+buffer.bytes);
+            packet->strides[b]=buffer.stride; bytes+=buffer.bytes;
+            identity=Hash(buffer.src,buffer.bytes,identity);
+            identity=Hash(&buffer.stride,sizeof buffer.stride,identity);
+        }
+        if (ibytes) {
+            auto *data=static_cast<const uint8_t*>(a.index_src);
+            packet->indices.assign(data,data+ibytes); bytes+=ibytes;
+            identity=Hash(data,ibytes,identity);
+        }
+        for (int stage=0;stage<4;stage++) {
+            packet->images[stage]=img[stage]; packet->samplers[stage]=smp[stage];
+            // GPU texture versions already have immutable images and remain in
+            // the renderer graveyard until EndFrame. Render targets are replayed.
+            if (from_target[stage]) for (auto& [key,target]:targets_) {
+                if (target.img.view==img[stage].imageView) packet->target_images[stage]=&target.img;
+                if (target.fb.view==img[stage].imageView) packet->target_images[stage]=&target.fb;
+            }
+            if (from_target[stage] && !packet->target_images[stage]) motion_valid_=false;
+            identity=Hash(&s.textures[stage],sizeof(uint32_t),identity);
+        }
+        if (motion_shader) {
+            motion_3d_++;
+            if (motion_history_.Add(identity,MotionPose::Capture(s,c),packet->dc)) motion_changed_++;
+        }
+        motion_cpu_bytes_+=bytes;
+        if (motion_cpu_bytes_>96u*1024u*1024u || motion_commands_.size()>16384) motion_valid_=false;
+        else motion_commands_.push_back([this,packet] { MotionReplay(*packet); });
+    }
+#endif
     if (rt && ContinuousGlowEnabled()) ApplyContinuousGlow(s,a,count,*rt,c);
     // NGB_D3D_STEP=frame,every: the target after every so many draws of that frame
     static int step_every = -1;
@@ -3280,6 +3418,14 @@ void VulkanBackend::Copy(const Surface& src, const Surface& dst, uint32_t count,
     d_.vkCmdBlitImage(cmd_, a->img.image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, b->img.image,
                       VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, uint32_t(rs.size()), rs.data(), VK_FILTER_LINEAR);
     b->drawn = true;
+#ifdef NGB_SMOOTH_MOTION
+    if (motion_capture_ && motion_valid_) motion_commands_.push_back([this,a,b,rs] {
+        EndRendering(); Barrier(a->img,VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
+        Barrier(b->img,VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+        d_.vkCmdBlitImage(cmd_,a->img.image,VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,b->img.image,
+            VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,uint32_t(rs.size()),rs.data(),VK_FILTER_LINEAR);
+    });
+#endif
 }
 
 void VulkanBackend::Dump(Target& t, const char* name) {
@@ -3571,6 +3717,9 @@ void VulkanBackend::TraceFrame(Target& t) {
 }
 
 void VulkanBackend::Present(const Surface& front) {
+#ifdef NGB_SMOOTH_MOTION
+    motion_endpoint_=false;
+#endif
     presents_++;
 #ifdef NGB_IOS_APP
     // Count actual guest Swap calls, not the presenter's repeated scanouts or
@@ -3649,6 +3798,7 @@ void VulkanBackend::Present(const Surface& front) {
         if (t) Dump(*t);
     }
     Image* show = nullptr;
+    float motion_bars=0,motion_bars_y=0;
     if (shared_) {
         // the frame for the presenter: a copy, so the next frame's draws into this buffer
         // (the title has two or three in turn) never race the blit to the window
@@ -3682,6 +3832,7 @@ void VulkanBackend::Present(const Surface& front) {
                 // their own art over the whole screen (the pause menu's) draw no paused game, and keep the bars
                 if (paused_now_) bars = bars_y = 0;
             }
+            motion_bars=bars; motion_bars_y=bars_y;
             if (t->gw >= 640) HudGroup(float(t->gw), float(t->gh));
             static int edge_fill = -1;   // NGB_BAR_FILL=0: black bars
             if (edge_fill < 0) edge_fill = !(std::getenv("NGB_BAR_FILL") && *std::getenv("NGB_BAR_FILL") == '0');
@@ -3711,6 +3862,10 @@ void VulkanBackend::Present(const Surface& front) {
         }
     }
     if (show) QuickMenu(*show);
+#ifdef NGB_SMOOTH_MOTION
+    if (show) MotionPresent(front,*show,motion_bars,motion_bars_y);
+    MotionFinish();
+#endif
     hud_menu_ = hud_cover_ >= 0.5f && threed_ < 30;
     for (int g = 0; g < 4; g++) {
         gauge_prev_[g][0] = g < gauges_now_ ? gauge_x_[g][0] : 1e30f;
@@ -3744,10 +3899,18 @@ void VulkanBackend::Present(const Surface& front) {
     EndFrame();
     // after the frame is on the queue: the presenter's blit, later on the same queue, waits for it
     // (its barrier on the picture)
-    if (show) nv2a_present_set_external(show->image, show->w, show->h);
+    if (show) {
+#ifdef NGB_SMOOTH_MOTION
+        if (motion_endpoint_) nv2a_present_set_external_wait(show->image,show->w,show->h);
+        else
+#endif
+            nv2a_present_set_external(show->image, show->w, show->h);
+    }
     frame_++;
 }
 
+
+#include "motion_replay.inc"
 
 // ---- the shader cache ----
 //
