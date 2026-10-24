@@ -1,0 +1,119 @@
+name: iOS production engine preflight
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ios-port]
+    paths:
+      - '.github/workflows/ios-engine-preflight.yml'
+      - 'ios/private_input.py'
+      - 'ios/PRIVATE_BUILD.md'
+      - 'src/fibers.c'
+      - 'xboxrecomp/src/platform/**'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ios-engine-preflight-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  production-platform:
+    runs-on: macos-15
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Compile actual VM and scheduler sources for iPhoneOS
+        shell: bash
+        run: |
+          set -euo pipefail
+          xcodebuild -version
+          SDK="$(xcrun --sdk iphoneos --show-sdk-path)"
+          mkdir -p build/ios-platform
+          for source in win32_compat vcpu; do
+            xcrun --sdk iphoneos clang -target arm64-apple-ios15.0 \
+              -isysroot "$SDK" -std=c11 -O2 -Wall -Wextra -Wno-unused-parameter \
+              -Ixboxrecomp/src -Ixboxrecomp/src/platform \
+              -c "xboxrecomp/src/platform/$source.c" \
+              -o "build/ios-platform/$source.o"
+          done
+          xcrun --sdk iphoneos ar rcs build/ios-platform/libngb-platform.a build/ios-platform/*.o
+          file build/ios-platform/*.o
+
+  private-recompilation:
+    # Standard GitHub-hosted runner: never the owner's PC or a paid larger runner.
+    runs-on: macos-15
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Require private disc input
+        env:
+          NGB_DISC_URL: ${{ secrets.NGB_DISC_URL }}
+        run: |
+          if [ -z "$NGB_DISC_URL" ]; then
+            echo '::error::Add repository Actions secret NGB_DISC_URL containing the owner-provided Google Drive file link. No ISO or generated source is uploaded by this workflow.'
+            exit 1
+          fi
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Prepare isolated download and generation tools
+        run: |
+          python3 -m venv "$RUNNER_TEMP/ngb-input-tools"
+          "$RUNNER_TEMP/ngb-input-tools/bin/pip" install 'gdown==5.2.0'
+          python3 -m venv xboxrecomp/.venv
+          xboxrecomp/.venv/bin/pip install 'capstone==5.0.3'
+      - name: Download disc and validate the supported executable
+        env:
+          NGB_DISC_URL: ${{ secrets.NGB_DISC_URL }}
+          NGB_DISC_SHA256: ${{ secrets.NGB_DISC_SHA256 }}
+        run: |
+          "$RUNNER_TEMP/ngb-input-tools/bin/python" ios/private_input.py \
+            --download --iso "$RUNNER_TEMP/ngb-private.iso"
+          rm -f "$RUNNER_TEMP/ngb-private.iso"
+      - name: Generate real game C using the existing pipeline
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! bash tools/pipeline.sh > "$RUNNER_TEMP/ngb-pipeline-private.log" 2>&1; then
+            echo '::error::Private recompilation failed. Raw logs are withheld because they can contain game-derived code. No placeholder executable was built.'
+            exit 1
+          fi
+          test -s src/recomp/gen/recomp_types.h
+          python3 - <<'PY'
+          from pathlib import Path
+          sources = list(Path('src/recomp/gen').glob('*.c'))
+          if not sources:
+              raise SystemExit('No generated game C files')
+          print('Generated game C translation units:', len(sources))
+          PY
+      - name: Compile production game fibers with real generated headers
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDK="$(xcrun --sdk iphoneos --show-sdk-path)"
+          mkdir -p build/ios-private
+          # Compiler diagnostics can quote lifted source, so retain them privately.
+          if ! xcrun --sdk iphoneos clang -target arm64-apple-ios15.0 \
+            -isysroot "$SDK" -std=c11 -O2 -fno-strict-aliasing \
+            -Ixboxrecomp/include -Ixboxrecomp/src -Ixboxrecomp/src/kernel \
+            -c src/fibers.c -o build/ios-private/fibers.o \
+            > "$RUNNER_TEMP/ngb-fibers-private.log" 2>&1; then
+            echo '::error::Production fiber compilation failed. Private compiler diagnostics were not published.'
+            exit 1
+          fi
+          echo 'Production game fibers compiled for iPhoneOS ARM64; this is not a linked or playable IPA.'
+      - name: Remove private inputs, generated code and logs
+        if: always()
+        shell: bash
+        run: |
+          rm -rf game_files src/recomp/gen xboxrecomp/.venv build/ios-private build/analysis
+          rm -f recomp_log.txt "$RUNNER_TEMP/ngb-private.iso" "$RUNNER_TEMP/ngb-private.iso.part"
+          rm -f "$RUNNER_TEMP/download-private.log" "$RUNNER_TEMP/ngb-pipeline-private.log" "$RUNNER_TEMP/ngb-fibers-private.log"
+          rm -rf "$RUNNER_TEMP/ngb-input-tools"
+    # Deliberately no upload-artifact, cache, commit, or release of game-derived files.
