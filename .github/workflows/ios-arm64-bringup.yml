@@ -1,0 +1,25 @@
+name: iOS ARM64 bring-up
+on:
+  workflow_dispatch:
+  push:
+    branches: [ios-port]
+    paths:
+      - '.github/workflows/ios-arm64-bringup.yml'
+      - 'ios/bringup/**'
+jobs:
+  iphoneos-arm64-compile:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Compile ARM64 context switch for iPhoneOS
+        run: |
+          xcodebuild -version
+          mkdir -p build/ios-bringup
+          SDK="$(xcrun --sdk iphoneos --show-sdk-path)"
+          xcrun --sdk iphoneos clang -target arm64-apple-ios15.0 -isysroot "$SDK" -Wall -Wextra -Werror -c ios/bringup/fiber_smoke.c -o build/ios-bringup/fiber_smoke.o
+          xcrun --sdk iphoneos nm build/ios-bringup/fiber_smoke.o | grep ngb_ctx_switch_smoke
+          file build/ios-bringup/fiber_smoke.o
+      - uses: actions/upload-artifact@v4
+        with:
+          name: iphoneos-arm64-fiber-object
+          path: build/ios-bringup/fiber_smoke.o
