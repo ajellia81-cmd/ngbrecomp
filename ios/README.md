@@ -1,164 +1,109 @@
-# Ninja Gaiden Black iOS port status
+# Ninja Gaiden Black iOS port
 
-This branch is experimental. **There is no verified playable iOS IPA.**
-The existing NGBBringup app is a UIKit diagnostic harness, not the game.
-Do not commit game data or generated recompilation source files.
+An experimental unsigned **real-engine IPA** has been built. Physical-device
+startup, title screen and gameplay are **not verified**; this is not a claim of
+a completed playable port. The older NGBBringup diagnostic app is a separate target.
 
-## Current build path
+- Build source: `9e28c13556311063e58d209c351f4e12bddb6916`, branch `ios-port`.
+- [Successful Actions run, attempt 2](https://github.com/ajellia81-cmd/ngbrecomp/actions/runs/40103624524).
+- [Encrypted IPA artifact](https://github.com/ajellia81-cmd/ngbrecomp/actions/runs/40103624524/artifacts/12563917080).
+- Unsigned IPA: **14,239,945 bytes**, containing **11,740 linked lifted game functions**,
+  the real engine/runtime, SDL UIKit entry point and MoltenVK framework.
+- IPA SHA-256: `1f54f2e8514b3e234f9142567bbc938bb1242665210070689b54bc749bdce5f3`.
+- GitHub artifact ZIP SHA-256: `e7aa0e62154ba30ecd9e806c3b12eaa0344b89bf284c199a6d2b83873599a392`.
 
-See [PRIVATE_BUILD.md](PRIVATE_BUILD.md) for the committed GitHub-hosted macOS
-input and compilation workflow. It reads the owner's Drive link from an Actions
-secret, generates private code on a disposable runner, and publishes no game
-inputs or derived artifacts. No PC connection or chat ISO upload is needed.
+See [INSTALL.md](INSTALL.md) for download, LiveContainer import and game data.
+The download is an encrypted 7z inside GitHub's artifact ZIP. It expires seven
+days after upload. The password is the owner's `NGB_IPA_PASSWORD` Actions secret.
+No disc, XBE, generated C or unencrypted IPA was published or committed.
 
-The first production compile exposed the iPhoneOS SDK's unsupported
-`mach_vm.h` header. The shared `platform/apple_vm.h` now selects public
-pointer-sized `vm_*` functions for iOS and retains `mach_vm_*` on macOS.
-Production VM/scheduler and portability-header compilation, device/simulator
-link checks, macOS scheduler/thread regressions, ISO validation, generation of
-48 real game C units, production fiber compilation, and compilation of **all
-48 generated units** passed in
-[run 40096836664](https://github.com/ajellia81-cmd/ngbrecomp/actions/runs/40096836664).
-The initial owner-only Drive link was corrected by the owner; it is no longer
-the build blocker.
+## Implemented build and platform path
 
-Real allocation-collision checks and protected-memory writes with protection
-restoration passed on macOS and an iPhone simulator in
-[run 40097568525](https://github.com/ajellia81-cmd/ngbrecomp/actions/runs/40097568525).
-Neither is a physical-device/LiveContainer result.
+The original CMake game target links actual generated game code, handwritten
+engine, Direct3D Vulkan renderer and Xbox runtime. The iOS-only target settings
+add SDL's UIKit main, `ios/app.m`, an iPhone Info.plist and bundled MoltenVK 1.4.2.
+The public runtime/renderer can also be compiled without private inputs using
+`NGB_RENDERER_CHECK_ONLY=ON`; that option does not create a game executable.
 
-The separate complete-runtime build exposed a GLib/libintl CoreFoundation link
-dependency. The iOS dependency triplet now supplies that framework and selects
-Release-only static libraries. Its rebuild must be checked separately. The iOS
-runtime also selects the existing Vulkan path instead of the desktop-only
-OpenGL 3.3 legacy compatibility backend; an accidental dependency on a legacy
-D3D8 implementation will fail at link time rather than use a placeholder.
+Existing Apple ARM64 fibers, signal scheduling and MMIO decoding were reused.
+The iPhoneOS SDK rejects `mach_vm.h`, so `platform/apple_vm.h` selects public,
+pointer-sized `vm_*` APIs for iOS while retaining desktop `mach_vm_*` calls.
+The existing Apple D3D path is selected; it already relaxes reference NV2A draw
+requirements such as geometry shaders. The legacy desktop OpenGL 3.3 D3D8 backend
+is excluded on iOS; accidental legacy D3D8 calls fail to link rather than use stubs.
 
-Full handwritten-engine compilation/linking, MoltenVK application integration,
-IPA packaging and gameplay remain unverified. Passing generated-code and VM
-jobs is not a playable IPA.
+SDL2, GLib and glslang are built for iPhoneOS via a pinned vcpkg revision and a
+Release-only static device triplet. CoreFoundation is linked for static libintl.
+MoltenVK is loaded from the bundled dynamic framework and seeds volk before the
+renderer starts. Official MoltenVK archive bytes are checked against a SHA-256.
 
-## Source audit (2026-10-24)
+The app imports the owner's ISO or extracted folder into `Documents/game` and
+validates the supported USA executable. Saves, configuration and shader caches
+use separate sandbox directories. Archive subprocesses, desktop setup and exec
+fallbacks are disabled in the iOS app; separate arcade executable handoff is not
+implemented. The game's existing in-process soft reset remains available.
 
-Audited base: `fd3b1e569b3c8da5f697f15f69e86f13a7df33b8`.
-Compared with `5fc57d84d617aa7f360cf0a5ab707dc9334f4b95`, the branch
-adds only the six iOS bring-up files. It does not yet change the production
-runtime, game executable target, or renderer for iOS.
+Hardware controllers use SDL's iOS GameController backend. With no hardware pad,
+the UIKit overlay drives a real SDL virtual game controller: both sticks,
+triggers, D-pad, face/shoulder/stick buttons, Start and Back. Controls use runtime
+bounds/safe-area insets and release held inputs when the app resigns active.
+No iPhone 18 screen dimensions were guessed or hard-coded.
 
-Reuse the existing Apple implementation before adding another one:
+## Verified results
 
-- `src/fibers.c` already saves/restores Apple ARM64 host contexts, including
-  x19-x30, d8-d15, FPCR and FPSR. The separate assembly in
-  `ios/bringup/fiber_smoke.c` checks compilation only; it does not exercise
-  production fiber creation, guest state, switching or resumption.
-- `xboxrecomp/src/platform/win32_compat.c` already implements fixed Darwin
-  allocation with `mach_vm_map`, and Mach-backed memory helpers also exist
-  in `src/port.h`.
-- `xboxrecomp/src/platform/vcpu.c` has an Apple signal-preemption path.
-  ARM64 MMIO decoding and Apple signal contexts exist in the runtime.
-
-These are existing desktop Apple paths, not evidence of iOS execution.
-
-## Remaining implementation and validation gates
-
-1. Add an iOS application target that actually links the game object code,
-   runtime and renderer. The current IPA workflow links only `main.m` and
-   `fiber_smoke.c`.
-2. Validate production fiber switching and signal preemption on iPhoneOS.
-   Preserve the existing guest scheduler and timing when adding application
-   suspension/resumption. A compile-only assembly check cannot establish this.
-3. Validate VM allocation in the actual LiveContainer process. The runtime
-   attempts a contiguous `0x100010000`-byte virtual reservation in
-   `xbox_memory_layout.c`. This is virtual address space, not that amount of
-   resident RAM. iOS address-space limits, page protections and signal/MMIO
-   recovery require device tests; do not assume macOS behavior or entitlements.
-4. Build and package SDL2, MoltenVK and glslang for the device SDK; route
-   presentation through an iOS Metal-backed surface. Existing Vulkan
-   portability-enumeration code is useful but insufficient. The D3D backend
-   requests Vulkan 1.3, dynamic rendering, synchronization2 and push descriptors.
-   Reuse the existing Apple `NGB_RENDERER=d3d` path: in
-   `xemu/pgraph/vk/instance.c` it already relaxes NV2A draw-feature requirements,
-   including geometry shaders, unless `NGB_D3D_KEEP_NV2A` is set. The reference
-   NV2A drawing path still requires those features. Query capabilities and
-   verify the shared device/presenter before claiming MoltenVK compatibility;
-   linking MoltenVK alone is not a renderer port.
-5. Replace desktop installer dialogs and subprocess/re-execution paths
-   (`fork`, `execvp`, `popen`, `execv` in `src/install.c`) with sandboxed
-   import and in-process startup. Wire application lifecycle and audio-session
-   interruptions to safe engine pause/resume.
-6. Feed GameController state into the actual Xbox input backend and add
-   multitouch controls when no controller is connected. Merely counting
-   connected controllers in the harness is not game input support.
-7. Lay out controls using runtime safe-area insets and view bounds, without
-   hard-coded device dimensions. Negotiate display refresh independently of
-   guest simulation; 120 Hz presentation must not double game ticks.
-8. Perform a complete device link, package and inspect the executable, then
-   verify engine initialization, title screen and gameplay under LiveContainer.
-   No iPhone 18 Pro Max / iOS 27 behavior is verified by this audit.
-
-## Private build inputs
-
-The game source build requires `src/recomp/gen/*.c` and its generated headers.
-These are produced by `tools/pipeline.sh` from the owner's disc and must remain
-private. The production CMake configuration fails when this tree is empty.
-Do not substitute stub functions to make an IPA link.
-
-The installer currently identifies the retail USA NTSC `default.xbe` by
-size 4,571,136 bytes and FNV-1a value `0x3602ba6a6079c8cd`
-(`src/install.c`). Preserve the complete extracted disc directory tree,
-not only the executable. Other disc revisions are not established as supported.
-
-A safe build arrangement, to implement once a working iOS target exists:
-
-- Use an owner-controlled private cloud macOS runner with Xcode and the
-  iPhoneOS SDK. Supply the owner's disc through a private mounted directory
-  outside the repository. Never put a disc URL, credentials or game content
-  in a public workflow input, log, cache or artifact.
-- Use a disposable checkout of the exact `ios-port` commit. Run the existing
-  pipeline against the private input; keep `game_files/`, generated C and
-  analysis output in the private runner workspace.
-- Build the real engine target with the device toolchain. Publish no diagnostic
-  fallback when generation, compile, link or packaging fails.
-- Keep generated code out of git. Treat an IPA containing compiled lifted game
-  code as private too: distribute it through an access-controlled destination
-  unless the owner has separately established permission for public release.
-- Delete temporary inputs/output on completion; avoid a persistent shared cache
-  containing game-derived material.
-
-Proposed runtime import layout (not implemented): copy the extracted disc tree
-to `Documents/game/` inside the guest app's LiveContainer data container and
-set `NGB_GAME_DIR` to that absolute path before engine startup. Set
-`NGB_SAVE_DIR` to a separate writable sandbox directory. LiveContainer's
-guest container must be resolved at runtime; the enclosing host app's Documents
-directory is not automatically the game's directory. There is currently no
-implemented iOS importer or verified game-data placement procedure.
-
-## Verification in the available cloud environment
-
-The provided checkout was Linux x86-64 at `5fc57d8`. The GitHub connector
-confirmed that all production runtime/test sources are unchanged at the audited
-iOS head. A fresh GCC 14.2 build and CTest run gave:
-
-| Check | Result |
+| Check | Observed result |
 | --- | --- |
-| POSIX virtual CPU regression | Passed, 1/1 (10.00 s) |
-| POSIX thread suspension regression | Passed, 1/1 (0.25 s) |
-| POSIX VEH regression | Compiled; failed at test_main.c:87 |
-| iPhoneOS compile/link | Not run: no Xcode or iPhoneOS SDK |
-| Actual game build | Not run: no game generated source or owner disc data |
-| LiveContainer / device execution | Not run |
+| Owner input | Retail USA XBE size 4,571,136 and FNV-1a `0x3602ba6a6079c8cd` accepted |
+| Private input SHA-256 | `5fa3997b0d518a9db3867ca6ae2942c99e5349fd138f536ff56772e1a0202200` |
+| Generated game code | 48 real C translation units generated and compiled for ARM64 |
+| Whole engine | Original game target linked for iPhoneOS; no lifted-function stubs |
+| UIKit game app | Bundle linked with real engine, SDL UIKit entry and MoltenVK |
+| IPA | iPhoneOS platform and engine symbols checked; ZIP integrity passed |
+| Encrypted delivery | 7z password/integrity test and artifact upload passed |
+| VM semantics | Allocation collision, protected writes and protection restoration passed on macOS and iPhone simulator |
+| Scheduler/thread regressions | Existing macOS and Linux regressions passed |
+| Touch controller contract | SDL virtual pad button/stick/trigger mapping passed headless Linux checks; not an iPhone UI test |
+| Extraction helper | Cloud PowerShell 7.5.4 synthetic disc tests passed; real Windows execution not observed |
 
-The VEH failure checks `s_steps == 1 && s_page[0x108] == 0xAB` after
-re-protecting the page. The subsequent read is itself subject to the test's MMIO
-handler, so this result does not by itself establish a production runtime bug.
-It remains unresolved; do not describe the regression suite as passing.
+[Simulator VM run](https://github.com/ajellia81-cmd/ngbrecomp/actions/runs/40097568525)
+and [runtime/renderer build](https://github.com/ajellia81-cmd/ngbrecomp/actions/runs/40099391364).
+The macOS runner used Xcode 16.4/iPhoneOS 18.5 SDK with a deployment target of iOS 15.
+A deployment target is not validation on iOS 27. Windows and desktop macOS full-game
+builds were not run here; their default build paths were retained.
 
-Shell GitHub access also failed (proxy connection failure; CLI reported invalid
-authentication). The GitHub connector could read the branch and write this
-documentation, but exposes no workflow-dispatch operation. Its commit workflow
-lookup filters to PR-triggered runs: an empty response does not establish that
-push/dispatch runs do not exist.
+The baseline Linux VEH regression previously failed at test_main.c:87 and remains
+unresolved. Its post-protection read passes through its own MMIO handler, so that
+failure alone does not establish a production VM bug. Do not report all tests as passing.
 
-No user desktop was accessed. No game data was uploaded. No IPA was created.
-The bring-up workflows and their existing artifacts are not completion evidence
-for a playable port.
+## Unverified and remaining work
+
+- No iPhone 18 Pro Max/iOS 27 device or LiveContainer run was available. App launch,
+  full game initialization, title screen, gameplay, performance, graphics accuracy,
+  real controller/touch behavior and audible output remain unverified.
+- The real LiveContainer host must permit the runtime's roughly 4 GiB guest virtual
+  reservation. Small-region VM behavior in a simulator does not establish that.
+- Vulkan 1.3/shared-device features, Metal presentation and GPU-specific behavior
+  need physical-device checks. No successful rendered game frame is claimed.
+- Robust coordinated guest-clock/GPU suspension and background resume are not
+  complete. Current lifecycle handling releases touch input and uses SDL audio
+  support; initial tests should keep the game in the foreground.
+- 120 Hz presentation and preservation of game behavior at that rate have not
+  been measured. The plist permits high refresh, but guest timing was not doubled.
+- Separate arcade executables and external archive extraction are not supported
+  by this iOS app.
+
+These gaps mean the user's playable-on-device completion criterion remains open,
+even though a genuine game-engine IPA is now available.
+
+## Private inputs and source history
+
+See [PRIVATE_BUILD.md](PRIVATE_BUILD.md) for Actions secrets, privacy and packaging,
+and [SMALL_INPUT.md](SMALL_INPUT.md) for the optional read-only PowerShell extractor.
+Only the executable is needed to generate code; the complete disc data is still
+needed on the phone. Keep generated C and game files out of git and public caches.
+
+The original audited head was `fd3b1e569b3c8da5f697f15f69e86f13a7df33b8`.
+At that head the branch only added the six bring-up files. The production Apple
+implementations were already present in base `5fc57d8` and were reused rather than
+rewritten. Subsequent commits in this branch implement the game app described above.
+Upstream was not modified. No user desktop was accessed by the agent.
