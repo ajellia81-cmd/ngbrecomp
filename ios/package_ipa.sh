@@ -7,6 +7,14 @@ tools=${3:?usage: bash ios/package_ipa.sh GAME_APP OUTPUT_DIRECTORY IOS_TOOL_DIR
 test -f "$app/NinjaGaidenBlack"
 test -f "$app/Frameworks/MoltenVK.framework/MoltenVK"
 plutil -lint "$app/Info.plist"
+python3 - "$app/Info.plist" <<'PY'
+import plistlib, sys
+with open(sys.argv[1], 'rb') as stream:
+    icons = plistlib.load(stream).get('CFBundleIcons', {}).get('CFBundlePrimaryIcon', {})
+if icons.get('CFBundleIconName') != 'AppIcon' or not icons.get('CFBundleIconFiles'):
+    raise SystemExit('The original NGB iPhone icon catalog must be packaged')
+print('Original NGB app icon metadata: OK')
+PY
 xcrun --sdk iphoneos vtool -show-build "$app/NinjaGaidenBlack" > "$app/../platform-private.log"
 grep -Eq 'platform[[:space:]]+IOS([[:space:]]|$)' "$app/../platform-private.log"
 xcrun --sdk iphoneos nm -g "$app/NinjaGaidenBlack" > "$app/../symbols-private.log"

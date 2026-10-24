@@ -35,6 +35,9 @@ void nv2a_vk_queue_unlock(void);
 /* Block new submissions/acquisitions and drain queued GPU work before the
  * host loses foreground permission. Call from the UI thread, not a guest. */
 void nv2a_vk_set_background(bool background);
+/* Pixel size of the drawable's aspect-fitted content area, cached by the UI
+ * thread. Returns false until a window drawable is available. */
+bool nv2a_present_native_size(uint32_t *width, uint32_t *height);
 
 /* While set, the renderer executes the pushbuffer without drawing: no
  * draws, clears, blits or surface traffic (the sharer draws instead). */

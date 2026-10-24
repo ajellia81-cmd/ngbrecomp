@@ -16,14 +16,20 @@ target_include_directories(${PROJECT_NAME} PRIVATE
     ${XBOXRECOMP_DIR}/third_party/volk ${XBOXRECOMP_DIR}/third_party/Vulkan-Headers/include)
 target_link_libraries(${PROJECT_NAME} PRIVATE SDL2::SDL2main
     "-framework UIKit" "-framework Foundation" "-framework GameController"
-    "-framework AVFoundation" "-framework UniformTypeIdentifiers")
+    "-framework AVFoundation" "-framework UniformTypeIdentifiers" "-framework QuartzCore")
 target_link_options(${PROJECT_NAME} PRIVATE "-Wl,-rpath,@executable_path/Frameworks")
 set_target_properties(${PROJECT_NAME} PROPERTIES
     MACOSX_BUNDLE TRUE
     MACOSX_BUNDLE_INFO_PLIST "${CMAKE_CURRENT_SOURCE_DIR}/ios/Info.plist.in"
     XCODE_ATTRIBUTE_CODE_SIGNING_ALLOWED NO
     XCODE_ATTRIBUTE_CODE_SIGNING_REQUIRED NO)
+set_property(TARGET ${PROJECT_NAME} APPEND PROPERTY LINK_DEPENDS
+    "${CMAKE_CURRENT_SOURCE_DIR}/ios/build_icons.swift"
+    "${CMAKE_CURRENT_SOURCE_DIR}/packaging/appimage/ngb.png")
 add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
+    COMMAND xcrun --sdk macosx swift "${CMAKE_CURRENT_SOURCE_DIR}/ios/build_icons.swift"
+        "${CMAKE_CURRENT_SOURCE_DIR}/packaging/appimage/ngb.png"
+        "$<TARGET_BUNDLE_DIR:${PROJECT_NAME}>" "${CMAKE_CURRENT_BINARY_DIR}/ios-icons"
     COMMAND ${CMAKE_COMMAND} -E make_directory "$<TARGET_BUNDLE_DIR:${PROJECT_NAME}>/Frameworks"
     COMMAND ${CMAKE_COMMAND} -E copy_directory "${NGB_MOLTENVK_FRAMEWORK}"
         "$<TARGET_BUNDLE_DIR:${PROJECT_NAME}>/Frameworks/MoltenVK.framework"

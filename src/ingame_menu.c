@@ -63,8 +63,12 @@ static void apply_aspect(NgbSettings *s, bool window)
 {
     ngb_game_set_aspect(s->aspect != ASPECT_4_3, ngb_settings_aspect_ratio(s));
     nv2a_present_set_aspect(ngb_settings_aspect_ratio(s));
+#ifndef NGB_IOS_APP
     if (window)
         nv2a_window_request(s->width, s->height, s->fullscreen);
+#else
+    (void)window;
+#endif
 }
 
 void ngb_menu_set_running(const NgbSettings *s)
@@ -173,7 +177,7 @@ void ngb_pc_set_setting(int which, int value)
         break;
     }
     if (which <= 2 || which == 10)
-        nv2a_set_quality(s_running.scale, s_running.anisotropy, s_running.shadow_scale, s_running.msaa);
+        nv2a_set_quality(ngb_settings_runtime_scale(&s_running), s_running.anisotropy, s_running.shadow_scale, s_running.msaa);
     if (!getenv("NGB_NO_SETTINGS"))
         ngb_settings_save(&s_running);
 }
@@ -1616,7 +1620,7 @@ static void apply_and_close(void)
         nv2a_present_set_show_fps(n->show_fps);
     if (n->scale != o->scale || n->anisotropy != o->anisotropy || n->msaa != o->msaa ||
         n->shadow_scale != o->shadow_scale)
-        nv2a_set_quality(n->scale, n->anisotropy, n->shadow_scale, n->msaa);
+        nv2a_set_quality(ngb_settings_runtime_scale(n), n->anisotropy, n->shadow_scale, n->msaa);
     if (memcmp(n, o, sizeof *n) && !getenv("NGB_NO_SETTINGS"))
         ngb_settings_save(n);
     s_running = *n;

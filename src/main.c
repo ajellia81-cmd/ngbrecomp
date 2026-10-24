@@ -1185,7 +1185,7 @@ int main(int argc, char **argv)
             cfg.vsync = *e == '2' ? 2 : *e != '0';
         if (!getenv("NV2A_SCALE") && cfg.scale > 1) {
             char v[8];
-            snprintf(v, sizeof v, "%d", cfg.scale);
+            snprintf(v, sizeof v, "%d", ngb_settings_runtime_scale(&cfg));
             setenv("NV2A_SCALE", v, 1);
         }
         if (!getenv("NV2A_TEX_REPLACE")) {
@@ -1242,6 +1242,12 @@ int main(int argc, char **argv)
             snprintf(xbe, sizeof xbe, "%s/default.xbe", s_game_dir);
             setenv("NV2A_SHADER_SEED_XBE", xbe, 1);
         }
+#ifdef NGB_IOS_APP
+        /* UIKit owns the full-screen surface; desktop window/present modes
+         * are not choices on this target. Keep FIFO presentation fixed. */
+        cfg.fullscreen = 1;
+        cfg.vsync = 3;
+#endif
         ngb_menu_set_running(&cfg);
         if (!getenv("NV2A_SHADOW_SCALE")) {
             char v[8];
@@ -1253,7 +1259,7 @@ int main(int argc, char **argv)
             snprintf(v, sizeof v, "%d", cfg.anisotropy);
             setenv("NV2A_TEX_FILTER", cfg.anisotropy ? v : "original", 1);
         }
-        nv2a_set_quality(cfg.scale, cfg.anisotropy, cfg.shadow_scale, cfg.msaa);
+        nv2a_set_quality(ngb_settings_runtime_scale(&cfg), cfg.anisotropy, cfg.shadow_scale, cfg.msaa);
         {
             extern void ngb_set_all_difficulties(int on);   /* src/cheats.c */
             extern void ngb_set_all_costumes(int on);

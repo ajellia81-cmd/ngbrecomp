@@ -41,6 +41,9 @@
 #include "kernel/kernel.h"
 #include "vk/spirv.h"
 #include "nv2a_vk_share.h"   // the NV2A renderer's device and presenter (NGB_RENDERER=d3d)
+#ifdef NGB_IOS_APP
+#include "launcher.h"
+#endif
 extern "C" {
 #include "quick_select.h"
 int ngb_pc_setting(int which);
@@ -388,6 +391,9 @@ private:
     // the quality settings (nv2a_quality_get), read once a frame: display-sized targets render
     // at scale_ times their size, small depth-only ones (shadow maps) at shadow_ times
     int scale_ = 1, shadow_ = 1, aniso_level_ = 0, msaa_ = 1;
+#ifdef NGB_IOS_APP
+    uint32_t native_w_ = 0, native_h_ = 0;
+#endif
     bool anisotropy_ = false;
     bool wide_lines_ = false;   // lines wider than a pixel (the sparks of a hit are 2.7 to 3, #51)
     float point_max_ = 1.0f;
@@ -732,6 +738,21 @@ bool VulkanBackend::FinishDevice() {
 void VulkanBackend::ReadQuality() {
     int msaa = 1;
     nv2a_quality_get(&scale_, &aniso_level_, &shadow_, &msaa);
+#ifdef NGB_IOS_APP
+    native_w_ = native_h_ = 0;
+    if (ngb_pc_setting(0) == NGB_RENDER_SCALE_IPHONE_NATIVE &&
+        nv2a_present_native_size(&native_w_, &native_h_)) {
+        // Full-size color/depth targets use the exact drawable viewport.
+        // Intermediate effects use a nearby integer scale; shadows stay separate.
+        scale_ = std::clamp(int(std::ceil(double(native_h_) / 480.0)), 1, 10);
+        static uint64_t last;
+        uint64_t key = uint64_t(native_w_) << 32 | native_h_;
+        if (last != key) {
+            std::fprintf(stderr, "[D3D] iPhone native render target: %u x %u\n", native_w_, native_h_);
+            last = key;
+        }
+    }
+#endif
     while (msaa > 1 && !(ms_counts_ & uint32_t(msaa))) msaa /= 2;   // the most the device has
     msaa_ = msaa;
     // a new anti-aliasing setting: its pipelines made in the background once the startup ones are
@@ -1150,6 +1171,9 @@ Target* VulkanBackend::EnsureTarget(const Surface& s, bool depth) {
     if (!depth && w==128 && h==128 && ContinuousGlowEnabled() && glow_targets_.count(s.data))
         scale=GlowTargetScale(uint32_t(scale_));
     uint32_t iw = w * scale, ih = h * scale;
+#ifdef NGB_IOS_APP
+    if (big && native_w_ && native_h_) { iw = native_w_; ih = native_h_; }
+#endif
     uint64_t key = uint64_t(s.data) << 1 | (depth ? 1 : 0);
     auto it = targets_.find(key);
     // MSAA (a quality setting) for the display-sized targets: the 3D and what is drawn over it
@@ -3233,11 +3257,12 @@ void VulkanBackend::Copy(const Surface& src, const Surface& dst, uint32_t count,
     auto add = [&](int x0, int y0, int x1, int y1, int dx, int dy) {
         VkImageBlit r{};
         r.srcSubresource = r.dstSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1};
-        float sa = float(a->img.w) / a->gw, sb = float(b->img.w) / b->gw;
-        r.srcOffsets[0] = {int(x0 * sa), int(y0 * sa), 0};
-        r.srcOffsets[1] = {int(x1 * sa), int(y1 * sa), 1};
-        r.dstOffsets[0] = {int(dx * sb), int(dy * sb), 0};
-        r.dstOffsets[1] = {int((dx + x1 - x0) * sb), int((dy + y1 - y0) * sb), 1};
+        float sax = float(a->img.w) / a->gw, sbx = float(b->img.w) / b->gw;
+        float say = float(a->img.h) / a->gh, sby = float(b->img.h) / b->gh;
+        r.srcOffsets[0] = {int(std::lround(x0 * sax)), int(std::lround(y0 * say)), 0};
+        r.srcOffsets[1] = {int(std::lround(x1 * sax)), int(std::lround(y1 * say)), 1};
+        r.dstOffsets[0] = {int(std::lround(dx * sbx)), int(std::lround(dy * sby)), 0};
+        r.dstOffsets[1] = {int(std::lround((dx + x1 - x0) * sbx)), int(std::lround((dy + y1 - y0) * sby)), 1};
         rs.push_back(r);
     };
     if (count && src_rects) {

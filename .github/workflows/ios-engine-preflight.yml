@@ -13,11 +13,20 @@ on:
       - 'ios/app.m'
       - 'ios/vcpu_image_test.c'
       - 'ios/audio_pause_test.c'
+      - 'ios/build_icons.swift'
+      - 'ios/native_settings_test.c'
       - 'ios/target.cmake'
       - 'ios/Info.plist.in'
       - 'ios/package_ipa.sh'
       - 'src/main.c'
       - 'CMakeLists.txt'
+      - 'src/launcher.c'
+      - 'src/launcher.h'
+      - 'src/pc_menu.c'
+      - 'src/pause_tab.c'
+      - 'src/ingame_menu.c'
+      - 'src/d3d/vk/backend.cpp'
+      - 'packaging/appimage/ngb.png'
       - 'src/fibers.c'
       - 'src/port.h'
       - 'xboxrecomp/src/platform/**'
@@ -127,6 +136,11 @@ jobs:
             xboxrecomp/src/apu/apu_sdl_out.c $(pkg-config --libs sdl2) \
             -o build/ios-platform/audio-pause
           SDL_AUDIODRIVER=dummy build/ios-platform/audio-pause
+          xcrun --sdk macosx clang -arch arm64 -std=c11 -O2 -DNGB_IOS_APP=1 \
+            -Isrc -Ixboxrecomp/src $(pkg-config --cflags sdl2) \
+            ios/native_settings_test.c src/launcher.c $(pkg-config --libs sdl2) \
+            -o build/ios-platform/native-settings
+          build/ios-platform/native-settings
 
   private-recompilation:
     # Standard GitHub-hosted runner: never the owner's PC or a paid larger runner.

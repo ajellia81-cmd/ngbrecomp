@@ -16,6 +16,7 @@
 #include "nv2a_host_vk.h"
 #include "nv2a_window.h"
 #include "nv2a_vk_share.h"
+#include "native_viewport.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -30,9 +31,29 @@
 #define MAX_SWAP_IMAGES 8
 
 static SDL_Window *s_window;
+static uint64_t s_drawable_pixels;
 static double s_aspect = 4.0 / 3.0;
 static int s_vsync;                /* 0 off, 1 mailbox, 2 adaptive, 3 FIFO */
 static volatile bool s_resized;
+
+static void cache_drawable_size(void)
+{
+    int w = 0, h = 0;
+    if (s_window) SDL_Vulkan_GetDrawableSize(s_window, &w, &h);
+    if (w > 0 && h > 0)
+        __atomic_store_n(&s_drawable_pixels, (uint64_t)(uint32_t)w << 32 | (uint32_t)h, __ATOMIC_RELEASE);
+}
+
+bool nv2a_present_native_size(uint32_t *width, uint32_t *height)
+{
+    uint64_t packed = __atomic_load_n(&s_drawable_pixels, __ATOMIC_ACQUIRE);
+    uint32_t w = (uint32_t)(packed >> 32), h = (uint32_t)packed;
+    if (!w || !h) return false;
+    ngb_native_viewport(w, h, s_aspect, &w, &h);
+    *width = w ? w : 1;
+    *height = h ? h : 1;
+    return true;
+}
 
 static VkInstance s_instance;
 #ifdef __APPLE__
@@ -383,6 +404,7 @@ int nv2a_window_create(const char *title, int width, int height,
         return -1;
     }
     fprintf(stderr, "nv2a: window on %s\n", SDL_GetCurrentVideoDriver());
+    cache_drawable_size();
     if (fullscreen == 2)
         borderless_apply(s_window);
     if (aspect > 0)
@@ -457,6 +479,7 @@ __attribute__((weak)) void xbox_InputHotplugPoll(void) {}
 
 bool nv2a_window_pump(void)
 {
+    cache_drawable_size();
 #ifdef __APPLE__
     /* SDL's Vulkan surface creates and attaches a Cocoa Metal view. AppKit
      * changes must run on this thread, even though Vulkan runs on PFIFO. */

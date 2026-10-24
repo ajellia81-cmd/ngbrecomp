@@ -6,7 +6,18 @@
 #define NGB_LAUNCHER_H
 #include <stddef.h>
 
-enum { ASPECT_4_3, ASPECT_16_9, ASPECT_16_10, ASPECT_21_9, ASPECT_COUNT };
+enum { ASPECT_4_3, ASPECT_16_9, ASPECT_16_10, ASPECT_21_9,
+#ifdef NGB_IOS_APP
+       ASPECT_IPHONE,
+#endif
+       ASPECT_COUNT };
+#ifdef NGB_IOS_APP
+#define NGB_RENDER_SCALE_COUNT 11
+#define NGB_RENDER_SCALE_IPHONE_NATIVE 11
+void ngb_ios_screen_size(int *width, int *height);
+#else
+#define NGB_RENDER_SCALE_COUNT 10
+#endif
 
 typedef struct NgbSettings {
     int aspect;          /* ASPECT_* */
@@ -62,6 +73,7 @@ void ngb_settings_snap_size(NgbSettings *s);   /* the nearest size of s's aspect
 
 /* Width/height of the aspect, for the presenter. */
 double ngb_settings_aspect_ratio(const NgbSettings *s);
+int ngb_settings_runtime_scale(const NgbSettings *s);
 
 /* Runs the settings screen in its own window. Returns 1 to start the game,
  * 0 to quit. Saves the settings when the game is started. */

@@ -74,7 +74,11 @@ static int is_ours(int page) { return page >= PAGE_GFX && page < PAGE_GFX + N_OU
 static const uint8_t s_rows_ws[] = { ROW_SCREEN, ROW_MOVIE, ROW_DEFAULT, ROW_EXIT };
 static const uint8_t s_rows_std[] = { ROW_SCREEN, ROW_EXIT };
 static const uint8_t s_rows_gfx[] = { ROW_RENDER, ROW_TEXTURE, ROW_MSAA, ROW_SHADOW, ROW_GLOW, ROW_BACK };
-static const uint8_t s_rows_disp[] = { ROW_ASPECT, ROW_WINDOW, ROW_DISPLAY, ROW_VSYNC, ROW_FPS, ROW_HUD, ROW_POSAUDIO,
+static const uint8_t s_rows_disp[] = { ROW_ASPECT,
+#ifndef NGB_IOS_APP
+                                       ROW_WINDOW, ROW_DISPLAY, ROW_VSYNC,
+#endif
+                                       ROW_FPS, ROW_HUD, ROW_POSAUDIO,
                                        ROW_BACK };
 static const uint8_t s_rows_start[] = { ROW_SKIP, ROW_ALLDIFF, ROW_ALLCOST, ROW_BACK };
 static const uint8_t s_rows_game[] = { ROW_QUICKSCALE, ROW_QUICKFREEZE, ROW_BACK };
@@ -210,6 +214,10 @@ static const struct { uint32_t id; const char *text; } s_text[] = {
     { T_SCALE0 + 0, "Native (1x)" }, { T_SCALE0 + 1, "2x" }, { T_SCALE0 + 2, "3x" },
     { T_SCALE0 + 3, "4x" }, { T_SCALE0 + 4, "5x" }, { T_SCALE0 + 5, "6x" },
     { T_SCALE0 + 6, "7x" }, { T_SCALE0 + 7, "8x" }, { T_SCALE0 + 8, "9x" }, { T_SCALE0 + 9, "10x" },
+#ifdef NGB_IOS_APP
+    { T_SCALE0 + 10, "iPhone Native" },
+    { T_ASPECT0 + 4, "iPhone Native" },
+#endif
     { T_SMOOTH,   "Smooth" },
     { T_ORIGINAL, "Original" },
     { T_SHADOW0 + 0, "Original" }, { T_SHADOW0 + 1, "2x" }, { T_SHADOW0 + 2, "4x" },
@@ -291,13 +299,13 @@ static uint32_t make_rows(const uint8_t *kinds, int n)
         case ROW_DEFAULT: src = 0x4299A0; break;
         case ROW_EXIT:
         case ROW_BACK:    src = 0x4299BC; break;
-        case ROW_RENDER:  src = 0x429984; max = 9; break;
+        case ROW_RENDER:  src = 0x429984; max = NGB_RENDER_SCALE_COUNT - 1; break;
         case ROW_TEXTURE: src = 0x429984; max = 4; break;
         case ROW_MSAA:    src = 0x429984; max = 3; break;
         case ROW_SHADOW:  src = 0x429984; max = 4; break;
         case ROW_VSYNC:   src = 0x429984; max = 3; break;
         case ROW_WINDOW:  src = 0x429984; max = 6; break;
-        case ROW_ASPECT:  src = 0x429984; max = 3; break;
+        case ROW_ASPECT:  src = 0x429984; max = ASPECT_COUNT - 1; break;
         case ROW_EXTRACOST: src = 0x429984; max = 3; break;
         case ROW_QUICKSCALE: src = 0x429984; max = 10; break;
         default:          src = 0x429984; break;          /* a value, 0-1 */
@@ -747,7 +755,7 @@ static int pc_value_change(int row, int delta)
     case ROW_QUICKSCALE: ngb_pc_set_setting(20, ngb_quick_scale_step(ngb_pc_setting(20), step)); break;
     case ROW_RENDER: {
         int v = ngb_pc_setting(0) + step;
-        ngb_pc_set_setting(0, v < 1 ? 10 : v > 10 ? 1 : v);
+        ngb_pc_set_setting(0, v < 1 ? NGB_RENDER_SCALE_COUNT : v > NGB_RENDER_SCALE_COUNT ? 1 : v);
         break;
     }
     case ROW_SHADOW: {
@@ -789,7 +797,7 @@ static int pc_value_change(int row, int delta)
         ngb_pc_set_setting(which, !ngb_pc_setting(which));
         break;
     }
-    case ROW_ASPECT:  ngb_pc_set_setting(7, (ngb_pc_setting(7) + (step > 0 ? 1 : 3)) % 4); break;
+    case ROW_ASPECT:  ngb_pc_set_setting(7, (ngb_pc_setting(7) + (step > 0 ? 1 : ASPECT_COUNT - 1)) % ASPECT_COUNT); break;
     case ROW_WINDOW: {
         int v = ngb_pc_setting(6), a = v / 8, n = ngb_settings_size_count(a);
         ngb_pc_set_setting(6, a * 8 + (v % 8 + step + n) % n);

@@ -123,7 +123,11 @@ static const char *const s_help[S_COUNT] = {
 static const char *const s_cat_name[CATS] = { "Graphics", "Display & Audio", "Startup", "Gameplay", "Cheats", "Controls" };
 static const signed char s_cat_rows[CATS][CAT_ROWS] = {
     { S_RENDER, S_TEXTURE, S_MSAA, S_SHADOW, S_GLOW, -1 },   /* -1 ends a page shorter than CAT_ROWS */
+#ifdef NGB_IOS_APP
+    { S_ASPECT, S_FPS, S_HUD, S_POSAUDIO, -1 },
+#else
     { S_ASPECT, S_WINDOW, S_DISPLAY, S_VSYNC, S_FPS, S_HUD, S_POSAUDIO },
+#endif
     { S_SKIP, S_ALLDIFF, S_ALLCOST, -1 },
     { S_QUICKSCALE, S_QUICKFREEZE, -1 },
     { S_HEALTH, S_NINPO, S_ESSENCE, S_SCARABS, S_INFITEMS, S_INFAMMO, -1 },
@@ -179,7 +183,11 @@ static void value_text(int row, char *out, size_t n)
 {
     int v = ngb_pc_setting(row);
     switch (row) {
-    case S_RENDER:  snprintf(out, n, v == 1 ? "1x (console)" : "%dx", v); break;
+    case S_RENDER:
+#ifdef NGB_IOS_APP
+        if (v == NGB_RENDER_SCALE_IPHONE_NATIVE) { snprintf(out, n, "iPhone Native"); break; }
+#endif
+        snprintf(out, n, v == 1 ? "1x (console)" : "%dx", v); break;
     case S_TEXTURE:
     case S_MSAA:    if (v > 1) snprintf(out, n, "%dx", v); else snprintf(out, n, "Off"); break;
     case S_SHADOW:  snprintf(out, n, v == 1 ? "1x (console)" : "%dx", v); break;
@@ -191,7 +199,11 @@ static void value_text(int row, char *out, size_t n)
         snprintf(out, n, "%d x %d", w, h);
         break;
     }
-    case S_ASPECT:  snprintf(out, n, "%s", v == 3 ? "21:9" : v == 2 ? "16:10" : v ? "16:9" : "4:3"); break;
+    case S_ASPECT:
+#ifdef NGB_IOS_APP
+        if (v == ASPECT_IPHONE) { snprintf(out, n, "iPhone Native"); break; }
+#endif
+        snprintf(out, n, "%s", v == 3 ? "21:9" : v == 2 ? "16:10" : v ? "16:9" : "4:3"); break;
     case S_QUICKSCALE: if (v) snprintf(out, n, "%d%%", v); else snprintf(out, n, "Off"); break;
     case S_POSAUDIO: snprintf(out, n, "%s", v == 2 ? "Panning" : v ? "Console" : "Off"); break;
     case S_SKIP:
@@ -208,7 +220,7 @@ static void change(int row, int step)
     switch (row) {
     case S_RENDER:
         v += step;
-        ngb_pc_set_setting(0, v < 1 ? 10 : v > 10 ? 1 : v);
+        ngb_pc_set_setting(0, v < 1 ? NGB_RENDER_SCALE_COUNT : v > NGB_RENDER_SCALE_COUNT ? 1 : v);
         break;
     case S_TEXTURE: {
         static const int steps[] = { 0, 2, 4, 8, 16 };
@@ -247,7 +259,7 @@ static void change(int row, int step)
         ngb_pc_set_setting(row, (v + (step > 0 ? 1 : 2)) % 3);
         break;
     case S_ASPECT:
-        ngb_pc_set_setting(row, (v + (step > 0 ? 1 : 3)) % 4);
+        ngb_pc_set_setting(row, (v + (step > 0 ? 1 : ASPECT_COUNT - 1)) % ASPECT_COUNT);
         break;
     case S_WINDOW: {
         int n = ngb_settings_size_count(v / 8);
