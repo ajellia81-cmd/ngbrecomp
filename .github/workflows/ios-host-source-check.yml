@@ -27,7 +27,7 @@ jobs:
           failed=0
           for source in install launch; do
             xcrun --sdk iphoneos clang -target arm64-apple-ios15.0 -isysroot "$SDK" \
-              -std=gnu11 -O2 -Ixboxrecomp/src -Isrc -c "src/$source.c" \
+              -std=gnu11 -O2 -Ixboxrecomp/src -Ixboxrecomp/src/nv2a_vk/host -Isrc -c "src/$source.c" \
               -o "build/ios-host/$source.o" || failed=1
           done
           exit "$failed"
