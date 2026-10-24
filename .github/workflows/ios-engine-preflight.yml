@@ -46,6 +46,32 @@ jobs:
             -isysroot "$SDK" -Ixboxrecomp/src -Wall -Wextra -Werror \
             -c ios/bringup/portability_smoke.c -o build/ios-platform/portability.o
           file build/ios-platform/*.o
+      - name: Link the actual scheduler against device and simulator system libraries
+        shell: bash
+        run: |
+          set -euo pipefail
+          for sdk in iphoneos iphonesimulator; do
+            target=arm64-apple-ios15.0
+            if [ "$sdk" = iphonesimulator ]; then target="$target-simulator"; fi
+            SDK="$(xcrun --sdk "$sdk" --show-sdk-path)"
+            xcrun --sdk "$sdk" clang -target "$target" -isysroot "$SDK" \
+              -std=c11 -O2 -Ixboxrecomp/src -Ixboxrecomp/src/platform \
+              xboxrecomp/src/platform/win32_compat.c xboxrecomp/src/platform/vcpu.c \
+              xboxrecomp/tests/vcpu_posix/test_main.c \
+              -o "build/ios-platform/vcpu-link-$sdk"
+          done
+          # These CLI regression binaries are link checks, not runnable game IPAs.
+      - name: Check existing macOS scheduler and thread behavior
+        shell: bash
+        run: |
+          set -euo pipefail
+          for test in vcpu_posix thread_suspend_posix; do
+            xcrun --sdk macosx clang -arch arm64 -std=c11 -O2 \
+              -Ixboxrecomp/src -Ixboxrecomp/src/platform \
+              xboxrecomp/src/platform/win32_compat.c xboxrecomp/src/platform/vcpu.c \
+              "xboxrecomp/tests/$test/test_main.c" -o "build/ios-platform/$test"
+            "build/ios-platform/$test"
+          done
 
   private-recompilation:
     # Standard GitHub-hosted runner: never the owner's PC or a paid larger runner.

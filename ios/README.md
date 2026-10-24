@@ -4,6 +4,22 @@ This branch is experimental. **There is no verified playable iOS IPA.**
 The existing NGBBringup app is a UIKit diagnostic harness, not the game.
 Do not commit game data or generated recompilation source files.
 
+## Current build path
+
+See [PRIVATE_BUILD.md](PRIVATE_BUILD.md) for the committed GitHub-hosted macOS
+input and compilation workflow. It reads the owner's Drive link from an Actions
+secret, generates private code on a disposable runner, and publishes no game
+inputs or derived artifacts. No PC connection or chat ISO upload is needed.
+
+The first production compile exposed the iPhoneOS SDK's unsupported
+`mach_vm.h` header. The shared `platform/apple_vm.h` now selects public
+pointer-sized `vm_*` functions for iOS and retains `mach_vm_*` on macOS.
+Production VM/scheduler and portability-header compilation passed in
+[run 40095946063](https://github.com/ajellia81-cmd/ngbrecomp/actions/runs/40095946063).
+The private download job failed; a subsequent metadata check showed the input
+was owner-only (`shared: false`). Download, source generation, full linking and
+device execution remain unverified. A passing platform job is not an IPA.
+
 ## Source audit (2026-10-24)
 
 Audited base: `fd3b1e569b3c8da5f697f15f69e86f13a7df33b8`.
