@@ -7,17 +7,17 @@ A successful compile/package is not a gameplay result.
 
 ## Download the actual IPA
 
-1. Open the [encrypted game artifact](https://github.com/ajellia81-cmd/ngbrecomp/actions/runs/40176510651/artifacts/12592922098)
-   while signed into GitHub. It is from [Actions run 40176510651](https://github.com/ajellia81-cmd/ngbrecomp/actions/runs/40176510651).
+1. Open the [encrypted game artifact](https://github.com/ajellia81-cmd/ngbrecomp/actions/runs/40180460729/artifacts/12593619372)
+   while signed into GitHub. It is from [Actions run 40180460729](https://github.com/ajellia81-cmd/ngbrecomp/actions/runs/40180460729).
 2. Extract GitHub's outer ZIP. It contains `NinjaGaidenBlack-ios-arm64-unsigned.ipa.7z`.
 3. Open the inner archive with a 7z-capable tool such as 7-Zip and enter the same
    password stored in `NGB_IPA_PASSWORD`. Do not upload the password to an issue or chat.
 4. Extract `NinjaGaidenBlack-ios-arm64-unsigned.ipa`. Import this file, not the ZIP/7z.
 
-The artifact is retained for seven days. The unsigned IPA is 47,125,932 bytes and
-has SHA-256 `a76b519086ce85c262e7ee0d70f93805d49e549572cb4ea3f31b281ec0bec2d4`.
-App version: **0.2.0 (2.46)**.
-Build source commit: `400eb5b4f0c0d10c38ee1726dfc7c1e030bbf156`.
+The artifact is retained for seven days. The unsigned IPA is 47,124,696 bytes and
+has SHA-256 `94f2a0f4bcc4841a52451fcad4db87e03f3a9a4816cc8adabee4dcdab11f1dfc`.
+App version: **0.2.0 (2.47)**.
+Build source commit: `df56683dd4253816097d283b41141d45a757f969`.
 It contains the real engine, 11,740 original lifted game functions and 55 Korean
 variants. It is not NGBBringup. Korean glyph rendering/gameplay still require a device test.
 The Korean-enabled build contains the pinned translation capsule; the original
@@ -322,3 +322,20 @@ the effects image is posted, its observed completion address. Native tests and
 the complete game build passed; phone startup and rendering remain unverified.
 If it still stalls, leave it foreground for thirty seconds and copy its new log
 and build-info.txt. The existing bounded startup sampler remains enabled.
+
+
+## Build 2.47 follow-up DSP completion
+
+The owner's 2.46 build-info and new log confirm source 400eb5b, auto policy and
+successful effects-image command-3 completion at 0x86C28810. The three startup
+samples instead stop at the parameter-upload wait, 0x0037DC78, which reads
+[EAX+0x10]. This follow-up services command 2 at that verified operand as well.
+It retains the existing address/alignment checks and explicit-off/manual policy,
+and never clears a different command value. This preserves passthrough audio;
+it is not DSP effects emulation. No data or save reset is needed.
+
+Native tests cover both command paths, a moved mailbox, unrelated memory,
+wrong commands, bad addresses and opt-out. Full iPhoneOS build and startup are
+separate checks: a successful package does not establish phone startup recovery,
+correct Korean text or sustained 120 FPS. If startup still stalls, leave the
+app foreground for thirty seconds and copy its new log and build-info.txt.
