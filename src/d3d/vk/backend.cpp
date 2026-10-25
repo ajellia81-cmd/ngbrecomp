@@ -365,18 +365,24 @@ private:
         int32_t base_vertex=0;
         bool index16=false,lines=false;
     };
-    struct MotionTarget { Image *source=nullptr; Image initial,final; uint32_t seen=0; };
+    struct MotionTarget { Target *source=nullptr; Target replay; uint32_t seen=0; };
     bool motion_capture_=false,motion_valid_=false,motion_endpoint_=false;
     uint64_t motion_cpu_bytes_=0,motion_gpu_bytes_=0;
     unsigned motion_epoch_=0;
+    uint32_t motion_cooldown_=0,motion_late_=0;
+    int64_t motion_swap_ns_=0;
     uint32_t motion_3d_=0,motion_changed_=0,motion_pictures_=0;
     int64_t motion_last_ns_=0,motion_log_ns_=0;
     std::vector<std::function<void()>> motion_commands_;
     std::unordered_map<VkImage,MotionTarget> motion_targets_;
     MotionHistory motion_history_;
+    Image *motion_ready_=nullptr;
     Image motion_display_[3];
     int motion_display_next_=0;
     void MotionTouch(Target *target);
+    Target *MotionTargetFor(Target *target);
+    Image *MotionImageFor(Image *image);
+    void MotionFeedback(Target *target);
     void MotionCopyImage(Image& from,Image& to);
     void MotionReplay(const MotionDraw& draw);
     void MotionPresent(const Surface& front,Image& endpoint,float bars,float bars_y);
@@ -940,7 +946,7 @@ VulkanBackend::~VulkanBackend() {
     }
     if (dev_) {
 #ifdef NGB_SMOOTH_MOTION
-        for (auto& [key,target]:motion_targets_) { DestroyImage(target.initial); DestroyImage(target.final); }
+        for (auto& [key,target]:motion_targets_) { DestroyImage(target.replay.img); DestroyImage(target.replay.fb); }
         for (auto& image:motion_display_) DestroyImage(image);
 #endif
         for (auto& image:continuous_glow_) DestroyImage(image);
@@ -1757,7 +1763,7 @@ void VulkanBackend::Clear(const State& s, uint32_t count, const uint8_t* rects, 
     if (n && motion_capture_ && motion_valid_) {
         std::vector<VkClearAttachment> attachments(at,at+n);
         motion_commands_.push_back([this,brt,bds,rs,attachments] {
-            BeginRendering(brt,bds);
+            BeginRendering(MotionTargetFor(brt),MotionTargetFor(bds));
             d_.vkCmdClearAttachments(cmd_,uint32_t(attachments.size()),attachments.data(),uint32_t(rs.size()),rs.data());
         });
     }
@@ -1817,8 +1823,7 @@ VkImageView VulkanBackend::BindTexture(const State& s, int stage, TexInfo& info,
             if (motion_capture_ && motion_valid_) {
                 Target *target=&t;
                 motion_commands_.push_back([this,target] {
-                    EndRendering(); MotionCopyImage(target->img,target->fb);
-                    Barrier(target->fb,VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+                    MotionFeedback(target);
                 });
             }
 #endif
@@ -3430,9 +3435,10 @@ void VulkanBackend::Copy(const Surface& src, const Surface& dst, uint32_t count,
     b->drawn = true;
 #ifdef NGB_SMOOTH_MOTION
     if (motion_capture_ && motion_valid_) motion_commands_.push_back([this,a,b,rs] {
-        EndRendering(); Barrier(a->img,VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
-        Barrier(b->img,VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
-        d_.vkCmdBlitImage(cmd_,a->img.image,VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,b->img.image,
+        Target *from=MotionTargetFor(a),*to=MotionTargetFor(b);
+        EndRendering(); Barrier(from->img,VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
+        Barrier(to->img,VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+        d_.vkCmdBlitImage(cmd_,from->img.image,VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,to->img.image,
             VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,uint32_t(rs.size()),rs.data(),VK_FILTER_LINEAR);
     });
 #endif
@@ -3728,7 +3734,15 @@ void VulkanBackend::TraceFrame(Target& t) {
 
 void VulkanBackend::Present(const Surface& front) {
 #ifdef NGB_SMOOTH_MOTION
-    motion_endpoint_=false;
+    int64_t swap_ns=std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now().time_since_epoch()).count();
+    int64_t interval=swap_ns-motion_swap_ns_;
+    if (motion_endpoint_ && motion_swap_ns_ && interval>25000000LL && interval<100000000LL) motion_late_++;
+    else motion_late_=0;
+    if (motion_late_>=2) {
+        motion_cooldown_=120; motion_valid_=false;
+        std::fprintf(stderr,"[Smooth Motion] guest swaps exceeded 25 ms twice; skipping replay for 120 guest frames to preserve game speed\n");
+    }
+    motion_swap_ns_=swap_ns; motion_endpoint_=false; motion_ready_=nullptr;
 #endif
     presents_++;
 #ifdef NGB_IOS_APP
@@ -3922,6 +3936,9 @@ void VulkanBackend::Present(const Surface& front) {
     // (its barrier on the picture)
     if (show) {
 #ifdef NGB_SMOOTH_MOTION
+        if (motion_ready_ && nv2a_present_queue_pair(motion_ready_->image,show->image,show->w,show->h)) {
+            motion_pictures_++; motion_endpoint_=true;
+        }
         if (!motion_endpoint_)
 #endif
             nv2a_present_set_external(show->image, show->w, show->h);

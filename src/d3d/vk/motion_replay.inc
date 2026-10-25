@@ -1,7 +1,7 @@
 // Included inside the Vulkan backend's namespace. Every recipe owns its CPU
 // inputs and pins immutable texture versions until EndFrame. The authoritative
 // guest frame is rendered first; replay never runs visibility queries or guest
-// code, and restores all guest-visible render targets after drawing the midpoint.
+// code. Midpoint rendering writes isolated targets, never guest-visible pixels.
 #ifdef NGB_SMOOTH_MOTION
 static int64_t MotionClockNs() {
     return std::chrono::duration_cast<std::chrono::nanoseconds>(
@@ -27,19 +27,45 @@ void VulkanBackend::MotionTouch(Target *target) {
     if (!target || !motion_capture_ || !motion_valid_) return;
     if (target->samples!=1) { motion_valid_=false; return; }
     auto& saved=motion_targets_[target->img.image];
-    if (saved.seen==frame_ && saved.initial.image) return;
-    if (!saved.initial.image) {
-        uint64_t bytes=uint64_t(target->img.w)*target->img.h*(target->img.depth ? 8 : 4)*2;
+    if (saved.seen==frame_ && saved.replay.img.image) return;
+    if (!saved.replay.img.image) {
+        uint64_t bytes=uint64_t(target->img.w)*target->img.h*(target->img.depth ? 8 : 4);
         if (motion_gpu_bytes_+bytes>256u*1024u*1024u) { motion_valid_=false; return; }
-        for (Image *image : {&saved.initial,&saved.final})
-            if (!CreateImage(*image,target->img.format,target->img.w,target->img.h,1,1,target->img.depth,false,
-                VK_IMAGE_USAGE_SAMPLED_BIT|VK_IMAGE_USAGE_TRANSFER_SRC_BIT|VK_IMAGE_USAGE_TRANSFER_DST_BIT)) {
-                motion_valid_=false; return;
-            }
+        auto& clone=saved.replay; clone.gw=target->gw; clone.gh=target->gh; clone.samples=1;
+        if (!CreateImage(clone.img,target->img.format,target->img.w,target->img.h,1,1,target->img.depth,false,
+            VK_IMAGE_USAGE_SAMPLED_BIT|VK_IMAGE_USAGE_TRANSFER_SRC_BIT|VK_IMAGE_USAGE_TRANSFER_DST_BIT|
+            (target->img.depth ? VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT : VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT))) {
+            motion_valid_=false; return;
+        }
         motion_gpu_bytes_+=bytes;
     }
-    saved.source=&target->img; saved.seen=frame_;
-    MotionCopyImage(target->img,saved.initial);
+    saved.source=target; saved.seen=frame_;
+    // Snapshot directly into the isolated replay target before the guest writes
+    // it. Replay never overwrites authoritative guest pixels or query results.
+    MotionCopyImage(target->img,saved.replay.img); saved.replay.drawn=true;
+}
+Target *VulkanBackend::MotionTargetFor(Target *target) {
+    if (!target) return nullptr;
+    return &motion_targets_.at(target->img.image).replay;
+}
+Image *VulkanBackend::MotionImageFor(Image *image) {
+    for (auto& [key,saved]:motion_targets_) {
+        if (&saved.source->img==image) return &saved.replay.img;
+        if (&saved.source->fb==image) return &saved.replay.fb;
+    }
+    return nullptr;
+}
+void VulkanBackend::MotionFeedback(Target *target) {
+    Target *clone=MotionTargetFor(target);
+    if (!clone->fb.image) {
+        uint64_t bytes=uint64_t(clone->img.w)*clone->img.h*4;
+        if (motion_gpu_bytes_+bytes>256u*1024u*1024u) { motion_valid_=false; return; }
+        if (!CreateImage(clone->fb,clone->img.format,clone->img.w,clone->img.h,1,1,false,false,
+            VK_IMAGE_USAGE_SAMPLED_BIT|VK_IMAGE_USAGE_TRANSFER_SRC_BIT|VK_IMAGE_USAGE_TRANSFER_DST_BIT)) { motion_valid_=false; return; }
+        motion_gpu_bytes_+=uint64_t(clone->fb.w)*clone->fb.h*4;
+    }
+    MotionCopyImage(clone->img,clone->fb);
+    Barrier(clone->fb,VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
 }
 
 void VulkanBackend::MotionReplay(const MotionDraw& p) {
@@ -55,9 +81,13 @@ void VulkanBackend::MotionReplay(const MotionDraw& p) {
         offsets[i]=Upload(p.vertices[i].data(),p.vertices[i].size(),16); buffers[i]=ring_;
     }
     VkDeviceSize indices=p.indices.empty() ? 0 : Upload(p.indices.data(),p.indices.size(),4);
-    for (size_t i=0;i<4;i++) if (p.target_images[i])
-        Barrier(*p.target_images[i],p.images[i].imageLayout);
-    BeginRendering(p.rt,p.ds);
+    auto images=p.images;
+    for (size_t i=0;i<4;i++) if (p.target_images[i]) {
+        Image *image=MotionImageFor(p.target_images[i]);
+        if (!image || !image->image) return;
+        Barrier(*image,images[i].imageLayout); images[i].imageView=image->view;
+    }
+    BeginRendering(MotionTargetFor(p.rt),MotionTargetFor(p.ds));
     d_.vkCmdBindPipeline(cmd_,VK_PIPELINE_BIND_POINT_GRAPHICS,p.pipeline);
     VkDescriptorBufferInfo uniform[2]={{ring_,vc,sizeof p.vc},{ring_,dc,sizeof p.dc}};
     VkWriteDescriptorSet writes[10]{};
@@ -66,7 +96,7 @@ void VulkanBackend::MotionReplay(const MotionDraw& p) {
         w.dstBinding=i; w.descriptorCount=1;
         if (i<2) { w.descriptorType=VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER; w.pBufferInfo=&uniform[i]; }
         else { w.descriptorType=i<6 ? VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE : VK_DESCRIPTOR_TYPE_SAMPLER;
-            w.pImageInfo=i<6 ? &p.images[i-2] : &p.samplers[i-6]; }
+            w.pImageInfo=i<6 ? &images[i-2] : &p.samplers[i-6]; }
     }
     d_.vkCmdPushDescriptorSetKHR(cmd_,VK_PIPELINE_BIND_POINT_GRAPHICS,pipe_layout_,0,10,writes);
     d_.vkCmdSetViewport(cmd_,0,1,&p.viewport); d_.vkCmdSetScissor(cmd_,0,1,&p.scissor);
@@ -96,15 +126,11 @@ void VulkanBackend::MotionPresent(const Surface& front,Image& endpoint,float bar
     }
     if (slot<0) return;
     Image& midpoint_image=motion_display_[slot]; motion_display_next_=(slot+1)%3;
-    // The snapshots preserve both the frame's initial inputs and its final
-    // authoritative results. Shadows, copies and depth clears replay in order.
+    // Original and midpoint commands share the ordered Vulkan queue, but write
+    // separate targets. No CPU fence wait is needed between the two graphs.
     EndRendering();
-    for (auto& [key,saved]:motion_targets_) if (saved.seen==frame_)
-        MotionCopyImage(*saved.source,saved.final);
-    Submit();
-    for (auto& [key,saved]:motion_targets_) if (saved.seen==frame_)
-        MotionCopyImage(saved.initial,*saved.source);
-    for (auto& command:motion_commands_) command();
+    for (auto& command:motion_commands_) { command(); if (!motion_valid_) return; }
+    Target *replayed=MotionTargetFor(target);
     if (midpoint_image.image && (midpoint_image.w!=target->img.w || midpoint_image.h!=target->img.h)) {
         Submit(); nv2a_vk_queue_lock(); d_.vkDeviceWaitIdle(dev_); nv2a_vk_queue_unlock();
         DestroyImage(midpoint_image);
@@ -112,21 +138,16 @@ void VulkanBackend::MotionPresent(const Surface& front,Image& endpoint,float bar
     if (!midpoint_image.image) CreateImage(midpoint_image,kColorFormat,target->img.w,target->img.h,1,1,false,false,
         VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT|VK_IMAGE_USAGE_TRANSFER_SRC_BIT|VK_IMAGE_USAGE_TRANSFER_DST_BIT);
     if (midpoint_image.image) {
-        if (gamma_on_ || bars>0 || bars_y>0) GammaCopy(target->img,midpoint_image,bars,bars_y);
-        else MotionCopyImage(target->img,midpoint_image);
+        if (gamma_on_ || bars>0 || bars_y>0) GammaCopy(replayed->img,midpoint_image,bars,bars_y);
+        else MotionCopyImage(replayed->img,midpoint_image);
         Barrier(midpoint_image,VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
     }
-    Submit();
-    // BeginRendering updates target bookkeeping, but replay uses single-sample
-    // images only. Restore authoritative pixels/depth before returning to guest.
-    for (auto& [key,saved]:motion_targets_) if (saved.seen==frame_)
-        MotionCopyImage(saved.final,*saved.source);
-    Submit();
+    // EndFrame submits both graphs before the worker queues its blits on the
+    // same queue. GPU completion, not a guest-thread sleep, protects the images.
     // Display cadence belongs to the presenter worker. Sleeping/acquiring twice
     // inside Xbox Swap made gameplay miss every other 60 Hz vblank.
-    if (midpoint_image.image && nv2a_present_queue_pair(midpoint_image.image,endpoint.image,endpoint.w,endpoint.h)) {
-        motion_pictures_++; motion_endpoint_=true;
-    }
+    if (midpoint_image.image) motion_ready_=&midpoint_image;
+    (void)endpoint;
 
 }
 
@@ -153,6 +174,7 @@ void VulkanBackend::MotionFinish() {
 #endif
     // Custom glow/MSAA paths need their own replay recipes. Keep their original
     // rendering intact rather than interpolate an incomplete graph.
+    if (motion_cooldown_) { motion_cooldown_--; wanted=false; }
     wanted=wanted && !ContinuousGlowEnabled() && GlowSoftenMode()==0 && msaa_==1 && threed_>0 && !ngb_quick_wanted();
     bool reset=!motion_valid_ || !wanted || (motion_last_ns_ && now-motion_last_ns_>50000000LL);
 #ifdef NGB_IOS_APP
@@ -167,8 +189,9 @@ void VulkanBackend::MotionFinish() {
         for (auto it=motion_targets_.begin();it!=motion_targets_.end();) {
             if (reset || frame_-it->second.seen>2) {
                 auto& p=it->second;
-                motion_gpu_bytes_-=p.initial.image ? uint64_t(p.initial.w)*p.initial.h*(p.initial.depth ? 8 : 4)*2 : 0;
-                DestroyImage(p.initial); DestroyImage(p.final); it=motion_targets_.erase(it);
+                motion_gpu_bytes_-=p.replay.img.image ? uint64_t(p.replay.img.w)*p.replay.img.h*(p.replay.img.depth ? 8 : 4) : 0;
+                if (p.replay.fb.image) motion_gpu_bytes_-=uint64_t(p.replay.fb.w)*p.replay.fb.h*4;
+                DestroyImage(p.replay.img); DestroyImage(p.replay.fb); it=motion_targets_.erase(it);
             } else ++it;
         }
         if (motion_targets_.empty()) motion_gpu_bytes_=0;
