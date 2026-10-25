@@ -7,17 +7,17 @@ A successful compile/package is not a gameplay result.
 
 ## Download the actual IPA
 
-1. Open the [encrypted game artifact](https://github.com/ajellia81-cmd/ngbrecomp/actions/runs/40167778298/artifacts/12589750909)
-   while signed into GitHub. It is from [Actions run 40167778298](https://github.com/ajellia81-cmd/ngbrecomp/actions/runs/40167778298).
+1. Open the [encrypted game artifact](https://github.com/ajellia81-cmd/ngbrecomp/actions/runs/40171449033/artifacts/12590383163)
+   while signed into GitHub. It is from [Actions run 40171449033](https://github.com/ajellia81-cmd/ngbrecomp/actions/runs/40171449033).
 2. Extract GitHub's outer ZIP. It contains `NinjaGaidenBlack-ios-arm64-unsigned.ipa.7z`.
 3. Open the inner archive with a 7z-capable tool such as 7-Zip and enter the same
    password stored in `NGB_IPA_PASSWORD`. Do not upload the password to an issue or chat.
 4. Extract `NinjaGaidenBlack-ios-arm64-unsigned.ipa`. Import this file, not the ZIP/7z.
 
-The artifact is retained for seven days. The unsigned IPA is 47,274,190 bytes and
-has SHA-256 `33897f032b9a8cbd40afc43df2e677946d7bc898717223ba42c6f24d99e34d3d`.
-App version: **0.2.0 (2.41)**.
-Build source commit: `cecc67c4191804bde8f67f4e0ea8fdcee05016c2`.
+The artifact is retained for seven days. The unsigned IPA is 47,280,143 bytes and
+has SHA-256 `bdc31a828943480ccdb6628dd217456a92a065adae39bda84e9f31ab3acfadc1`.
+App version: **0.2.0 (2.42)**.
+Build source commit: `06c6205db5523dff01e88b2a1b59f0b594e55f95`.
 It contains the real engine, 11,740 original lifted game functions and 137 Korean
 variants. It is not NGBBringup. Korean glyph rendering/gameplay still require a device test.
 The Korean-enabled build contains the pinned translation capsule; the original
@@ -281,3 +281,14 @@ loading or 60-FPS-only output persists, copy the current saves-korean/log.txt
 after the problem and include Documents/build-info.txt. For motion diagnosis,
 move in actual gameplay with Smooth Motion on for at least ten seconds before
 copying. Menus and movies deliberately bypass intermediate-scene replay.
+
+## Build 2.42 follow-up
+
+Replace the existing app and keep its imported files/saves. This build corrects
+direct C calls to patched font/resource entries, removes two presenter queue/wait
+bottlenecks, and reuses the patch's own 설정 glyphs for the added tab. Japanese
+and English retain their original function bodies and Settings label. The code
+and whole-engine build checks passed; phone rendering and throughput are not yet
+verified. If motion stays limited, the current log now includes separate pair,
+drawable-acquisition and final-copy wait timings. The owner reported immediate
+gameplay entry on a later 2.41 session; no special loading-speed fix is claimed.
