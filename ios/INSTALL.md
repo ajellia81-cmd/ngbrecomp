@@ -147,7 +147,7 @@ The new source fixes these routes; installation on the owner's phone is pending:
   disc-provided Options descriptions are unchanged.
 
 
-### Cropped title screen / unexpectedly skipped intro report
+### Cropped title screen report
 
 The owner reported a small/cropped title picture after installing the asynchronous
 motion build, preventing access to its settings. The follow-up source serializes
@@ -158,9 +158,9 @@ depth targets and explicitly ends rendering before the final composite.
 
 Boot movies and 2D/title menus now bypass midpoint replay, even if Smooth Motion
 is enabled in the existing settings. No in-game setting change, data reimport or
-save deletion is required to install this correction. iOS automatic warning-screen
-Start injection is disabled when Skip Intros is Off; a saved On choice continues
-to request skipping. Desktop warning behavior is unchanged. These source changes
-need a device retest; compilation alone cannot establish that the reported image
-is restored. The separate request to alter the description's first glyph was
+save deletion is required to install this correction. The owner confirmed that
+intro skipping was the persisted Skip Intros=On choice, not a regression. The
+proposed boot-input change was withdrawn; intro behavior is unchanged. These
+rendering changes need a device retest; compilation alone cannot establish that
+the reported image is restored. The separate request to alter the description's first glyph was
 withdrawn, and no such glyph/content edit is included.
