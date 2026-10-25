@@ -427,6 +427,24 @@ static LONG CALLBACK veh_handler(PEXCEPTION_POINTERS ep)
  * hands the signal to forwards it to the guest thread. */
 static pthread_t s_guest_thread;
 static sem_t *s_sample_done;
+#ifdef NGB_IOS_APP
+/* A startup regression otherwise leaves only the host event-loop heartbeat.
+ * Reuse the existing guest sampler, bounded to three snapshots before a flip. */
+static void *ios_startup_sample(void *unused)
+{
+    (void)unused;
+    extern volatile unsigned nv2a_pcrtc_start_writes;
+    for (int round=0;round<3;round++) {
+        struct timespec delay={round ? 5 : 20,0};
+        nanosleep(&delay,NULL);
+        if (__atomic_load_n(&nv2a_pcrtc_start_writes,__ATOMIC_ACQUIRE)) break;
+        fprintf(stderr,"[iOS startup] no guest flip; sampling boot thread (%d/3)\n",round+1);
+        pthread_kill(s_guest_thread,SIGUSR1);
+    }
+    return NULL;
+}
+#endif
+
 
 /* One external `kill -USR1` fans out to every guest thread (the boot thread
  * and everything CreateThread started); each prints its own host backtrace
@@ -779,6 +797,10 @@ static void *guest_main(void *unused)
     (void)unused;
 #if !defined(_WIN32)
     s_guest_thread = pthread_self();
+#ifdef NGB_IOS_APP
+    { pthread_t watcher;
+      if (!pthread_create(&watcher,NULL,ios_startup_sample,NULL)) pthread_detach(watcher); }
+#endif
 #endif
 #if XBOX_HAS_VCPU
     /* The boot thread runs the title's main thread inline: it is a guest
