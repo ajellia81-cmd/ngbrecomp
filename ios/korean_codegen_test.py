@@ -85,4 +85,44 @@ class InstructionRanges(unittest.TestCase):
             self.assertTrue(changed_instructions('f',old,new,original,patched))
             self.assertEqual(set(select_changed_functions({'f':'safe call'},{'f':'direct call'},old,new,original,patched)),{'f'})
 
+
+from merge_korean_codegen import repair_korean_spacing
+
+class KoreanSpaces(unittest.TestCase):
+    def test_measurement_and_both_draw_paths_use_half_cell_only_for_korean_bank(self):
+        def fixture():
+            result={}
+            for name,label,reg,index in [('measure','001E7462','ecx',0),('draw_a','001E8481','eax',1),('draw_b','001E8481','eax',2)]:
+                result[name]=f'void {name}(void) {{ unsigned {reg};\nloc_{label}: ;\n    {reg} = ZX16(MEM16(esp + 0x88));\n result[{index}]={reg};\n}}\n'
+            return result
+        prefix=r'''#include <stdint.h>
+#include "korean.h"
+static uint32_t memory[128],esp,esi=0x100,result[3];
+#define MEM32(a) memory[(a)/4]
+#define MEM16(a) (*(uint16_t *)((uint8_t *)memory+(a)))
+#define ZX16(a) ((uint16_t)(a))
+'''
+        main=r'''int main(void) {
+ unsigned widths[]={0,1,7,16,17,32};
+ for(unsigned font=0;font<3;font++) for(unsigned i=0;i<6;i++) {
+  MEM32(esi+0x38)=font;MEM16(esp+0x88)=widths[i];
+  measure();draw_a();draw_b();
+  unsigned expected=font==1 ? (widths[i]+1)/2 : widths[i];
+  if(result[0]!=expected || result[1]!=expected || result[2]!=expected) return 1;
+ }
+ return 0;
+}'''
+        with tempfile.TemporaryDirectory() as directory:
+            directory=Path(directory)
+            for name,adapt,success in [('fixed',True,True),('old',False,False)]:
+                bodies=fixture()
+                if adapt: repair_korean_spacing(bodies)
+                source=directory/(name+'.c');exe=directory/name
+                source.write_text(prefix+'\n'.join(bodies.values())+main)
+                subprocess.run(['cc','-std=c11','-I'+str(Path(__file__).resolve().parents[1]/'src'),str(source),'-o',str(exe)],check=True,capture_output=True)
+                completed=subprocess.run([str(exe)],capture_output=True)
+                self.assertEqual(completed.returncode==0,success)
+        broken=fixture();del broken['draw_b']
+        with self.assertRaises(ValueError):repair_korean_spacing(broken)
+
 if __name__=='__main__':unittest.main()

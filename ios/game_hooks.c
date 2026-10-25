@@ -1,3 +1,4 @@
+#include <stdio.h>
 /* Host-only iOS hooks; original generated bodies stay private in the build. */
 #define RECOMP_GENERATED_CODE
 #include "recomp_funcs.h"
@@ -46,4 +47,11 @@ void sub_0017E8A0(void) {
     }
     ngb_korean_fn translated=ngb_korean_lookup_raw(0x0017E8A0u);
     if (translated) translated(); else ngb_base_0017E8A0();
+}
+
+
+void ngb_korean_font_metrics(unsigned font,unsigned width,unsigned height,float sx,float sy) {
+    static unsigned seen;
+    if (font>2 || (__atomic_fetch_or(&seen,1u<<font,__ATOMIC_RELAXED)&(1u<<font))) return;
+    fprintf(stderr,"[Korean metrics] font %u; cell %ux%u; scale %.3f,%.3f; Korean ASCII space uses half-cell advance\n",font,width,height,(double)sx,(double)sy);
 }

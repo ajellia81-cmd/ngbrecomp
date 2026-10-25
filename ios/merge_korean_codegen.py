@@ -86,6 +86,22 @@ def repair_font_trampolines(bodies):
             raise ValueError('Pinned Korean font trampoline caller changed')
 
 
+
+def repair_korean_spacing(bodies):
+    # These are the ASCII-space branches, not generic glyph or sprite bounds.
+    # Adapt both the measurement pass and each draw continuation together.
+    counts={"001E7462":0,"001E8481":0}
+    for name,body in list(bodies.items()):
+        for label,register in [("001E7462","ecx"),("001E8481","eax")]:
+            old=f"loc_{label}: ;\n    {register} = ZX16(MEM16(esp + 0x88));"
+            new=old+f"\n    {register} = ngb_korean_space_advance({register},MEM32(esi + 0x38));"
+            counts[label]+=body.count(old)
+            body=body.replace(old,new)
+        bodies[name]=body
+    if counts!={"001E7462":1,"001E8481":2}:
+        raise ValueError("Pinned Korean space measurement/draw branches changed")
+
+
 HOST_WRAPPERS={'sub_001E6D30','sub_001E86A0','sub_001E6AE0','sub_0017E8A0'}
 
 def route_direct_entries(original, selected):
@@ -197,6 +213,12 @@ def merge(original, translated, missing_seeds=None):
         if unimplemented-baseline_unimplemented:
             raise ValueError('New Korean instruction remains untranslated; refusing an incomplete font helper')
         selected[name]=body
+    repair_korean_spacing(selected)
+    # Read-only metrics to distinguish font-cell clipping from renderer bounds.
+    key='sub_001E6D36'
+    marker='loc_001E6E59: ;'
+    if selected[key].count(marker)!=1: raise ValueError('Pinned text metric entry changed')
+    selected[key]=selected[key].replace(marker,marker+'\n    ngb_korean_font_metrics(MEM32(esi + 0x38),ZX16(MEM16(esp + 0x88)),ZX16(MEM16(esp + 0x8C)),MEMF(esp + 0x1C),MEMF(esp + 0xC));')
     output = ['/* PRIVATE generated language variants: never commit. */',
               '#ifdef NGB_IOS_KOREAN', '#define RECOMP_GENERATED_CODE', '#include "recomp_funcs.h"',
               '#include "korean.h"', '#include <stddef.h>', '#include <math.h>']
