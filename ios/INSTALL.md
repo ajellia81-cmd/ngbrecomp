@@ -7,18 +7,18 @@ A successful compile/package is not a gameplay result.
 
 ## Download the actual IPA
 
-1. Open the [encrypted game artifact](https://github.com/ajellia81-cmd/ngbrecomp/actions/runs/40171449033/artifacts/12590383163)
-   while signed into GitHub. It is from [Actions run 40171449033](https://github.com/ajellia81-cmd/ngbrecomp/actions/runs/40171449033).
+1. Open the [encrypted game artifact](https://github.com/ajellia81-cmd/ngbrecomp/actions/runs/40173667289/artifacts/12591273435)
+   while signed into GitHub. It is from [Actions run 40173667289](https://github.com/ajellia81-cmd/ngbrecomp/actions/runs/40173667289).
 2. Extract GitHub's outer ZIP. It contains `NinjaGaidenBlack-ios-arm64-unsigned.ipa.7z`.
 3. Open the inner archive with a 7z-capable tool such as 7-Zip and enter the same
    password stored in `NGB_IPA_PASSWORD`. Do not upload the password to an issue or chat.
 4. Extract `NinjaGaidenBlack-ios-arm64-unsigned.ipa`. Import this file, not the ZIP/7z.
 
-The artifact is retained for seven days. The unsigned IPA is 47,280,143 bytes and
-has SHA-256 `bdc31a828943480ccdb6628dd217456a92a065adae39bda84e9f31ab3acfadc1`.
-App version: **0.2.0 (2.42)**.
-Build source commit: `06c6205db5523dff01e88b2a1b59f0b594e55f95`.
-It contains the real engine, 11,740 original lifted game functions and 137 Korean
+The artifact is retained for seven days. The unsigned IPA is 47,125,911 bytes and
+has SHA-256 `5b710225a15fc7014753bf730510b8aaefdb3dabbc8a4597155af533450bf6dc`.
+App version: **0.2.0 (2.43)**.
+Build source commit: `97442e30a6ab3aae3b89f5052b8a1f3bb05aeebe`.
+It contains the real engine, 11,740 original lifted game functions and 55 Korean
 variants. It is not NGBBringup. Korean glyph rendering/gameplay still require a device test.
 The Korean-enabled build contains the pinned translation capsule; the original
 game data must still be imported. No developer certificate/provisioning profile is included.
@@ -292,3 +292,14 @@ and whole-engine build checks passed; phone rendering and throughput are not yet
 verified. If motion stays limited, the current log now includes separate pair,
 drawable-acquisition and final-copy wait timings. The owner reported immediate
 gameplay entry on a later 2.41 session; no special loading-speed fix is claimed.
+
+## Build 2.43 startup retest
+
+The owner confirmed the 2.42 startup stall. This build retains original callers
+when their Xbox instruction bytes are unchanged, narrowing the Korean selection
+to 25 entry gates and 55 variants. Replace the app and retain imported data/saves;
+no ISO reimport is required. Regression tests and the whole-engine device build
+passed, but phone startup is unverified. If it still freezes, keep the app in the
+foreground for thirty seconds, then copy the current log.txt and build-info.txt.
+Before a first guest flip, the bounded sampler records the boot-thread stack;
+after flips begin it stops. Korean text and sustained 120 FPS remain retest items.
