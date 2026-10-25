@@ -80,12 +80,15 @@ Other aspect ratios keep their appropriate black bars. This mode is device-test
 pending. It does not change game timing. iOS hides window-size, window-mode and
 V-Sync selection; sync is fixed FIFO. Windows/macOS choices are retained.
 
-The display-link-only 120 Hz request has been removed. This build still uses
-the original 60 Hz guest clock and does not implement true 120 fps gameplay. Menus remain English: Korean progress
-reports were requested, not interface translation. The separately requested game
-translation uses an [isolated USA adaptation](KOREAN_PATCH.md). Select Korean in
-Startup → Text Language, then fully close and reopen the app. No archive upload
-is required; keep the original imported game data.
+For experimental 120 Hz scene output, set **Display & Audio → Smooth Motion: On**,
+**Graphics → MSAA: Off**, and **Smoother Glow: Off**. Start at 1x to assess headroom.
+The renderer re-rasterizes an intermediate scene; game updates remain 60 Hz.
+Actual sustained 120 fps and image correctness require a device test. See
+[120FPS.md](120FPS.md) for unsupported cases and diagnostic log fields.
+
+The separately requested [Korean adaptation](KOREAN_PATCH.md) remains available:
+Startup → Text Language → Korean, then fully close and reopen the app. No archive
+upload is required; keep the original imported game data. Recomp menus remain English.
 
 Connect a supported controller for SDL's native iOS GameController backend.
 Without one, the native touch overlay supplies both sticks, D-pad, face buttons,

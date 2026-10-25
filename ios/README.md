@@ -62,10 +62,12 @@ separate scale paths. Native aspect plus native rendering fills the drawable.
 Desktop window-size/display-mode rows are hidden on iOS, and FIFO sync is fixed,
 so its V-Sync choice is hidden too. Desktop builds keep their existing choices.
 
-True 120 fps means 120 distinct rendered scene frames while preserving game speed
-and physics. A display-link-only high-refresh request was removed at the owner's
-request. The Xbox vblank/simulation currently remains 60 Hz. True 120 fps is not
-implemented or measured; see [120FPS.md](120FPS.md) for the code audit and gates.
+iOS now implements experimental **Smooth Motion**, with retained draw recipes
+and separately rasterized intermediate geometry while the guest stays at 60 Hz.
+It requires MSAA Off, Smoother Glow Off and a reported display cadence above
+100 Hz; 1x is recommended for the initial device test. It does not guarantee
+sustained 120 fps. See [120FPS.md](120FPS.md) for implementation, fallback and
+unverified limits.
 
 The v1.2 translation has a restricted USA adaptation with isolated Korean code
 and data. Startup settings add Text Language: Japanese, English, Korean; restart
@@ -129,8 +131,8 @@ failure alone does not establish a production VM bug. Do not report all tests as
 - Host condition-variable waits still use real-time deadlines. Not every guest
   wait/timer behavior across a long suspension has been established, even though
   guest execution, its monotonic counters and the NV2A virtual clock are paused.
-- 120 Hz presentation and preservation of game behavior at that rate have not
-  been measured. The plist permits high refresh, but guest timing was not doubled.
+- Smooth Motion replay and sustained 120 fps need physical-device checks.
+  Guest timing is not doubled; the renderer adds an intermediate scene.
 - Separate arcade executables and external archive extraction are not supported
   by this iOS app.
 
