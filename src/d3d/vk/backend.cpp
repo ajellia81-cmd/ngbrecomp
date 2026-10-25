@@ -39,6 +39,7 @@
 #include "gpu/texture.h"
 #include "gpu/vertex.h"
 #include "gpu/motion.h"
+#include "gpu/upload_ring.h"
 #include "kernel/kernel.h"
 #include "vk/spirv.h"
 #include "nv2a_vk_share.h"   // the NV2A renderer's device and presenter (NGB_RENDERER=d3d)
@@ -222,7 +223,7 @@ void DecodeBC(Host h, const uint8_t* src, uint32_t w, uint32_t h_, std::vector<u
             }
         }
 }
-constexpr VkDeviceSize kRingSize = 64u << 20;   // vertices, indices and constants of one frame
+constexpr VkDeviceSize kRingSize = kUploadRingBytes;   // vertices, indices and constants of one frame
 constexpr uint32_t kQuadVertices = 6;
 extern "C" int ngb_pc_setting(int which);
 extern "C" int nv2a_dirty_stamp(const void* host, size_t len, uint64_t* stamp);   // xboxrecomp nv2a_dirty.c
@@ -1123,7 +1124,7 @@ void VulkanBackend::Retire(Image& img, VkImageView extra) {
 }
 
 VkDeviceSize VulkanBackend::Upload(const void* data, VkDeviceSize bytes, VkDeviceSize align) {
-    const VkDeviceSize half = kRingSize / 2, base = VkDeviceSize(slot_) * half;
+    const VkDeviceSize half = kUploadSlotBytes, base = VkDeviceSize(slot_) * half;
     VkDeviceSize at = (ring_pos_ + align - 1) & ~(align - 1);
     if (at + bytes > half) {
         Submit();
@@ -3078,7 +3079,8 @@ void VulkanBackend::Draw(const State& s, uint32_t prim, uint32_t start, uint32_t
     uint64_t required=sizeof(s.vsc)+sizeof(c)+ringAlign_*2+16*16+4;
     for (uint32_t b=0;b<a.buffer_count;b++) required+=a.buffers[b].bytes;
     required+=uint64_t(a.index_count)*(a.index16 ? 2 : 4);
-    if (required<=kRingSize && ring_pos_+required>kRingSize) Submit();
+    if (required>kUploadSlotBytes) ngb_renderer_fatal("One draw exceeds the GPU upload frame slot.");
+    if (!UploadRingFits(ring_pos_,required)) Submit();
     auto motion_vc=s.vsc;
 #endif
     if (points && !prog) {   // the point sizes for PointHlsl, in registers fixed function leaves unused
@@ -3224,7 +3226,7 @@ void VulkanBackend::Draw(const State& s, uint32_t prim, uint32_t start, uint32_t
     if (motion_capture_ && motion_valid_) {
         uint64_t estimate=sizeof(MotionDraw)+ibytes;
         for (uint32_t b=0;b<a.buffer_count;b++) estimate+=a.buffers[b].bytes;
-        if (estimate+motion_cpu_bytes_>96u*1024u*1024u || required>kRingSize) motion_valid_=false;
+        if (estimate+motion_cpu_bytes_>96u*1024u*1024u || required>kUploadSlotBytes) motion_valid_=false;
     }
     if (motion_capture_ && motion_valid_) {
         auto packet=std::make_shared<MotionDraw>();

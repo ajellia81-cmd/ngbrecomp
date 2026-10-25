@@ -1,6 +1,7 @@
 // No game inputs, GPU, desktop window or saves. Exercise the actual retained
 // pose and generated shader code; emitted fixtures are compiled by glslang in CI.
 #include "gpu/motion.h"
+#include "gpu/upload_ring.h"
 #include <cmath>
 #include <fstream>
 #include <iostream>
@@ -9,6 +10,14 @@
 static void check(bool value,const char *message) { if (!value) throw std::runtime_error(message); }
 int main(int argc,char **argv) {
     using namespace gpu;
+    // Reproduce the old full-allocation guard: 31 MiB + a 2 MiB draw is
+    // inside 64 MiB, but Upload() wraps at the 32 MiB frame-slot boundary.
+    check(kUploadRingBytes==2*kUploadSlotBytes,"upload slots disagree with allocation");
+    check(UploadRingFits(0,kUploadSlotBytes),"exactly one slot must fit");
+    check(UploadRingFits(kUploadSlotBytes-4096,4096),"exact tail must fit");
+    check(!UploadRingFits(31u<<20,2u<<20),"draw would cross into a new uniform generation");
+    check(!UploadRingFits(0,kUploadSlotBytes+1),"oversized draw must not overwrite next frame");
+    check(!UploadRingFits(UINT64_MAX,1),"overflow must not make reservation fit");
     State source; DrawConstants constants{};
     MotionHistory history;
     source.vsc[96]={1,0,0,0.1f};
@@ -46,5 +55,5 @@ int main(int argc,char **argv) {
         emit("motion-program.vert.hlsl",VertexProgramHlsl(program,1));
         check(MotionVertexHlsl("no vertex entry").empty(),"unsupported entry silently accepted");
     }
-    std::cout<<"Smooth Motion: owned history, changed geometry, topology/reset rejection and fixed/program shader generation: OK\n";
+    std::cout<<"Smooth Motion: 32 MiB slot boundaries, owned history, changed geometry, topology/reset rejection and fixed/program shader generation: OK\n";
 }
