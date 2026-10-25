@@ -3,6 +3,7 @@ from pathlib import Path
 import re
 import subprocess
 import tempfile
+import sys
 ROOT=Path(__file__).resolve().parents[1]
 def function(path,name):
     source=path.read_text();m=re.search(r'^\w+ '+name+r'\([^;]*?\)\s*\{',source,re.M)
@@ -13,7 +14,6 @@ def function(path,name):
     return source[m.start():end]
 PREFIX=r'''
 #define _DEFAULT_SOURCE
-#define __APPLE__ 1
 #define XBOX_HAS_VCPU 0
 #include <stdint.h>
 #include <stddef.h>
@@ -27,7 +27,12 @@ static uint32_t g_ebx;
 static ptrdiff_t g_xbox_mem_offset;
 static int yields;
 int SwitchToThread(void) { yields++;return 1; }
+#ifdef __APPLE__
+extern int ngb_ios_service_spin(uint32_t) __attribute__((weak_import));
+#else
+#define __APPLE__ 1
 extern int ngb_ios_service_spin(uint32_t) __attribute__((weak));
+#endif
 '''
 MAIN=r'''
 int main(void) {
@@ -67,4 +72,8 @@ def main():
         subprocess.run(['cc','-std=c11',str(source),'-o',str(exe)],check=True,capture_output=True)
         subprocess.run([str(exe)],check=True)
     print('DSP: original/moved mailbox, unrelated word preservation, command/PC/address guards, explicit-off/manual policy and absent hook PASS; old spin rejected')
-if __name__=='__main__':main()
+if __name__=='__main__':
+    try: main()
+    except subprocess.CalledProcessError as error:
+        if error.stderr: sys.stderr.write(error.stderr.decode())
+        raise
