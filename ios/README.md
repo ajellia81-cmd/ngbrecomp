@@ -6,30 +6,31 @@ after restarting following the first load. Long-term reliability, performance an
 background resume still require testing. The older NGBBringup diagnostic app is
 a separate target.
 
-- App version: **0.2.0 (2.51)**; compiled revision and active log path are recorded in `Documents/build-info.txt`.
-- Build source: `7471451017e3f1011a8be0e34703206467ada1e0`, branch `ios-port`.
-- [Successful Actions run](https://github.com/ajellia81-cmd/ngbrecomp/actions/runs/40190646660).
-- [Encrypted IPA artifact](https://github.com/ajellia81-cmd/ngbrecomp/actions/runs/40190646660/artifacts/12598261083).
-- Unsigned IPA: **47,125,800 bytes**, containing **11,740 linked lifted game functions**,
+- App version: **0.2.0 (2.54)**; compiled revision and active log path are recorded in `Documents/build-info.txt`.
+- Build source: `d13842d334c5e6ebbb1bf64b80accd0a4cbbf7db`, branch `ios-port`.
+- [Successful Actions run](https://github.com/ajellia81-cmd/ngbrecomp/actions/runs/40196789155).
+- [Encrypted IPA artifact](https://github.com/ajellia81-cmd/ngbrecomp/actions/runs/40196789155/artifacts/12600557788).
+- Unsigned IPA: **47,258,571 bytes**, containing **11,740 linked lifted game functions**,
   55 additional Korean variants, the real engine/runtime, SDL UIKit entry point,
   MoltenVK framework and private translation capsule.
-- IPA SHA-256: `ae7c46810d9e7506c0a601698af2e6d45d50d0ba84bc710888ab2ed203c7f3a1`.
-- GitHub artifact ZIP SHA-256: `46b128b2608d223ff722bba9f1ba3aaae4363ee12a09d6e674d45446df847b2f`.
+- IPA SHA-256: `ba0990d69044a9bd91becb510c2d3a96fdab80ea04b1207be791ecb5ee1f9344`.
+- GitHub artifact ZIP SHA-256: `3ce8947241dc0f8beab652681c7a2d0a10213950d49f9d261462744dfb175c43`.
 
-The owner confirms that build 2.47 enters gameplay and displays Korean dynamic
-text correctly. The 2.48 device log now shows approximately 300 midpoint/end
-pairs per five seconds in several active gameplay windows, with occasional
-backpressure and one overload cooldown. The overlay still reported 60 because
-its iOS output-count path used an application-only define absent from the runtime
-library. Build 2.51 selects that path using the actual iPhoneOS platform macros;
-its regression test reports 120 submitted pictures/game 60 and returns to 60 in
-menus. This is submission evidence, not physical display-timestamp validation.
-The owner confirms camera-dependent wall flicker stops when Smooth Motion is Off.
-The vertex-level NDC cutoff is removed to avoid mixing midpoint and endpoint
-vertices in a triangle. Korean tab row reversal is removed, its weight is Regular
-and its plate height is 32 pixels. The actual CoreText function's upright macOS
-preview was reviewed. Final iPhone tab appearance and wall correctness still need
-retesting. Imported data and saves are preserved; no ISO reimport is required.
+The owner confirms gameplay, Korean text and 120 FPS output/counter operation.
+Polygon faces still flicker during camera motion with Smooth Motion enabled;
+the prior vertex-cutoff fix did not resolve it. This build preserves precise
+subtract/multiply/add in clip-position interpolation; native SPIR-V checks verify
+NoContraction and reject an unprotected control. Device visual validation is still
+required. The Korean 설정 tab now uses newly generated image lettering rather
+than a system font, with its native plate-sized preview reviewed on macOS.
+Controller haptics run on a separate serial queue with silent player prewarm,
+latest-value commands, expiry, foreground silence and engine stop/reset/error
+recovery. The actual iPhoneOS haptics source compiles and policy/bridge tests pass;
+Backbone Pro recovery and first-output latency still need a device retest.
+Korean-bank ASCII spaces use half-cell advance consistently in measurement and
+both draw continuations. The reported glyph-bottom clipping remains unresolved;
+bounded font metrics are logged and a read-only Windows font extractor is supplied
+for private asset inspection. Imported data and shared saves are preserved.
 
 See [INSTALL.md](INSTALL.md) for download, LiveContainer import and game data.
 The download is an encrypted 7z inside GitHub's artifact ZIP. It expires seven
