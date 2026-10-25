@@ -100,6 +100,11 @@ static int64_t host_clock_ns(void)
 }
 long long vcpu_game_clock_ns(void)
 {
+    /* A tight RDTSC loop can spend each timer interrupt inside Darwin's
+     * clock_gettime, outside our interruptible image range. Recheck at this
+     * lock-free guest boundary; never yield while a host wrapper owns locks. */
+    if (t_self && t_self->preempt && !t_self->in_vcpu && compat_host_depth()==0)
+        vcpu_check_preempt();
     /* RDTSC reaches this without a host-lock wrapper. A reader mutex could be
      * held when a guest is preempted, deadlocking the next guest on the same
      * mutex. Writers are host lifecycle calls; readers must stay lock-free. */

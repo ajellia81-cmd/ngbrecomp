@@ -23,7 +23,7 @@ int main(int argc, char **argv)
 #include <stdlib.h>
 #include <time.h>
 
-static atomic_int started, progressed, stop;
+static atomic_int started, progressed, stop, clock_stress;
 static atomic_ulong iterations;
 static void pause_ms(long milliseconds)
 {
@@ -36,7 +36,7 @@ static void *spinner(void *unused)
     vcpu_attach(VCPU_PRIO_NORMAL);
     atomic_store(&started, 1);
     while (!atomic_load(&stop)) {
-        (void)vcpu_game_clock_ns();
+        if (atomic_load(&clock_stress)) (void)vcpu_game_clock_ns();
         atomic_fetch_add(&iterations, 1);
     }
     vcpu_detach();
@@ -61,6 +61,15 @@ int ngb_vcpu_image_test(void)
     if (pthread_create(&second, NULL, peer, NULL)) return 2;
     for (int i = 0; i < 200 && !atomic_load(&progressed); i++) pause_ms(5);
     int ok = atomic_load(&progressed);
+    if (ok) {
+        // Preserve a genuinely noncooperative spin phase above: the old image
+        // range must still fail it, even with a cooperative clock boundary.
+        pthread_join(second,NULL);
+        atomic_store(&progressed,0); atomic_store(&clock_stress,1);
+        if (pthread_create(&second,NULL,peer,NULL)) return 2;
+        for (int i=0;i<200 && !atomic_load(&progressed);i++) pause_ms(5);
+        ok=atomic_load(&progressed);
+    }
     if (ok) {
         int parked = vcpu_set_paused(1);
         unsigned long before = atomic_load(&iterations);
