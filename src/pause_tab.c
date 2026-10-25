@@ -33,6 +33,7 @@
  * game's own, six tabs.
  */
 #define RECOMP_GENERATED_CODE
+#include "quit_label.h"
 #include "recomp_funcs.h"
 #include <math.h>
 #include <stdio.h>
@@ -89,10 +90,10 @@ static const char *const s_label[S_COUNT] = {
 };
 static const char *const s_help[S_COUNT] = {
     "Draws the game at a multiple of the console's resolution.",
-    "Keeps textures sharp at an angle. Off: the console's filtering.",
+    "Sharper textures at an angle. Off: console filtering.",
     "The detail of the characters' shadows; 1x is the console's.",
     "A window, the whole screen, or a window without a frame.",
-    "No tearing. Mailbox: least delay. FIFO: steadiest. Adaptive: a late frame goes at once.",
+    "Choose frame synchronization.",
     "Frames per second, in the corner of the screen.",
     "The size of the window when not full screen.",
     "The shape of the picture and the window sizes offered.",
@@ -104,17 +105,17 @@ static const char *const s_help[S_COUNT] = {
     "As much essence as can be held. For this session only.",
     "Every difficulty at New Game, Ninja Dog to Master Ninja.",
     "All 50: Muramasa gives every reward. For this session only.",
-    "Every costume at the Costume Selection, and three it never offers.",
+    "Unlock all costumes at Costume Selection.",
     "Costumes in the game it never offers. From the next area.",
     "A softer, fainter glow on bright lights. Off: the console's.",
-    "The game pauses while the quick menu is open (once Ryu's action ends).",
-    "A d-pad menu of weapons, Ninpo and items (Up and Down open it), at this size.",
-    "Healing items, the Talisman of Rebirth and the Jewel of the Demon Seal are not used up.\nFor this session only.",
-    "Shuriken, smoke bombs, arrows and spears are not used up. For this session only.",
-    "Sounds placed left and right. Console: the sound chip's filters. Panning: their placement only, clearer.",
-    "The health and Ninpo bar, weapons and the rest drawn over play. Off: a clear screen.",
-    "Japanese, English or Korean text. Close and relaunch the game to apply. Speech language is separate.",
-    "Experimental intermediate 3D scenes at 120 Hz; game logic stays 60 Hz.\nRequires MSAA Off and Smoother Glow Off. Actual fps depends on GPU load.",
+    "Pause gameplay while the quick menu is open.",
+    "D-pad item menu. Up/Down to open; Off disables it.",
+    "Items are not used up. This session only.",
+    "Unlimited projectiles. This session only.",
+    "Choose console audio or clearer stereo panning.",
+    "Show or hide the HUD.",
+    "Text language. Restart to apply Korean.",
+    "Extra motion frames. MSAA and Smoother Glow must be Off.",
 };
 
 /* The categories: the strip's words, their rows. */
@@ -131,9 +132,6 @@ static const signed char s_cat_rows[CATS][CAT_ROWS] = {
     { S_ASPECT, S_WINDOW, S_DISPLAY, S_VSYNC, S_FPS, S_HUD, S_POSAUDIO },
 #endif
     { S_SKIP,
-#ifdef NGB_IOS_KOREAN
-      S_TEXTLANG,
-#endif
       S_ALLDIFF, S_ALLCOST, -1 },
     { S_QUICKSCALE, S_QUICKFREEZE, -1 },
     { S_HEALTH, S_NINPO, S_ESSENCE, S_SCARABS, S_INFITEMS, S_INFAMMO, -1 },
@@ -2374,7 +2372,7 @@ int ngb_confirm_hit(float x, float y)
 static int s_mm_exit;
 void ngb_main_menu_exit(void)
 {
-    if (!s_mm_exit && ngb_confirm_open("Exit to Desktop?", 0))
+    if (!s_mm_exit && ngb_confirm_open(NGB_QUIT_QUESTION, 0))
         s_mm_exit = 1;
 }
 
@@ -2404,13 +2402,13 @@ void ngb_restart_to_menu(void);
 void ngb_quit_to_desktop(void);
 
 #define EXIT_ROWS 3
-static const char *const s_exit_label[EXIT_ROWS] = { "Return to Game", "Return to Main Menu", "Exit to Desktop" };
+static const char *const s_exit_label[EXIT_ROWS] = { "Return to Game", "Return to Main Menu", NGB_QUIT_LABEL };
 static const char *const s_exit_help[EXIT_ROWS] = {
     "Closes this menu.",
     "Back to the main menu. Unsaved progress is lost.",
     "Closes the game. Unsaved progress is lost.",
 };
-static const char *const s_exit_q[EXIT_ROWS] = { "", "Return to the Main Menu?", "Exit to Desktop?" };
+static const char *const s_exit_q[EXIT_ROWS] = { "", "Return to the Main Menu?", NGB_QUIT_QUESTION };
 static int s_exit_row, s_exit_armed = -1;   /* (no longer armed: the box asks) */
 
 static void draw_exit_page(int focused, int row, int armed)

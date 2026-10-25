@@ -64,7 +64,7 @@ def merge(original, translated, missing_seeds=None):
     # Executable XBE sections can also hold text data. Do not import functions
     # found by a linear sweep of those bytes unless reachable from real changed
     # code. The three handwritten entries contain verified patched branches.
-    roots=set(changed) | {'sub_001E6D30','sub_001E86A0','sub_0021C660'}
+    roots=set(changed) | {'sub_001E6D30','sub_001E86A0','sub_0021C660','sub_001E6AE0','sub_0017E8A0'}
     old_symbols=set(re.findall(r'void (sub_[0-9A-Fa-f]{8})\(', (original/'recomp_funcs.h').read_text()))
     selected={}; pending=list(roots); missing=set()
     while pending:
@@ -113,9 +113,9 @@ def merge(original, translated, missing_seeds=None):
         # Route those to the matching variant while retaining font host hooks.
         def rename(match):
             target = match[0]
-            return 'kr_' + target if target in selected and int(target[4:],16) not in {0x001E6D30,0x001E86A0} else target
+            return 'kr_' + target if target in selected and int(target[4:],16) not in {0x001E6D30,0x001E86A0,0x001E6AE0,0x0017E8A0} else target
         body = re.sub(r'\bsub_[0-9A-Fa-f]{8}\b', rename, body)
-        if name in {'sub_001E6D30','sub_001E86A0'}:
+        if name in {'sub_001E6D30','sub_001E86A0','sub_001E6AE0','sub_0017E8A0'}:
             body = body.replace('void ' + name + '(void)', 'void kr_' + name + '(void)', 1)
         output.append(body)
         for macro in ['fp_push', 'fp_pop', 'fp_top', 'fp_st', 'fp_st1']:
@@ -132,7 +132,7 @@ def merge(original, translated, missing_seeds=None):
                   'else if (entries[m].address > address) hi=m;',
                   'else return entries[m].function; } return NULL; }',
                   'ngb_korean_fn ngb_korean_lookup(unsigned address) {',
-                  'if (address == 0x001E6D30u || address == 0x001E86A0u) return NULL;',
+                  'if (address == 0x001E6D30u || address == 0x001E86A0u || address == 0x001E6AE0u || address == 0x0017E8A0u) return NULL;',
                   'return ngb_korean_lookup_raw(address); }', '#endif'])
     (original / 'recomp_korean.c').write_text('\n'.join(output) + '\n')
     # Same register ABI; the patched executable adds an executable helper range.

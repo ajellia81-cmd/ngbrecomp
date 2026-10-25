@@ -80,7 +80,7 @@ void VulkanBackend::MotionReplay(const MotionDraw& p) {
     } else d_.vkCmdDraw(cmd_,p.draw_count,1,0,0);
 }
 
-void VulkanBackend::MotionPresent(const Surface& front,Image&,float bars,float bars_y) {
+void VulkanBackend::MotionPresent(const Surface& front,Image& endpoint,float bars,float bars_y) {
     int64_t now=MotionClockNs();
 #ifdef NGB_IOS_APP
     if (motion_epoch_!=ngb_ios_motion_epoch() || ngb_ios_display_hz()<100 || !ngb_pc_setting(26)) return;
@@ -89,6 +89,13 @@ void VulkanBackend::MotionPresent(const Surface& front,Image&,float bars,float b
         ngb_quick_wanted() || !motion_last_ns_ || now-motion_last_ns_>50000000LL) return;
     Target *target=EnsureTarget(front,false);
     if (!target || !motion_valid_) return;
+    int slot=-1;
+    for (int i=0;i<3;i++) {
+        int candidate=(motion_display_next_+i)%3;
+        if (!nv2a_present_external_image_busy(motion_display_[candidate].image)) { slot=candidate; break; }
+    }
+    if (slot<0) return;
+    Image& midpoint_image=motion_display_[slot]; motion_display_next_=(slot+1)%3;
     // The snapshots preserve both the frame's initial inputs and its final
     // authoritative results. Shadows, copies and depth clears replay in order.
     EndRendering();
@@ -98,28 +105,29 @@ void VulkanBackend::MotionPresent(const Surface& front,Image&,float bars,float b
     for (auto& [key,saved]:motion_targets_) if (saved.seen==frame_)
         MotionCopyImage(saved.initial,*saved.source);
     for (auto& command:motion_commands_) command();
-    if (motion_display_.image && (motion_display_.w!=target->img.w || motion_display_.h!=target->img.h)) {
+    if (midpoint_image.image && (midpoint_image.w!=target->img.w || midpoint_image.h!=target->img.h)) {
         Submit(); nv2a_vk_queue_lock(); d_.vkDeviceWaitIdle(dev_); nv2a_vk_queue_unlock();
-        DestroyImage(motion_display_);
+        DestroyImage(midpoint_image);
     }
-    if (!motion_display_.image) CreateImage(motion_display_,kColorFormat,target->img.w,target->img.h,1,1,false,false,
+    if (!midpoint_image.image) CreateImage(midpoint_image,kColorFormat,target->img.w,target->img.h,1,1,false,false,
         VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT|VK_IMAGE_USAGE_TRANSFER_SRC_BIT|VK_IMAGE_USAGE_TRANSFER_DST_BIT);
-    if (motion_display_.image) {
-        if (gamma_on_ || bars>0 || bars_y>0) GammaCopy(target->img,motion_display_,bars,bars_y);
-        else MotionCopyImage(target->img,motion_display_);
-        Barrier(motion_display_,VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
+    if (midpoint_image.image) {
+        if (gamma_on_ || bars>0 || bars_y>0) GammaCopy(target->img,midpoint_image,bars,bars_y);
+        else MotionCopyImage(target->img,midpoint_image);
+        Barrier(midpoint_image,VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
     }
     Submit();
     // BeginRendering updates target bookkeeping, but replay uses single-sample
     // images only. Restore authoritative pixels/depth before returning to guest.
-    const auto midpoint=std::chrono::steady_clock::now();
-    if (motion_display_.image && nv2a_present_set_external_wait(motion_display_.image,motion_display_.w,motion_display_.h)) {
-        motion_pictures_++; motion_endpoint_=true;
-    }
     for (auto& [key,saved]:motion_targets_) if (saved.seen==frame_)
         MotionCopyImage(saved.final,*saved.source);
     Submit();
-    if (motion_endpoint_) std::this_thread::sleep_until(midpoint+std::chrono::nanoseconds(8333333));
+    // Display cadence belongs to the presenter worker. Sleeping/acquiring twice
+    // inside Xbox Swap made gameplay miss every other 60 Hz vblank.
+    if (midpoint_image.image && nv2a_present_queue_pair(midpoint_image.image,endpoint.image,endpoint.w,endpoint.h)) {
+        motion_pictures_++; motion_endpoint_=true;
+    }
+
 }
 
 void VulkanBackend::MotionFinish() {
@@ -130,8 +138,11 @@ void VulkanBackend::MotionFinish() {
 #endif
     if (now-motion_log_ns_>=5000000000LL) {
         if (motion_log_ns_) std::fprintf(stderr,
-            "[Smooth Motion] midpoint scenes submitted %u/5s; eligible 3D draws %u, changed matches %u; packet %.1f MiB; snapshots %.1f MiB; valid %d, MSAA %u, custom glow %d, display %.1f Hz; guest clock 60 Hz\n",
+            "[Smooth Motion] midpoint pairs queued %u/5s; eligible 3D draws %u, changed matches %u; packet %.1f MiB; snapshots %.1f MiB; valid %d, MSAA %u, custom glow %d, display %.1f Hz; guest clock 60 Hz\n",
             motion_pictures_,motion_3d_,motion_changed_,double(motion_cpu_bytes_)/1048576,double(motion_gpu_bytes_)/1048576,int(motion_valid_),msaa_,int(ContinuousGlowEnabled() || GlowSoftenMode()!=0),hz);
+        uint64_t mids,ends,replaced; nv2a_present_pair_counts(&mids,&ends,&replaced);
+        std::fprintf(stderr,"[Smooth Motion presenter] cumulative midpoint %llu, endpoint %llu, superseded pairs %llu\n",
+            (unsigned long long)mids,(unsigned long long)ends,(unsigned long long)replaced);
         motion_log_ns_=now; motion_pictures_=0;
     }
     bool wanted=false;
@@ -147,7 +158,8 @@ void VulkanBackend::MotionFinish() {
 #ifdef NGB_IOS_APP
     reset=reset || motion_epoch_!=ngb_ios_motion_epoch(); motion_epoch_=ngb_ios_motion_epoch();
 #endif
-    if (reset) motion_history_.Reset(); else motion_history_.Finish();
+    if (reset) { motion_history_.Reset(); nv2a_present_cancel_pairs(); }
+    else motion_history_.Finish();
     bool prune=reset;
     for (auto& [key,saved]:motion_targets_) if (frame_-saved.seen>2) prune=true;
     if (prune && !motion_targets_.empty()) {

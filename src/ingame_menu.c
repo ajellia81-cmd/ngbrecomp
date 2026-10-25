@@ -8,6 +8,7 @@
  * changed (window, aspect, V-Sync, FPS counter, render resolution, texture
  * filtering, shadow resolution) and saves the settings.
  */
+#include "quit_label.h"
 #include <SDL.h>
 #include "port.h"
 #include <SDL_vulkan.h>
@@ -150,8 +151,6 @@ void ngb_pc_set_setting(int which, int value)
 #ifdef NGB_IOS_KOREAN
     case 25: {
         s_running.text_language=value<0 ? 0 : value>2 ? 2 : value;
-        extern void ngb_ios_language_changed(void);
-        ngb_ios_language_changed();
         break;
     }
 #endif
@@ -191,6 +190,12 @@ void ngb_pc_set_setting(int which, int value)
         nv2a_set_quality(ngb_settings_runtime_scale(&s_running), s_running.anisotropy, s_running.shadow_scale, s_running.msaa);
     if (!getenv("NGB_NO_SETTINGS"))
         ngb_settings_save(&s_running);
+#ifdef NGB_IOS_KOREAN
+    if (which==25) {
+        extern void ngb_ios_language_changed(int language);
+        ngb_ios_language_changed(s_running.text_language);
+    }
+#endif
 }
 
 /* Opens the recomp settings menu at the next frame (the main menu's "RECOMP SETTINGS"). */
@@ -429,8 +434,13 @@ void ngb_pause_resume(void)
 /* Exit to Desktop: as closing the window does. */
 void ngb_quit_to_desktop(void)
 {
+#ifdef NGB_IOS_APP
+    extern void ngb_ios_quit(void);
+    ngb_ios_quit();
+#else
     SDL_Event e = { .type = SDL_QUIT };
     SDL_PushEvent(&e);
+#endif
 }
 
 /* Return to Main Menu: the program again, in this process (Steam and the
@@ -1590,7 +1600,7 @@ static void draw(const uint32_t *backdrop)
         bool sel = row == s_sel;
         if (row >= ROW_RESUME) {
             const char *label = row == ROW_RESUME ? "Resume"
-                              : s_quit_armed ? "Press again to quit" : "Quit game";
+                              : s_quit_armed ? "Press again to quit" : NGB_QUIT_LABEL;
             float w = 300, x = LW / 2 - w / 2;
             fill(x, y + 2, w, ROW_H - 6, sel ? bar : 0xFFFFFF, sel ? 220 : 18);
             text(label, LW / 2, y + 7, 25, sel ? white : grey, 255, 1);
@@ -1660,8 +1670,7 @@ static void activate(int key)
         } else if (s_quit_armed) {
             if (memcmp(&s_cfg, &s_running, sizeof s_cfg) && !getenv("NGB_NO_SETTINGS"))
                 ngb_settings_save(&s_cfg);
-            SDL_Event q = { .type = SDL_QUIT };
-            SDL_PushEvent(&q);
+            ngb_quit_to_desktop();
         } else {
             s_quit_armed = true;
         }

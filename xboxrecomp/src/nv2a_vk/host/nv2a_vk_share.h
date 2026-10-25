@@ -56,6 +56,14 @@ void nv2a_present_set_external(VkImage image, uint32_t width, uint32_t height);
 /* Ordered intermediate scenes: wait up to 50 ms for a swapchain image instead
  * of immediately dropping it. Returns whether a presentation was submitted. */
 bool nv2a_present_set_external_wait(VkImage image, uint32_t width, uint32_t height);
+/* Latest-frame pair submission never waits for display cadence on the guest.
+ * Do not overwrite a busy image. Cancel pending work before backgrounding;
+ * drain active work before destroying renderer-owned display images. */
+bool nv2a_present_queue_pair(VkImage midpoint,VkImage endpoint,uint32_t width,uint32_t height);
+bool nv2a_present_external_image_busy(VkImage image);
+void nv2a_present_cancel_pairs(void);
+void nv2a_present_drain_pairs(void);
+void nv2a_present_pair_counts(uint64_t *midpoints,uint64_t *endpoints,uint64_t *superseded);
 
 #ifdef __cplusplus
 }

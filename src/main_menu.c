@@ -29,6 +29,7 @@
  * choice made as OPTIONS' (id 7) -- and OPTIONS' place has the new words.
  */
 #define RECOMP_GENERATED_CODE
+#include "quit_label.h"
 #include "recomp_funcs.h"
 #include <stdio.h>
 #include <stdlib.h>
@@ -53,7 +54,7 @@ void ngb_general_page_init(void)
     if (getenv("NGB_KEEP_RANKING"))
         return;
     {   /* COMING ATTRACTIONS' text (0x4361AC: id 0x9000C) OPTIONS', OPTIONS' ours */
-        static const char t[] = "EXIT TO DESKTOP";
+        static const char t[] = NGB_MAIN_QUIT_LABEL;
         uint32_t va = xbox_HeapAlloc(sizeof t, 4);
         MEM32(0x4361B0) = MEM32(0x4361BC);
         MEM32(0x4361B4) = MEM32(0x4361C0);
@@ -1301,7 +1302,11 @@ loc_0017CC98: ;
     SET_LO16(eax, MEM16(0x403FF0));
     MEM8(0xDA3ACE) = LO8(ecx);
     MEM16(0xDA3ACC) = LO16(eax);
+#ifdef NGB_IOS_KOREAN
+    eax = ngb_ios_game_text_language(MEM32(0xDB9890));
+#else
     eax = MEM32(0xDB9890);
+#endif
     _fa = (uint32_t)(eax) & 0xFFFFFFFFu; _fb = (uint32_t)(0) & 0xFFFFFFFFu;
     _fas = (int32_t)(int32_t)(_fa); _fbs = (int32_t)(int32_t)(_fb); /* cmp eax, 0 (32-bit) */
     ecx = 0x87;

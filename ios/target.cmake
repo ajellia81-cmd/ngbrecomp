@@ -21,6 +21,7 @@ if(NGB_IOS_KOREAN)
         message(FATAL_ERROR "The verified private Korean data capsule is required")
     endif()
     target_sources(${PROJECT_NAME} PRIVATE ios/korean.m)
+    target_sources(ngb_gen PRIVATE ios/game_hooks.c)
     target_compile_definitions(${PROJECT_NAME} PRIVATE NGB_IOS_KOREAN=1)
     target_compile_definitions(ngb_gen PRIVATE NGB_IOS_KOREAN=1)
     add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD

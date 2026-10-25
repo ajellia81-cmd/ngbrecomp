@@ -16,6 +16,12 @@ on:
       - 'ios/build_icons.swift'
       - 'ios/native_settings_test.c'
       - 'ios/motion_test.cpp'
+      - 'ios/game_hooks.c'
+      - 'ios/language_policy.h'
+      - 'ios/runtime_ui_test.c'
+      - 'ios/wrap_game_codegen_test.py'
+      - 'ios/wrap_game_codegen.py'
+      - 'src/quit_label.h'
       - 'ios/prepare_korean.py'
       - 'ios/merge_korean_codegen.py'
       - 'ios/korean.m'
@@ -159,6 +165,12 @@ jobs:
           build/ios-platform/korean-archive
 
 
+      - name: Check Options language, pair ownership, safe FPS placement and codegen hooks
+        run: |
+          xcrun --sdk macosx clang -std=c11 -O2 -Iios -Ixboxrecomp/src \
+            ios/runtime_ui_test.c -o build/ios-platform/runtime-ui
+          build/ios-platform/runtime-ui
+          python3 ios/wrap_game_codegen_test.py
       - name: Compile actual Smooth Motion shaders and retained-pose tests
         shell: bash
         run: |
@@ -253,6 +265,8 @@ jobs:
             echo '::error::Korean continuations remain untranslated; refusing to substitute stubs.'
             exit 1
           fi
+      - name: Bind original Options text language to the private Korean boot
+        run: python3 ios/wrap_game_codegen.py src/recomp/gen
       - name: Compile production game fibers with real generated headers
         shell: bash
         run: |

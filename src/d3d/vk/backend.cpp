@@ -374,7 +374,8 @@ private:
     std::vector<std::function<void()>> motion_commands_;
     std::unordered_map<VkImage,MotionTarget> motion_targets_;
     MotionHistory motion_history_;
-    Image motion_display_;
+    Image motion_display_[3];
+    int motion_display_next_=0;
     void MotionTouch(Target *target);
     void MotionCopyImage(Image& from,Image& to);
     void MotionReplay(const MotionDraw& draw);
@@ -926,6 +927,9 @@ VulkanBackend::~VulkanBackend() {
     if (saver_.joinable()) saver_.join();
     CacheSavePipelines();
     if (shared_) {
+#ifdef NGB_SMOOTH_MOTION
+        nv2a_present_drain_pairs();
+#endif
         nv2a_vk_set_draws_off(false);
         nv2a_present_set_external(VK_NULL_HANDLE, 0, 0);
         nv2a_vk_queue_lock();
@@ -937,7 +941,7 @@ VulkanBackend::~VulkanBackend() {
     if (dev_) {
 #ifdef NGB_SMOOTH_MOTION
         for (auto& [key,target]:motion_targets_) { DestroyImage(target.initial); DestroyImage(target.final); }
-        DestroyImage(motion_display_);
+        for (auto& image:motion_display_) DestroyImage(image);
 #endif
         for (auto& image:continuous_glow_) DestroyImage(image);
         for (auto& image:glow_soft_) DestroyImage(image);
@@ -3809,6 +3813,17 @@ void VulkanBackend::Present(const Surface& front) {
         // the frame for the presenter: a copy, so the next frame's draws into this buffer
         // (the title has two or three in turn) never race the blit to the window
         Target* t = EnsureTarget(front, false);
+#ifdef NGB_SMOOTH_MOTION
+        if (t) {
+            int available=-1;
+            for (int i=0;i<3;i++) {
+                int candidate=(display_next_+i)%3;
+                if (!nv2a_present_external_image_busy(display_[candidate].image)) { available=candidate; break; }
+            }
+            if (available<0) t=nullptr; // drop a picture, never hold the guest for display back-pressure
+            else display_next_=available;
+        }
+#endif
         if (t) {
             Image& d = display_[size_t(display_next_)];
             if (d.image && (d.w != t->img.w || d.h != t->img.h)) {
@@ -3907,8 +3922,7 @@ void VulkanBackend::Present(const Surface& front) {
     // (its barrier on the picture)
     if (show) {
 #ifdef NGB_SMOOTH_MOTION
-        if (motion_endpoint_) nv2a_present_set_external_wait(show->image,show->w,show->h);
-        else
+        if (!motion_endpoint_)
 #endif
             nv2a_present_set_external(show->image, show->w, show->h);
     }

@@ -9,8 +9,21 @@
 #include <volk.h>
 #include <dlfcn.h>
 #include <math.h>
+#include <unistd.h>
 #include "../src/install.h"
 #include "platform/vcpu.h"
+static int safeMillion[4]={80000,30000,80000,20000};
+void ngb_ios_safe_area(float *left,float *top,float *right,float *bottom) {
+    float *out[4]={left,top,right,bottom};
+    for (int i=0;i<4;i++) *out[i]=__atomic_load_n(&safeMillion[i],__ATOMIC_RELAXED)/1000000.0f;
+}
+void ngb_ios_quit(void) {
+    void (^close)(void)=^{
+        extern void apu_host_pause(int);
+        apu_host_pause(1); fflush(NULL); _exit(0);
+    };
+    if (NSThread.isMainThread) close(); else dispatch_async(dispatch_get_main_queue(),close);
+}
 static int displayMilliHz=60000;
 static unsigned motionEpoch;
 double ngb_ios_display_hz(void) { return __atomic_load_n(&displayMilliHz,__ATOMIC_RELAXED)/1000.0; }
@@ -42,9 +55,21 @@ extern BOOL ngb_prepare_korean(NSString *, NSString *, NSString *, void (^)(NSSt
 static int koreanActive;
 int ngb_korean_active(void) { return koreanActive; }
 
-void ngb_ios_language_changed(void)
+void ngb_ios_language_changed(int language)
 {
-    fprintf(stderr,"[iOS] text language saved; close and relaunch to apply\n");
+    fprintf(stderr,"[iOS] Options text language saved; relaunch for overlay changes\n");
+    if (!koreanActive && language!=2) return;
+    dispatch_async(dispatch_get_main_queue(),^{
+        UIAlertController *alert=[UIAlertController alertControllerWithTitle:@"Restart required"
+            message:@"Quit and reopen to apply the text language." preferredStyle:UIAlertControllerStyleAlert];
+        [alert addAction:[UIAlertAction actionWithTitle:@"Later" style:UIAlertActionStyleCancel handler:nil]];
+        [alert addAction:[UIAlertAction actionWithTitle:@"Quit" style:UIAlertActionStyleDefault
+            handler:^(UIAlertAction *action) { (void)action; ngb_ios_quit(); }]];
+        UIWindow *window=UIApplication.sharedApplication.keyWindow;
+        UIViewController *controller=window.rootViewController;
+        while (controller.presentedViewController) controller=controller.presentedViewController;
+        [controller presentViewController:alert animated:YES completion:nil];
+    });
 }
 
 static NSString *prepare_language(NSString *documents, NSString *original)
@@ -141,6 +166,8 @@ static void game_set_active(BOOL active)
     if (gameActive == active) return;
     gameActive = active;
     if (!active) {
+        extern void nv2a_present_cancel_pairs(void);
+        nv2a_present_cancel_pairs();
         previousAudioPause = apu_host_paused;
         apu_host_pause(1);
         int stopped = vcpu_set_paused(1);
@@ -386,6 +413,9 @@ static void import_progress(uint64_t done, uint64_t total, void *context)
 {
     [super layoutSubviews];
     UIEdgeInsets insets = self.safeAreaInsets;
+    CGFloat fractions[4]={insets.left/MAX(1,self.bounds.size.width),insets.top/MAX(1,self.bounds.size.height),
+        insets.right/MAX(1,self.bounds.size.width),insets.bottom/MAX(1,self.bounds.size.height)};
+    for (int i=0;i<4;i++) __atomic_store_n(&safeMillion[i],(int)lrint(fractions[i]*1000000),__ATOMIC_RELAXED);
     CGFloat width = self.bounds.size.width, bottom = self.bounds.size.height - insets.bottom - 20;
     self.left.frame = CGRectMake(insets.left + 20, bottom - 150, 150, 150);
     self.right.frame = CGRectMake(width - insets.right - 330, bottom - 120, 120, 120);
