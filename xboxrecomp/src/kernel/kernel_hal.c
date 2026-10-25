@@ -1141,7 +1141,7 @@ void xbox_PortOut(uint32_t port, uint32_t value, int size)
 #ifdef __APPLE__
 /* Optional title-specific completion of an already stubbed hardware wait.
  * Other frontends retain the normal scheduler/yield path. */
-extern int ngb_ios_service_spin(uint32_t loop_va) __attribute__((weak));
+extern int ngb_ios_service_spin(uint32_t loop_va) __attribute__((weak_import));
 #endif
 
 void recomp_spin_pause(uint32_t loop_va)
