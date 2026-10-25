@@ -85,6 +85,32 @@ def repair_font_trampolines(bodies):
             raise ValueError('Pinned Korean font trampoline caller changed')
 
 
+HOST_WRAPPERS={'sub_001E6D30','sub_001E86A0','sub_001E6AE0','sub_0017E8A0'}
+
+def route_direct_entries(original, selected):
+    # RECOMP_ABI_CALL invokes its C symbol directly. The manual lookup only
+    # handles indirect calls, so every generated selected entry needs a gate.
+    routed=set()
+    for path in sorted(original.glob('recomp_[0-9]*.c')):
+        source=path.read_text()
+        additions=[]
+        for name in sorted(set(selected)-HOST_WRAPPERS):
+            pattern=re.compile(r'\bvoid '+name+r'\(void\)\s*\{')
+            source,n=pattern.subn('void ngb_original_'+name+'(void) {',source)
+            if n:
+                if n!=1 or name in routed: raise ValueError('Duplicate private language entry')
+                routed.add(name)
+                additions.append('void '+name+'(void) {\n'
+                    '#ifdef NGB_IOS_KOREAN\n'
+                    '    extern void kr_'+name+'(void);\n'
+                    '    extern int ngb_korean_active(void);\n'
+                    '    if (ngb_korean_active()) { kr_'+name+'(); return; }\n'
+                    '#endif\n'
+                    '    ngb_original_'+name+'();\n}')
+        if additions: path.write_text(source+'\n'+'\n'.join(additions)+'\n')
+    return routed
+
+
 def merge(original, translated, missing_seeds=None):
     before, after = functions(original), functions(translated)
     repair_font_trampolines(after)
@@ -163,6 +189,8 @@ def merge(original, translated, missing_seeds=None):
                   'ngb_korean_fn ngb_korean_lookup(unsigned address) {',
                   'if (address == 0x001E6D30u || address == 0x001E86A0u || address == 0x001E6AE0u || address == 0x0017E8A0u) return NULL;',
                   'return ngb_korean_lookup_raw(address); }', '#endif'])
+    routed=route_direct_entries(original,selected)
+    print('Private Korean direct-call entry gates:',len(routed))
     (original / 'recomp_korean.c').write_text('\n'.join(output) + '\n')
     # Same register ABI; the patched executable adds an executable helper range.
     # Original image dispatch is unchanged; variants use the manual lookup first.
