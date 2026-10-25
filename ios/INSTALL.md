@@ -7,17 +7,17 @@ A successful compile/package is not a gameplay result.
 
 ## Download the actual IPA
 
-1. Open the [encrypted game artifact](https://github.com/ajellia81-cmd/ngbrecomp/actions/runs/40173667289/artifacts/12591273435)
-   while signed into GitHub. It is from [Actions run 40173667289](https://github.com/ajellia81-cmd/ngbrecomp/actions/runs/40173667289).
+1. Open the [encrypted game artifact](https://github.com/ajellia81-cmd/ngbrecomp/actions/runs/40176510651/artifacts/12592922098)
+   while signed into GitHub. It is from [Actions run 40176510651](https://github.com/ajellia81-cmd/ngbrecomp/actions/runs/40176510651).
 2. Extract GitHub's outer ZIP. It contains `NinjaGaidenBlack-ios-arm64-unsigned.ipa.7z`.
 3. Open the inner archive with a 7z-capable tool such as 7-Zip and enter the same
    password stored in `NGB_IPA_PASSWORD`. Do not upload the password to an issue or chat.
 4. Extract `NinjaGaidenBlack-ios-arm64-unsigned.ipa`. Import this file, not the ZIP/7z.
 
-The artifact is retained for seven days. The unsigned IPA is 47,125,911 bytes and
-has SHA-256 `5b710225a15fc7014753bf730510b8aaefdb3dabbc8a4597155af533450bf6dc`.
-App version: **0.2.0 (2.43)**.
-Build source commit: `97442e30a6ab3aae3b89f5052b8a1f3bb05aeebe`.
+The artifact is retained for seven days. The unsigned IPA is 47,125,932 bytes and
+has SHA-256 `a76b519086ce85c262e7ee0d70f93805d49e549572cb4ea3f31b281ec0bec2d4`.
+App version: **0.2.0 (2.46)**.
+Build source commit: `400eb5b4f0c0d10c38ee1726dfc7c1e030bbf156`.
 It contains the real engine, 11,740 original lifted game functions and 55 Korean
 variants. It is not NGBBringup. Korean glyph rendering/gameplay still require a device test.
 The Korean-enabled build contains the pinned translation capsule; the original
@@ -303,3 +303,22 @@ passed, but phone startup is unverified. If it still freezes, keep the app in th
 foreground for thirty seconds, then copy the current log.txt and build-info.txt.
 Before a first guest flip, the bounded sampler records the boot-thread stack;
 after flips begin it stops. Korean text and sustained 120 FPS remain retest items.
+
+## Build 2.46 DirectSound startup correction
+
+The 2.43 samples identified a DSP command-completion wait at 0x0037DC15. Korean
+memory reservations moved the observed command word to 0x86C28810, but the old
+fixed probe still addressed 0x86BF8810. This build registers a title spin service
+before guest threads start and uses the verified current operand in auto mode.
+Only aligned, mapped command-3 words at that loop are acknowledged; unrelated
+memory and unknown commands are retained. This keeps the existing DSP passthrough
+policy and does not implement DSP effects.
+
+Fully quit both the game and LiveContainer, reopen LiveContainer, and replace the
+existing app with the new IPA. Retain its imported data and saves; no ISO reimport
+is required. This discards any legacy DSP environment retained in an old host
+process. The current log should show `[iOS DSP] mailbox policy: auto` and, when
+the effects image is posted, its observed completion address. Native tests and
+the complete game build passed; phone startup and rendering remain unverified.
+If it still stalls, leave it foreground for thirty seconds and copy its new log
+and build-info.txt. The existing bounded startup sampler remains enabled.
