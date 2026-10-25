@@ -6,28 +6,26 @@ after restarting following the first load. Long-term reliability, performance an
 background resume still require testing. The older NGBBringup diagnostic app is
 a separate target.
 
-- App version: **0.2.0 (2.46)**; compiled revision and active log path are recorded in `Documents/build-info.txt`.
-- Build source: `400eb5b4f0c0d10c38ee1726dfc7c1e030bbf156`, branch `ios-port`.
-- [Successful Actions run](https://github.com/ajellia81-cmd/ngbrecomp/actions/runs/40176510651).
-- [Encrypted IPA artifact](https://github.com/ajellia81-cmd/ngbrecomp/actions/runs/40176510651/artifacts/12592922098).
-- Unsigned IPA: **47,125,932 bytes**, containing **11,740 linked lifted game functions**,
+- App version: **0.2.0 (2.47)**; compiled revision and active log path are recorded in `Documents/build-info.txt`.
+- Build source: `df56683dd4253816097d283b41141d45a757f969`, branch `ios-port`.
+- [Successful Actions run](https://github.com/ajellia81-cmd/ngbrecomp/actions/runs/40180460729).
+- [Encrypted IPA artifact](https://github.com/ajellia81-cmd/ngbrecomp/actions/runs/40180460729/artifacts/12593619372).
+- Unsigned IPA: **47,124,696 bytes**, containing **11,740 linked lifted game functions**,
   55 additional Korean variants, the real engine/runtime, SDL UIKit entry point,
   MoltenVK framework and private translation capsule.
-- IPA SHA-256: `a76b519086ce85c262e7ee0d70f93805d49e549572cb4ea3f31b281ec0bec2d4`.
-- GitHub artifact ZIP SHA-256: `f19efa6a4de009ce9dd61cd63f115b9f83ff61c0e83396f453444013e43f348b`.
+- IPA SHA-256: `94f2a0f4bcc4841a52451fcad4db87e03f3a9a4816cc8adabee4dcdab11f1dfc`.
+- GitHub artifact ZIP SHA-256: `95b4664a043a1478edd0d98ee2a0d0f8a323f2340776ebe5012d0969a068bdea`.
 
-The owner confirmed the 2.43 stall in DirectSound's effects-image DSP completion
-loop. The actual mailbox had moved with Korean font allocations, while the old
-fixed-address completion probe targeted different memory. Build 2.46 registers
-an iOS startup spin service and acknowledges command 3 only at the observed
-wait operand, with address/alignment/command checks. It no longer installs a
-fixed DSP mailbox address by default on iOS. Desktop defaults remain unchanged.
-Native regression tests, macOS optional-service linkage, full device compile,
-link and packaging passed. Startup recovery, Korean text and sustained 120 FPS
-still need an owner-device retest. The 25 gated entries, 55 Korean variants,
-patch-derived 설정 lettering and presenter pacing changes are retained.
-Fully quit LiveContainer before replacing and launching this IPA to discard
-previous guest environment state. Imported files and shared saves are preserved.
+The owner's 2.46 log confirms that effects-image command 3 now completes at the
+observed mailbox. Startup then stalls at a second DirectSound wait, 0x0037DC78,
+for parameter-upload command 2. Build 2.47 completes that command at [EAX+0x10]
+under the same auto policy and guarded address/value checks. It retains the
+command-3 fix and does not implement DSP effects. Native regression tests cover
+both paths, relocation, unrelated-memory preservation and policy opt-out.
+Startup recovery, Korean text and sustained 120 FPS still need an owner-device
+retest. The 25 gated entries, 55 Korean variants, patch-derived 설정 lettering
+and presenter pacing changes are retained. Imported files and shared saves are
+preserved; no ISO reimport is required.
 
 See [INSTALL.md](INSTALL.md) for download, LiveContainer import and game data.
 The download is an encrypted 7z inside GitHub's artifact ZIP. It expires seven
