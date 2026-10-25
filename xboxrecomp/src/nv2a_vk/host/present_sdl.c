@@ -41,14 +41,25 @@ static SDL_Window *s_window;
 static uint64_t s_drawable_pixels;
 static double s_aspect = 4.0 / 3.0;
 static int s_vsync;                /* 0 off, 1 mailbox, 2 adaptive, 3 FIFO */
-static volatile bool s_resized;
+static bool s_resized;
+#if defined(__APPLE__) && TARGET_OS_IPHONE
+extern void ngb_ios_sync_drawable(SDL_Window *) __attribute__((weak_import));
+#endif
 
 static void cache_drawable_size(void)
 {
     int w = 0, h = 0;
+#if defined(__APPLE__) && TARGET_OS_IPHONE
+    if (s_window && ngb_ios_sync_drawable) ngb_ios_sync_drawable(s_window);
+#endif
     if (s_window) SDL_Vulkan_GetDrawableSize(s_window, &w, &h);
-    if (w > 0 && h > 0)
-        __atomic_store_n(&s_drawable_pixels, (uint64_t)(uint32_t)w << 32 | (uint32_t)h, __ATOMIC_RELEASE);
+    if (w > 0 && h > 0) {
+        uint64_t size=(uint64_t)(uint32_t)w << 32 | (uint32_t)h;
+        uint64_t previous=__atomic_exchange_n(&s_drawable_pixels,size,__ATOMIC_ACQ_REL);
+        // UIKit/LiveContainer can finish rotation without an SDL size event or
+        // VK_ERROR_OUT_OF_DATE. Rebuild for the actual Metal drawable anyway.
+        if (previous!=size) __atomic_store_n(&s_resized,true,__ATOMIC_RELEASE);
+    }
 }
 
 bool nv2a_present_native_size(uint32_t *width, uint32_t *height)
@@ -460,7 +471,7 @@ void nv2a_present_set_vsync(int vsync)
 {
     if (vsync != s_vsync) {
         s_vsync = vsync;
-        s_resized = true;            /* a new swapchain, in the new mode */
+        __atomic_store_n(&s_resized,true,__ATOMIC_RELEASE);            /* a new swapchain, in the new mode */
     }
 }
 
@@ -515,7 +526,7 @@ bool nv2a_window_pump(void)
             borderless_apply(s_window);
         if (s_win_fs == 1 && !fs)
             SDL_SetWindowFullscreen(s_window, SDL_WINDOW_FULLSCREEN_DESKTOP);
-        s_resized = true;
+        __atomic_store_n(&s_resized,true,__ATOMIC_RELEASE);
     }
 
     while (SDL_PollEvent(&ev)) {
@@ -524,7 +535,7 @@ bool nv2a_window_pump(void)
             return false;
         case SDL_WINDOWEVENT:
             if (ev.window.event == SDL_WINDOWEVENT_SIZE_CHANGED)
-                s_resized = true;
+                __atomic_store_n(&s_resized,true,__ATOMIC_RELEASE);
             break;
         case SDL_KEYDOWN:
             if (ev.key.keysym.sym == SDLK_F10 && !ev.key.repeat)
@@ -1102,7 +1113,7 @@ static void present_pixels(PGRAPHVkState *r, VkBuffer buf, int w, int h)
                                 s_acquired[f], VK_NULL_HANDLE, &idx);
     nv2a_vk_queue_unlock();
     if (res == VK_ERROR_OUT_OF_DATE_KHR) {
-        s_resized = true;
+        __atomic_store_n(&s_resized,true,__ATOMIC_RELEASE);
         return;
     }
     if (res != VK_SUCCESS && res != VK_SUBOPTIMAL_KHR)
@@ -1153,7 +1164,7 @@ static void present_pixels(PGRAPHVkState *r, VkBuffer buf, int w, int h)
     res = vkQueuePresentKHR(r->queue, &pi);
     nv2a_vk_queue_unlock();
     if (res == VK_ERROR_OUT_OF_DATE_KHR || res == VK_SUBOPTIMAL_KHR)
-        s_resized = true;
+        __atomic_store_n(&s_resized,true,__ATOMIC_RELEASE);
 }
 
 /* The overlay, over the frame the game is held at: the renderer's thread
@@ -1171,8 +1182,7 @@ static void overlay_run(PGRAPHState *pg)
 
     while (open) {
         int64_t t0 = g_get_monotonic_time();
-        if (s_resized || !s_swapchain) {
-            s_resized = false;
+        if (__atomic_exchange_n(&s_resized,false,__ATOMIC_ACQ_REL) || !s_swapchain) {
             if (!create_swapchain(r)) {
                 g_usleep(16000);
                 continue;
@@ -1468,8 +1478,7 @@ static void present_locked(PGRAPHState *pg, bool on_pfifo)
         fps_init(r);
     }
     fps_track();
-    if (s_resized || !s_swapchain) {
-        s_resized = false;
+    if (__atomic_exchange_n(&s_resized,false,__ATOMIC_ACQ_REL) || !s_swapchain) {
         if (!create_swapchain(r))
             return;
     }
@@ -1482,8 +1491,7 @@ static void present_locked(PGRAPHState *pg, bool on_pfifo)
         nv2a_vblank_hold = 1;
         overlay_run(pg);
         nv2a_vblank_hold = 0;
-        if (s_resized || !s_swapchain) {
-            s_resized = false;
+        if (__atomic_exchange_n(&s_resized,false,__ATOMIC_ACQ_REL) || !s_swapchain) {
             if (!create_swapchain(r))
                 return;
         }
@@ -1501,7 +1509,7 @@ static void present_locked(PGRAPHState *pg, bool on_pfifo)
                                 VK_NULL_HANDLE, &idx);
     nv2a_vk_queue_unlock();
     if (res == VK_ERROR_OUT_OF_DATE_KHR) {
-        s_resized = true;
+        __atomic_store_n(&s_resized,true,__ATOMIC_RELEASE);
         return;
     }
     if (res == VK_NOT_READY || res == VK_TIMEOUT) {
@@ -1690,7 +1698,7 @@ static void present_locked(PGRAPHState *pg, bool on_pfifo)
         res = vkQueuePresentKHR(r->queue, &pi);
         nv2a_vk_queue_unlock();
         if (res == VK_ERROR_OUT_OF_DATE_KHR || res == VK_SUBOPTIMAL_KHR)
-            s_resized = true;
+            __atomic_store_n(&s_resized,true,__ATOMIC_RELEASE);
     }
     if (s_pair_render) vkWaitForFences(r->device,1,&s_fence[f],VK_TRUE,UINT64_MAX);
     lat_note(ext);

@@ -88,6 +88,19 @@ jobs:
           xcrun --sdk iphoneos clang -target arm64-apple-ios15.0 \
             -isysroot "$SDK" -Ixboxrecomp/src -Wall -Wextra -Werror \
             -c ios/bringup/portability_smoke.c -o build/ios-platform/portability.o
+          # Compile the exact public UIKit orientation helpers with the device
+          # SDK while private game generation is running in the other job.
+          python3 - <<'PY'
+          from pathlib import Path
+          source=Path('ios/app.m').read_text()
+          start=source.index('@interface NGBLandscapeController')
+          end=source.index('static int safeMillion',start)
+          Path('build/ios-platform/orientation.m').write_text(
+              '#import <UIKit/UIKit.h>\n#include <stdio.h>\n'+source[start:end])
+          PY
+          xcrun --sdk iphoneos clang -target arm64-apple-ios15.0 -isysroot "$SDK" \
+            -fobjc-arc -Wno-deprecated-declarations -c build/ios-platform/orientation.m \
+            -o build/ios-platform/orientation.o
           file build/ios-platform/*.o
 
       - name: Check scheduler preemption when loaded as a separate image

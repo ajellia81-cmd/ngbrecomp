@@ -57,6 +57,14 @@ static int64_t g_get_monotonic_time(void) {
     struct timespec t; clock_gettime(CLOCK_MONOTONIC,&t);
     return (int64_t)t.tv_sec*1000000+t.tv_nsec/1000;
 }
+typedef struct { int unused; } SDL_Window;
+static SDL_Window window, *s_window=&window;
+static uint64_t s_drawable_pixels;
+static bool s_resized;
+static int drawable_w=1320,drawable_h=2868;
+static void SDL_Vulkan_GetDrawableSize(SDL_Window *w,int *width,int *height) {
+    (void)w; *width=drawable_w; *height=drawable_h;
+}
 static void present_locked(PGRAPHState *,bool);
 '''
 
@@ -92,6 +100,18 @@ static void *producer(void *unused) {
     return NULL;
 }
 int main(void) {
+    cache_drawable_size();
+    if (!s_resized) return 1;
+    s_resized=false;
+    // No SDL resize event: only Metal's drawable finishes rotating.
+    drawable_w=2868; drawable_h=1320;
+    cache_drawable_size();
+    if (!s_resized || s_drawable_pixels!=((uint64_t)2868<<32|1320)) return 1;
+    s_resized=false;
+    cache_drawable_size();
+    if (s_resized) return 1; // unchanged size must not rebuild every frame
+    drawable_w=drawable_h=0; cache_drawable_size();
+    if (s_resized || s_drawable_pixels!=((uint64_t)2868<<32|1320)) return 1;
     pthread_t a,b;
     if (pthread_create(&a,NULL,worker,NULL) || pthread_create(&b,NULL,producer,NULL)) return 2;
     pthread_join(a,NULL); pthread_join(b,NULL);
@@ -104,7 +124,7 @@ int main(void) {
 def main():
     source = SOURCE.read_text()
     publish = function(source, 'set_external')
-    rest = '\n'.join(function(source, name) for name in ('picture_source', 'pair_present'))
+    rest = '\n'.join(function(source, name) for name in ('picture_source', 'pair_present', 'cache_drawable_size'))
     lock = 'pthread_mutex_lock(&s_present_mu);'
     anchor = 'PGRAPHState *pg=s_pg;'
     if publish.count(lock) != 1 or publish.count(anchor) != 1:
@@ -113,9 +133,13 @@ def main():
     unsafe = publish.replace(lock, '', 1).replace(anchor, lock + '\n' + anchor, 1)
     with tempfile.TemporaryDirectory(prefix='ngb-present-test-') as directory:
         root = Path(directory)
-        for name, body, expected in [('fixed', publish, 0), ('unsafe', unsafe, 1)]:
+        resize='if (previous!=size) __atomic_store_n(&s_resized,true,__ATOMIC_RELEASE);'
+        if rest.count(resize)!=1: raise ValueError('Drawable invalidation boundary changed')
+        stale=rest.replace(resize,'(void)previous;',1)
+        for name, body, helpers, expected in [('fixed', publish, rest, 0), ('unsafe', unsafe, rest, 1),
+                                               ('stale-drawable', publish, stale, 1)]:
             path = root / (name + '.c')
-            path.write_text(PREFIX + rest + '\n' + body + SUFFIX)
+            path.write_text(PREFIX + helpers + '\n' + body + SUFFIX)
             binary = root / name
             subprocess.run([os.environ.get('CC', 'cc'), '-std=c11', '-Wall', '-Wextra',
                             '-Werror', '-pthread', '-I' + str(ROOT / 'xboxrecomp/src'),
@@ -123,7 +147,7 @@ def main():
             result = subprocess.run([str(binary)], timeout=5)
             if result.returncode != expected:
                 raise RuntimeError(name + ': unexpected race test result ' + str(result.returncode))
-    print('Presenter image/size publication: serialized producers PASS; unsafe control rejected')
+    print('Presenter: coherent publication and portrait-to-landscape drawable invalidation PASS; both unsafe controls rejected')
 
 
 if __name__ == '__main__':

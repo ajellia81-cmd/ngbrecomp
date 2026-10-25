@@ -5,6 +5,7 @@
 #import <AVFoundation/AVFoundation.h>
 #import <UniformTypeIdentifiers/UniformTypeIdentifiers.h>
 #include <SDL.h>
+#include <SDL_syswm.h>
 #define VK_NO_PROTOTYPES
 #include <volk.h>
 #include <dlfcn.h>
@@ -22,6 +23,39 @@ void ngb_ios_log_build(void) {
         [info writeToFile:[documents stringByAppendingPathComponent:@"build-info.txt"]
             atomically:YES encoding:NSUTF8StringEncoding error:nil];
     }
+}
+// A preparation window must not return the LiveContainer scene to portrait
+// just before SDL creates its Metal surface.
+@interface NGBLandscapeController : UIViewController
+@end
+@implementation NGBLandscapeController
+- (UIInterfaceOrientationMask)supportedInterfaceOrientations { return UIInterfaceOrientationMaskLandscape; }
+- (UIInterfaceOrientation)preferredInterfaceOrientationForPresentation { return UIInterfaceOrientationLandscapeRight; }
+- (BOOL)shouldAutorotate { return YES; }
+@end
+static UIWindowScene *ngb_window_scene(UIWindow *window) {
+    if (window.windowScene) return window.windowScene;
+    for (UIScene *scene in UIApplication.sharedApplication.connectedScenes)
+        if ([scene isKindOfClass:UIWindowScene.class] && scene.activationState==UISceneActivationStateForegroundActive)
+            return (UIWindowScene *)scene;
+    return nil;
+}
+static UIWindow *ngb_landscape_window(void) {
+    UIWindowScene *scene=ngb_window_scene(nil);
+    UIWindow *window=scene ? [[UIWindow alloc] initWithWindowScene:scene] : [[UIWindow alloc] initWithFrame:UIScreen.mainScreen.bounds];
+    if (scene) window.frame=scene.coordinateSpace.bounds;
+    return window;
+}
+static void ngb_request_landscape(UIWindow *window) {
+    UIViewController *controller=window.rootViewController;
+    if (@available(iOS 16.0,*)) {
+        [controller setNeedsUpdateOfSupportedInterfaceOrientations];
+        UIWindowScene *scene=ngb_window_scene(window);
+        if (scene) [scene requestGeometryUpdateWithPreferences:
+            [[UIWindowSceneGeometryPreferencesIOS alloc] initWithInterfaceOrientations:UIInterfaceOrientationMaskLandscape]
+            errorHandler:^(NSError *error) { fprintf(stderr,"[iOS Orientation] landscape request: %s\n",error.localizedDescription.UTF8String); }];
+        else [UIViewController attemptRotationToDeviceOrientation];
+    } else [UIViewController attemptRotationToDeviceOrientation];
 }
 static int safeMillion[4]={80000,30000,80000,20000};
 void ngb_ios_safe_area(float *left,float *top,float *right,float *bottom) {
@@ -94,8 +128,8 @@ static NSString *prepare_language(NSString *documents, NSString *original)
     if (settings.text_language!=2) return original;
     NSString *destination=[documents stringByAppendingPathComponent:@"korean-game"];
     NSString *assets=[NSBundle.mainBundle.resourcePath stringByAppendingPathComponent:@"KoreanPatch"];
-    UIWindow *window=[[UIWindow alloc] initWithFrame:UIScreen.mainScreen.bounds];
-    window.rootViewController=[UIViewController new];
+    UIWindow *window=ngb_landscape_window();
+    window.rootViewController=[NGBLandscapeController new];
     window.rootViewController.view.backgroundColor=UIColor.systemBackgroundColor;
     UILabel *status=[UILabel new]; status.numberOfLines=0; status.textAlignment=NSTextAlignmentCenter;
     status.text=@"Preparing Korean game data…\nThe original game files will be preserved.";
@@ -106,6 +140,7 @@ static NSString *prepare_language(NSString *documents, NSString *original)
         [status.centerYAnchor constraintEqualToAnchor:window.rootViewController.view.centerYAnchor],
         [status.widthAnchor constraintLessThanOrEqualToConstant:520]]];
     [window makeKeyAndVisible];
+    ngb_request_landscape(window);
     __block BOOL done=NO, ok=NO;
     dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED,0), ^{
         NSError *error=nil;
@@ -282,8 +317,8 @@ static void import_progress(uint64_t done, uint64_t total, void *context)
 }
 - (BOOL)run
 {
-    self.window = [[UIWindow alloc] initWithFrame:UIScreen.mainScreen.bounds];
-    UIViewController *controller = [UIViewController new];
+    self.window = ngb_landscape_window();
+    UIViewController *controller = [NGBLandscapeController new];
     controller.view.backgroundColor = UIColor.systemBackgroundColor;
     self.window.rootViewController = controller;
     self.status = [UILabel new];
@@ -314,6 +349,7 @@ static void import_progress(uint64_t done, uint64_t total, void *context)
         [stack.leadingAnchor constraintGreaterThanOrEqualToAnchor:safe.leadingAnchor constant:24],
         [stack.trailingAnchor constraintLessThanOrEqualToAnchor:safe.trailingAnchor constant:-24]]];
     [self.window makeKeyAndVisible];
+    ngb_request_landscape(self.window);
     while (!self.done) @autoreleasepool {
         [NSRunLoop.currentRunLoop runUntilDate:[NSDate dateWithTimeIntervalSinceNow:0.05]];
     }
@@ -458,17 +494,22 @@ static void import_progress(uint64_t done, uint64_t total, void *context)
     for (UIButton *button in self.buttons) [self setButton:button pressed:NO];
     [self.left reset]; [self.right reset];
 }
+- (void)disconnectJoystick
+{
+    if (!self.joystick) return;
+    [self releaseInputs];
+    SDL_JoystickID instance = SDL_JoystickInstanceID(self.joystick);
+    self.left.joystick = self.right.joystick = NULL;
+    SDL_JoystickClose(self.joystick); self.joystick = NULL;
+    for (int i = 0; i < SDL_NumJoysticks(); i++)
+        if (SDL_JoystickGetDeviceInstanceID(i) == instance) { SDL_JoystickDetachVirtual(i); break; }
+}
 - (void)refresh
 {
     BOOL physical = GCController.controllers.count > 0;
     self.hidden = physical;
     if (physical && self.joystick) {
-        [self releaseInputs];
-        SDL_JoystickID instance = SDL_JoystickInstanceID(self.joystick);
-        self.left.joystick = self.right.joystick = NULL;
-        SDL_JoystickClose(self.joystick); self.joystick = NULL;
-        for (int i = 0; i < SDL_NumJoysticks(); i++)
-            if (SDL_JoystickGetDeviceInstanceID(i) == instance) { SDL_JoystickDetachVirtual(i); break; }
+        [self disconnectJoystick];
     } else if (!physical && !self.joystick) {
         if (SDL_InitSubSystem(SDL_INIT_GAMECONTROLLER) != 0) return;
         int device = SDL_JoystickAttachVirtual(SDL_JOYSTICK_TYPE_GAMECONTROLLER,
@@ -485,15 +526,52 @@ static void attach_controls(UIWindow *window)
 {
     if (![NSStringFromClass(window.class) hasPrefix:@"SDL"]) return;
     if (!window.rootViewController || touchControls.superview == window.rootViewController.view) return;
+    [touchControls disconnectJoystick];
     [touchControls removeFromSuperview];
     touchControls = [[NGBTouch alloc] initWithFrame:window.rootViewController.view.bounds];
     [window.rootViewController.view addSubview:touchControls];
     [touchControls refresh];
 }
 
+static void ngb_sync_metal_layers(UIView *view) {
+    if ([view.layer isKindOfClass:CAMetalLayer.class]) {
+        CAMetalLayer *layer=(CAMetalLayer *)view.layer;
+        CGSize size=CGSizeMake(floor(view.bounds.size.width*layer.contentsScale),floor(view.bounds.size.height*layer.contentsScale));
+        if (size.width>0 && size.height>0 && !CGSizeEqualToSize(size,layer.drawableSize)) {
+            fprintf(stderr,"[iOS Drawable] repair layer %.0fx%.0f -> %.0fx%.0f; view %.0fx%.0f\n",
+                layer.drawableSize.width,layer.drawableSize.height,size.width,size.height,view.bounds.size.width,view.bounds.size.height);
+            layer.drawableSize=size;
+        }
+    }
+    for (UIView *child in view.subviews) ngb_sync_metal_layers(child);
+}
+// Called only by SDL's main-thread event pump, never while holding the Vulkan
+// presentation/queue mutex. UIKit geometry and CAMetalLayer stay on this thread.
+void ngb_ios_sync_drawable(SDL_Window *sdlWindow) {
+    if (!NSThread.isMainThread || !sdlWindow) return;
+    SDL_SysWMinfo info; SDL_VERSION(&info.version);
+    if (!SDL_GetWindowWMInfo(sdlWindow,&info) || info.subsystem!=SDL_SYSWM_UIKIT) return;
+    UIWindow *window=info.info.uikit.window;
+    UIView *root=window.rootViewController.view;
+    static CFTimeInterval next_request;
+    CFTimeInterval now=CACurrentMediaTime();
+    if (root.bounds.size.width<root.bounds.size.height && now>=next_request) {
+        next_request=now+2;
+        fprintf(stderr,"[iOS Orientation] request landscape; window %.0fx%.0f; root %.0fx%.0f; scene %ld\n",
+            window.bounds.size.width,window.bounds.size.height,root.bounds.size.width,root.bounds.size.height,
+            (long)window.windowScene.interfaceOrientation);
+        ngb_request_landscape(window);
+    }
+    [window layoutIfNeeded];
+    [root layoutIfNeeded];
+    ngb_sync_metal_layers(root);
+    attach_controls(window);
+}
+
 int ngb_ios_prepare(void)
 {
     @autoreleasepool {
+        SDL_SetHint(SDL_HINT_ORIENTATIONS, "LandscapeLeft LandscapeRight");
         request_display_cadence();
         CGSize pixels = UIScreen.mainScreen.nativeBounds.size;
         screenWidth = (int)MAX(pixels.width, pixels.height);
