@@ -27,18 +27,15 @@ static uint32_t g_ebx;
 static ptrdiff_t g_xbox_mem_offset;
 static int yields;
 int SwitchToThread(void) { yields++;return 1; }
-#ifdef __APPLE__
-extern int ngb_ios_service_spin(uint32_t) __attribute__((weak_import));
-#else
-#define __APPLE__ 1
-extern int ngb_ios_service_spin(uint32_t) __attribute__((weak));
-#endif
+typedef int (*XBOX_SPIN_SERVICE)(uint32_t);
+static XBOX_SPIN_SERVICE g_spin_service;
 '''
 MAIN=r'''
 int main(void) {
     static uint32_t memory[0x30004/4];
     uint32_t *old=&memory[0],*moved=&memory[0x30000/4];
     g_xbox_mem_offset=(ptrdiff_t)(uintptr_t)memory-(ptrdiff_t)0x86BF8810u;
+    xbox_SetSpinService(ngb_ios_service_spin);
     setenv("RECOMP_DSP_ACK","auto",1);
     g_ebx=0x86BF8810u;*old=3;
     recomp_spin_pause(0x0037DC15u);assert(*old==0 && yields==0);
@@ -59,16 +56,17 @@ int main(void) {
 def main():
     observer=function(ROOT/'src/main.c','ngb_ios_service_spin')
     spin=function(ROOT/'xboxrecomp/src/kernel/kernel_hal.c','recomp_spin_pause')
+    setter=function(ROOT/'xboxrecomp/src/kernel/kernel_hal.c','xbox_SetSpinService')
     with tempfile.TemporaryDirectory() as directory:
         root=Path(directory)
         for name,body,success in [('fixed',spin,True),('old',spin.replace(
-                'if (ngb_ios_service_spin && ngb_ios_service_spin(loop_va)) return;',''),False)]:
-            source=root/(name+'.c');exe=root/name;source.write_text(PREFIX+observer+body+MAIN)
+                'if (g_spin_service && g_spin_service(loop_va)) return;',''),False)]:
+            source=root/(name+'.c');exe=root/name;source.write_text(PREFIX+setter+observer+body+MAIN)
             subprocess.run(['cc','-std=c11',str(source),'-o',str(exe)],check=True,capture_output=True)
             result=subprocess.run([str(exe)],capture_output=True)
             assert (result.returncode==0)==success
         source=root/'no-hook.c';exe=root/'no-hook'
-        source.write_text(PREFIX+spin+'\nint main(void) { recomp_spin_pause(1); return yields!=1; }')
+        source.write_text(PREFIX+setter+spin+'\nint main(void) { recomp_spin_pause(1); return yields!=1; }')
         subprocess.run(['cc','-std=c11',str(source),'-o',str(exe)],check=True,capture_output=True)
         subprocess.run([str(exe)],check=True)
     print('DSP: original/moved mailbox, unrelated word preservation, command/PC/address guards, explicit-off/manual policy and absent hook PASS; old spin rejected')
