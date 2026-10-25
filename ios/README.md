@@ -11,7 +11,7 @@ a separate target.
 - [Successful Actions run](https://github.com/ajellia81-cmd/ngbrecomp/actions/runs/40173667289).
 - [Encrypted IPA artifact](https://github.com/ajellia81-cmd/ngbrecomp/actions/runs/40173667289/artifacts/12591273435).
 - Unsigned IPA: **47,125,911 bytes**, containing **11,740 linked lifted game functions**,
-  137 additional Korean variants, the real engine/runtime, SDL UIKit entry point,
+  55 additional Korean variants, the real engine/runtime, SDL UIKit entry point,
   MoltenVK framework and private translation capsule.
 - IPA SHA-256: `5b710225a15fc7014753bf730510b8aaefdb3dabbc8a4597155af533450bf6dc`.
 - GitHub artifact ZIP SHA-256: `3bd24d4cf21df9991f0f735e8c9c3b2f2982596d60c833c036d86ebab3db56de`.
