@@ -173,6 +173,10 @@ void VulkanBackend::MotionFinish() {
         uint64_t mids,ends,replaced; nv2a_present_pair_counts(&mids,&ends,&replaced);
         std::fprintf(stderr,"[Smooth Motion presenter] cumulative midpoint %llu, endpoint %llu, superseded pairs %llu\n",
             (unsigned long long)mids,(unsigned long long)ends,(unsigned long long)replaced);
+#ifdef NGB_IOS_APP
+        std::fprintf(stderr,"[Smooth Motion eligibility] requested %d; shared queue %d; scene draws %u; 2D %d; movie %d; quick menu %d; cooldown %u frames\n",
+            ngb_pc_setting(26),int(shared_),threed_,ngb_2d_screen_frame(int(threed_)),ngb_movie_active(),ngb_quick_wanted(),motion_cooldown_);
+#endif
         motion_log_ns_=now; motion_pictures_=0;
     }
     bool wanted=false;

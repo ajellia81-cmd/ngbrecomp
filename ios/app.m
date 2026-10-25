@@ -76,6 +76,27 @@ void ngb_ios_quit(void) {
     };
     if (NSThread.isMainThread) close(); else dispatch_async(dispatch_get_main_queue(),close);
 }
+// Rasterize the two Hangul glyphs with the system font; no extra font asset.
+int ngb_ios_settings_tab_mask(uint8_t *mask, int width, int height) {
+    @autoreleasepool {
+        if (!mask || width<=0 || height<=0 || width>400 || height>160) return 0;
+        uint32_t *pixels=calloc((size_t)width*height,4);
+        if (!pixels) return 0;
+        CGColorSpaceRef space=CGColorSpaceCreateDeviceRGB();
+        CGContextRef context=CGBitmapContextCreate(pixels,width,height,8,width*4,space,
+            kCGImageAlphaPremultipliedLast|kCGBitmapByteOrder32Big);
+        CGColorSpaceRelease(space);
+        if (!context) { free(pixels); return 0; }
+        CGContextTranslateCTM(context,0,height); CGContextScaleCTM(context,1,-1);
+        UIGraphicsPushContext(context);
+        [@"설정" drawAtPoint:CGPointMake(6,48) withAttributes:@{
+            NSFontAttributeName:[UIFont boldSystemFontOfSize:58],
+            NSForegroundColorAttributeName:UIColor.whiteColor}];
+        UIGraphicsPopContext();
+        for (int i=0;i<width*height;i++) mask[i]=((uint8_t *)pixels)[i*4+3];
+        CGContextRelease(context); free(pixels); return 1;
+    }
+}
 static int displayMilliHz=60000;
 static unsigned motionEpoch;
 double ngb_ios_display_hz(void) { return __atomic_load_n(&displayMilliHz,__ATOMIC_RELAXED)/1000.0; }

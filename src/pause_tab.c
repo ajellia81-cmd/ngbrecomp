@@ -586,8 +586,16 @@ static void tab_word(uint8_t *m, int mw, int mh, float cx, float cy, float bw, f
     {   /* always the typeface: it looks like the other plates' lettering */
         int game = s_game_font;
         s_game_font = 0;
-        float a = draw_text(tmp, 400, 160, &s_font_tab, "S", cap, sx, 6, base);
-        draw_text(tmp, 400, 160, &s_font_tab, "ettings", rest, sx, 6 + a - 2, base);
+#ifdef NGB_IOS_KOREAN
+        extern int ngb_korean_active(void);
+        extern int ngb_ios_settings_tab_mask(uint8_t *, int, int);
+        int localized = ngb_korean_active() && ngb_ios_settings_tab_mask(tmp, 400, 160);
+        if (!localized)
+#endif
+        {
+            float a = draw_text(tmp, 400, 160, &s_font_tab, "S", cap, sx, 6, base);
+            draw_text(tmp, 400, 160, &s_font_tab, "ettings", rest, sx, 6 + a - 2, base);
+        }
         s_game_font = game;
     }
     int x0 = 400, y0 = 160, x1 = -1, y1 = -1;

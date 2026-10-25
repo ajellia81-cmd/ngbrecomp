@@ -57,8 +57,37 @@ def restore_wrapper_stack(name, body):
     return body
 
 
+def repair_font_trampolines(bodies):
+    # The pinned patch uses PUSH continuation; RET as a jump. A normal lifted
+    # RET would return to the host caller and skip the rest of glyph setup.
+    # Rejoin the existing caller body so its live frame and loop stay intact.
+    for helper, target in [('00DCA400', '0021A23A'), ('00DCA600', '0021A4B6')]:
+        key='sub_'+helper
+        if key not in bodies:
+            raise ValueError('Pinned Korean font trampoline missing')
+        body=bodies[key]
+        old='PUSH32(esp, 0x'+target.lstrip('0')+');\n    esp += 4; return; /* ret */'
+        if body.count(old)!=1:
+            raise ValueError('Pinned Korean font trampoline shape changed')
+        has_frame=bool(re.search(r'uint32_t ebp\s*=',body))
+        body=body.replace(old,('g_seh_ebp = ebp; ' if has_frame else '')+
+                          'return; /* resume in the patched caller */')
+        bodies[key]=body
+        pattern=re.compile(r'g_seh_ebp = ebp; '+key+r'\(\); return; /\* tail jmp 0x'+helper+r' \*/')
+        count=0
+        for caller,source in list(bodies.items()):
+            if 'loc_'+target+':' not in source: continue
+            source,n=pattern.subn('g_seh_ebp = ebp; '+key+'(); '+
+                ('ebp = g_seh_ebp; ' if has_frame else '')+'goto loc_'+target+';',source)
+            if n: bodies[caller]=source; count+=n
+        expected=2 if helper=='00DCA400' else 1
+        if count!=expected:
+            raise ValueError('Pinned Korean font trampoline caller changed')
+
+
 def merge(original, translated, missing_seeds=None):
     before, after = functions(original), functions(translated)
+    repair_font_trampolines(after)
     changed = {name: body for name, body in after.items()
                if name in before and normalized(body) != normalized(before[name])}
     # Executable XBE sections can also hold text data. Do not import functions

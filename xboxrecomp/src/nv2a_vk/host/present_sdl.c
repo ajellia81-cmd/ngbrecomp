@@ -263,8 +263,23 @@ static void fps_track(void)
         double secs = (now - window_ns) / 1e9;
         unsigned frames_logged = frames;
         double fps = frames / secs;
+#ifdef NGB_IOS_APP
+        // Guest flips remain 60 Hz. Count only successfully submitted midpoint
+        // and endpoint pictures when the motion worker is presenting pairs.
+        extern void nv2a_present_pair_counts(uint64_t *, uint64_t *, uint64_t *);
+        static uint64_t previous_mid, previous_end;
+        uint64_t mid, end, superseded;
+        nv2a_present_pair_counts(&mid, &end, &superseded);
+        uint64_t pictures=(mid-previous_mid)+(end-previous_end);
+        if (mid>previous_mid)
+            snprintf(s_fps_text,sizeof s_fps_text,"%.0f FPS  game %.0f",pictures/secs,fps);
+        else
+#endif
         snprintf(s_fps_text, sizeof s_fps_text, "%.0f FPS  %.1f ms  max %.1f",
                  fps, frames ? secs * 1000.0 / frames : 0.0, max_ms);
+#ifdef NGB_IOS_APP
+        previous_mid=mid; previous_end=end;
+#endif
         /* NV2A_FPS_LOG=1: to stderr; NV2A_FPS_LOG=<path>: appended to that
          * file (where stderr is hard to reach, e.g. a Steam launch). */
         const char *fl = getenv("NV2A_FPS_LOG");
