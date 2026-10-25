@@ -6,32 +6,37 @@ after restarting following the first load. Long-term reliability, performance an
 background resume still require testing. The older NGBBringup diagnostic app is
 a separate target.
 
-- App version: **0.2.0 (2.56)**; compiled revision and active log path are recorded in `Documents/build-info.txt`.
-- Build source: `7d4571426401d6a5e23ae9494d3595967633010b`, branch `ios-port`.
-- [Successful Actions run](https://github.com/ajellia81-cmd/ngbrecomp/actions/runs/40211789120).
-- [Encrypted IPA artifact](https://github.com/ajellia81-cmd/ngbrecomp/actions/runs/40211789120/artifacts/12605953900).
-- Unsigned IPA: **47,252,705 bytes**, containing **11,740 linked lifted game functions**,
+- App version: **0.2.0 (2.57)**; compiled revision and active log path are recorded in `Documents/build-info.txt`.
+- Build source: `bc531c5b3c69dc1dc6ed979dd8af90a7461733aa`, branch `ios-port`.
+- [Successful Actions run](https://github.com/ajellia81-cmd/ngbrecomp/actions/runs/40246051826).
+- [Encrypted IPA artifact](https://github.com/ajellia81-cmd/ngbrecomp/actions/runs/40246051826/artifacts/12619102483).
+- Unsigned IPA: **47,261,464 bytes**, containing **11,740 linked lifted game functions**,
   55 additional Korean variants, the real engine/runtime, SDL UIKit entry point,
   MoltenVK framework and private translation capsule.
-- IPA SHA-256: `a7e245a78d7d37d4a586df87aeceef1729c5ee61cb17768387167b095f016916`.
-- GitHub artifact ZIP SHA-256: `550580366e3ae0ba5aeea0e7d1b283f29628587f2bfd89cf03c72797720011a4`.
+- IPA SHA-256: `b7a9828f02bf13bb7b40baba27c4c1dd4b3f70c384cb9dce7a4f3a37e065a523`.
+- GitHub artifact ZIP SHA-256: `4245e8c2db866133893571c8e606a87243fb893934148295a5fb1adf678e3619`.
 
 The owner confirms gameplay, Korean text and 120 FPS output/counter operation.
-Build 2.56 interpolates retained vertex constants and transform matrices before
-running the original vertex program, following VF3's pre-transform scene blending
-boundary. It replaces the independent final clip-position/varying blend. Native
-history/input tests and fixed/program shader compilation pass; remaining camera
-flicker still needs a phone retest. The Korean 설정 image is smaller and slightly
-thinner. Full-width Shift-JIS spaces now use the same half-cell advance as ASCII
-spaces, in both measurement and draw paths. Font-map padding confirms that the
-code is a blank, not a translated Hangul glyph.
+Build 2.57 retains input-matrix interpolation and replaces occurrence-order
+pairing of repeated meshes with a frame-wide nearest-pose plan within each
+geometry/material group, following the VF3 reference's pairing boundary. Actual
+draw ranges, index type and render-surface formats/extents now distinguish keys;
+rotating display-buffer addresses do not break history. Reordered and culled
+instances, greedy-pair stealing, repeatable resolution, reset and range separation
+pass native tests. The old 2.56 occurrence matcher fails the reordered-room
+negative control. This is consistent with the owner's lamp geometry appearing
+between the lamps, but physical rendering is still a retest item.
 
-The owner reports the 2.55 lower-V repair improved Korean glyph bottoms but a
-small amount of clipping remains. This build retains that repair; the exact
-remaining cause is unresolved, including whether the baked translation bitmap
-already constrains the lowest strokes. No unsupported extra UV/line-height change
-is included. Native controller haptics recovery also still needs device feedback.
-The uploaded original font assets were hash-checked privately; no original fonts,
+The owner approved the revised Korean 설정 preview before building. Native macOS
+mask/plate code places its coverage at rows 8–37 of a 128x64 plate; area filtering
+replaces nearest source sampling. Korean spaces now take a quarter cell (4 pixels
+in the measured 16-pixel bank), using the baked Options labels as the reference.
+The sprite path no longer adds a vertical edge inset on the three Korean font
+pages. All 768 cells were inspected; 715 carry substantial last-row ink. Horizontal
+protection and the renderer's console-sample clamp remain. Native edge-fade tests
+pass; final glyph-bottom appearance still requires device confirmation.
+
+Controller haptics recovery also still needs device feedback. No original fonts,
 bitmaps or game code are committed. Imported data and shared saves are preserved.
 
 See [INSTALL.md](INSTALL.md) for download, LiveContainer import and game data.
