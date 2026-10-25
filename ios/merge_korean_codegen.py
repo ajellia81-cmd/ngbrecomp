@@ -8,6 +8,7 @@ Never commit the output of this script.
 import argparse
 import json
 import re
+import struct
 from pathlib import Path
 
 DEFINITION = re.compile(r'^void (sub_[0-9A-Fa-f]{8})\(void\)\s*\{', re.M)
@@ -111,11 +112,48 @@ def route_direct_entries(original, selected):
     return routed
 
 
+def xbe_bytes(path, address, length):
+    image=path.read_bytes()
+    base=struct.unpack_from('<I',image,0x104)[0]
+    count,table=struct.unpack_from('<II',image,0x11C)
+    for i in range(count):
+        fields=struct.unpack_from('<9I20s',image,table-base+i*56)
+        va,offset,size=fields[1],fields[3],fields[4]
+        if va<=address and address+length<=va+size:
+            return image[offset+address-va:offset+address-va+length]
+    raise ValueError('Private function range is outside executable sections')
+
+def code_ranges(folder):
+    result={}
+    for path in folder.glob('recomp_[0-9]*.c'):
+        for a,b in re.findall(r'Original: 0x([0-9A-Fa-f]+) - 0x([0-9A-Fa-f]+)',path.read_text()):
+            result['sub_'+a.upper()]=(int(a,16),int(b,16))
+    return result
+
+def changed_instructions(name, before, after, original_xbe, patched_xbe):
+    start,end=before[name]
+    # A patch can split a function into a detour and continuations. Check
+    # its complete original span, not just the shorter lifted entry prefix.
+    if name in after: end=max(end,after[name][1])
+    return xbe_bytes(original_xbe,start,end-start)!=xbe_bytes(patched_xbe,start,end-start)
+
+
+def select_changed_functions(before,after,original_ranges,patched_ranges,original_xbe,patched_xbe):
+    return {name:body for name,body in after.items() if name in before and
+            normalized(body)!=normalized(before[name]) and
+            changed_instructions(name,original_ranges,patched_ranges,original_xbe,patched_xbe)}
+
+
 def merge(original, translated, missing_seeds=None):
     before, after = functions(original), functions(translated)
     repair_font_trampolines(after)
-    changed = {name: body for name, body in after.items()
-               if name in before and normalized(body) != normalized(before[name])}
+    original_xbe=Path(__file__).resolve().parents[1]/'game_files/default.xbe'
+    patched_xbe=translated.parent/'korean.xbe'
+    original_ranges,patched_ranges=code_ranges(original),code_ranges(translated)
+    changed=select_changed_functions(before,after,original_ranges,patched_ranges,original_xbe,patched_xbe)
+    # Changes in generated calling convention around a handwritten hook do
+    # not mean the Xbox function changed. Keep the original safe-call caller
+    # when its instructions are byte-identical; changed callees have gates.
     # Executable XBE sections can also hold text data. Do not import functions
     # found by a linear sweep of those bytes unless reachable from real changed
     # code. The three handwritten entries contain verified patched branches.
