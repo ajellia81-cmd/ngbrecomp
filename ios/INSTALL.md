@@ -7,17 +7,17 @@ A successful compile/package is not a gameplay result.
 
 ## Download the actual IPA
 
-1. Open the [encrypted game artifact](https://github.com/ajellia81-cmd/ngbrecomp/actions/runs/40196789155/artifacts/12600557788)
-   while signed into GitHub. It is from [Actions run 40196789155](https://github.com/ajellia81-cmd/ngbrecomp/actions/runs/40196789155).
+1. Open the [encrypted game artifact](https://github.com/ajellia81-cmd/ngbrecomp/actions/runs/40200373376/artifacts/12601999037)
+   while signed into GitHub. It is from [Actions run 40200373376](https://github.com/ajellia81-cmd/ngbrecomp/actions/runs/40200373376).
 2. Extract GitHub's outer ZIP. It contains `NinjaGaidenBlack-ios-arm64-unsigned.ipa.7z`.
 3. Open the inner archive with a 7z-capable tool such as 7-Zip and enter the same
    password stored in `NGB_IPA_PASSWORD`. Do not upload the password to an issue or chat.
 4. Extract `NinjaGaidenBlack-ios-arm64-unsigned.ipa`. Import this file, not the ZIP/7z.
 
-The artifact is retained for seven days. The unsigned IPA is 47,258,571 bytes and
-has SHA-256 `ba0990d69044a9bd91becb510c2d3a96fdab80ea04b1207be791ecb5ee1f9344`.
-App version: **0.2.0 (2.54)**.
-Build source commit: `d13842d334c5e6ebbb1bf64b80accd0a4cbbf7db`.
+The artifact is retained for seven days. The unsigned IPA is 47,258,912 bytes and
+has SHA-256 `6f69f0c84dee1f9d412f532ad1ad39d1ebbaaf708117bc1af610c18f9f183371`.
+App version: **0.2.0 (2.55)**.
+Build source commit: `e4f37dc34106ad08ebd708b94a71cac4e906d562`.
 It contains the real engine, 11,740 original lifted game functions and 55 Korean
 variants. It is not NGBBringup. Korean glyph rendering/gameplay still require a device test.
 The Korean-enabled build contains the pinned translation capsule; the original
@@ -479,3 +479,32 @@ After upload, the PC need not remain running. The existing Drive ISO is 7.83 GB,
 above the connector's 256 MB raw-download limit; its sharing settings were not
 changed. Windows PowerShell is checked using synthetic XDVDFS fixtures, not the
 owner's ISO or desktop.
+
+
+## Build 2.55: preserve Korean glyph bottom strokes
+
+The owner provided the font-only ZIP. Its three file hashes match the extraction
+manifest and its TrueType file contains valid Hangul outlines. The displayed
+Korean lettering also uses patched P8 pages: fjp_bk02.spr, fjp_st15.spr and
+fjp_st16.spr. Private inspection found ink on cell row 15 in 715 of 768 cells;
+the first two rows of every cell are transparent. No font file is replaced.
+
+The patched sprite groups 0x56D, 0x587 and 0x588 map to these three pages. Their
+helper reduced both upper-U and lower-V texture bounds by one texel. The new
+adaptation removes only the lower-V reduction, retaining the original vertical
+padding/last ink row and keeping horizontal neighbor-bleed protection. The
+fixture uses a thin final-row stroke and fractional destination sampling: the
+adapted interval preserves it and the previous trim fails. It also checks the
+non-target page and unchanged horizontal trim. These are native arithmetic/codegen
+checks, not a physical GPU rendering result. The actual pinned private helper
+must match exactly or generation fails. Phone verification is still required.
+
+The log's former `cell 16x2` line was not a two-pixel-high glyph. Its second field
+came from the character-byte-count slot. The read-only diagnostic now reads the
+actual height from the font table. Existing line spacing, non-space glyph advance,
+original Latin/Japanese code and on-disk assets remain unchanged. No data/cache
+reset or ISO reimport is needed. Fully quit LiveContainer before replacement.
+
+The previously reported whole-scene polygon flicker and controller haptic
+behavior remain device retest items. This log had Smooth Motion disabled; it does
+not independently validate the prior interpolation-precision change.
