@@ -6,14 +6,14 @@ after restarting following the first load. Long-term reliability, performance an
 background resume still require testing. The older NGBBringup diagnostic app is
 a separate target.
 
-- Build source: `348c07e4f0e6f508f1154af285ffb63dc604b5b4`, branch `ios-port`.
-- [Successful Actions run](https://github.com/ajellia81-cmd/ngbrecomp/actions/runs/40150171948).
-- [Encrypted IPA artifact](https://github.com/ajellia81-cmd/ngbrecomp/actions/runs/40150171948/artifacts/12582735544).
-- Unsigned IPA: **47,267,091 bytes**, containing **11,740 linked lifted game functions**,
+- Build source: `435c0f7d940bf56540b0872f6b1df2180b0ca596`, branch `ios-port`.
+- [Successful Actions run](https://github.com/ajellia81-cmd/ngbrecomp/actions/runs/40152627909).
+- [Encrypted IPA artifact](https://github.com/ajellia81-cmd/ngbrecomp/actions/runs/40152627909/artifacts/12583292229).
+- Unsigned IPA: **47,267,191 bytes**, containing **11,740 linked lifted game functions**,
   137 additional Korean variants, the real engine/runtime, SDL UIKit entry point,
   MoltenVK framework and private translation capsule.
-- IPA SHA-256: `c8d3b278ab2cc1a56eec1bfdab9e7158b9d65c5d34330af10b04f6efc23ece03`.
-- GitHub artifact ZIP SHA-256: `ab5f0fe62dbaa3b049366199c74e42a59396869a692fec1fe603090283183c1d`.
+- IPA SHA-256: `c60ff2037130d5ef912db374dbcd9443502c2c34a233ca89254464969e607d7a`.
+- GitHub artifact ZIP SHA-256: `2d401645374ed6448fcfdd72ffa4124fa10915cc14a8ed61ca50020e227c0517`.
 
 See [INSTALL.md](INSTALL.md) for download, LiveContainer import and game data.
 The download is an encrypted 7z inside GitHub's artifact ZIP. It expires seven
