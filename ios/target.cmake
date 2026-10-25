@@ -38,7 +38,7 @@ target_include_directories(${PROJECT_NAME} PRIVATE
     ${XBOXRECOMP_DIR}/third_party/volk ${XBOXRECOMP_DIR}/third_party/Vulkan-Headers/include)
 target_link_libraries(${PROJECT_NAME} PRIVATE SDL2::SDL2main
     "-framework UIKit" "-framework Foundation" "-framework GameController"
-    "-framework AVFoundation" "-framework UniformTypeIdentifiers" "-framework QuartzCore" "-framework CoreText")
+    "-framework AVFoundation" "-framework UniformTypeIdentifiers" "-framework QuartzCore" "-framework ImageIO")
 target_link_options(${PROJECT_NAME} PRIVATE "-Wl,-rpath,@executable_path/Frameworks")
 set_target_properties(${PROJECT_NAME} PROPERTIES
     MACOSX_BUNDLE TRUE
@@ -63,3 +63,9 @@ add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy "${NGB_MOLTENVK_ROOT}/LICENSE"
         "$<TARGET_BUNDLE_DIR:${PROJECT_NAME}>/LICENSES/MoltenVK.txt"
     VERBATIM)
+
+# The new Korean label is our generated UI asset; the game's plates remain private.
+add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "${CMAKE_CURRENT_SOURCE_DIR}/ios/assets/settings-ko.png"
+        "$<TARGET_BUNDLE_DIR:${PROJECT_NAME}>/SettingsTab-Korean.png" VERBATIM)

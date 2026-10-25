@@ -14,6 +14,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#ifdef __APPLE__
+#include <TargetConditionals.h>
+#endif
 
 /* ======================================================================== */
 #if defined(_WIN32) && !defined(XBOX_SDL_BACKENDS)
@@ -284,6 +287,22 @@ static DWORD g_packet[XBOX_MAX_CONTROLLERS];
  * reads state the pump already updated. */
 static SDL_mutex *g_pad_lock;
 
+#if defined(__APPLE__) && TARGET_OS_IPHONE
+/* SDL creates both CoreHaptics engines and their players on first nonzero
+ * rumble. Prime that path at connection, before a game event waits on it.
+ * One amplitude unit, immediately stopped, avoids a noticeable startup kick. */
+static void warm_controller_rumble(SDL_GameController *controller)
+{
+    if (!SDL_GameControllerHasRumble(controller)) return;
+    Uint64 started=SDL_GetTicks64();
+    int status=SDL_GameControllerRumble(controller,1,1,1);
+    SDL_GameControllerRumble(controller,0,0,0);
+    fprintf(stderr,"[iOS Haptics] connection warmup %llu ms; %s\n",
+        (unsigned long long)(SDL_GetTicks64()-started),status==0 ? "ready" : "unavailable");
+}
+#endif
+
+
 /* (Re)open every attached game controller into the first XBOX_MAX_CONTROLLERS
  * slots, keeping already-open ones where they are. */
 static void open_controllers(void)
@@ -313,6 +332,9 @@ static void open_controllers(void)
             break;
         g_pads[s] = SDL_GameControllerOpen(i);
         g_controller_connected[s] = g_pads[s] != NULL;
+#if defined(__APPLE__) && TARGET_OS_IPHONE
+        if (g_pads[s]) warm_controller_rumble(g_pads[s]);
+#endif
         if (g_pads[s])
             fprintf(stderr, "[INPUT] pad %d: %s\n", s + 1,
                     SDL_GameControllerName(g_pads[s]));

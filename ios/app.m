@@ -1,7 +1,7 @@
 /* UIKit services around the real SDL/main.c engine, not a separate harness. */
 #import <UIKit/UIKit.h>
 #import <QuartzCore/QuartzCore.h>
-#import <CoreText/CoreText.h>
+#import <ImageIO/ImageIO.h>
 #import <GameController/GameController.h>
 #import <AVFoundation/AVFoundation.h>
 #import <UniformTypeIdentifiers/UniformTypeIdentifiers.h>
@@ -81,30 +81,42 @@ void ngb_ios_quit(void) {
 // scalable lettering rasterized into the existing tab-art mask.
 int ngb_ios_settings_tab_mask(uint8_t *mask, int width, int height) {
     @autoreleasepool {
-        // Match the dark, slanted Korean tab lettering without enlarging
-        // the Options sprite's tiny, differently styled white glyphs.
         if (!mask || width<240 || height<128) return 0;
-        memset(mask,0,(size_t)width*height);
-        CGColorSpaceRef space=CGColorSpaceCreateDeviceGray();
-        CGContextRef context=CGBitmapContextCreate(mask,width,height,8,width,space,kCGImageAlphaNone);
+        const char *fixture=getenv("NGB_SETTINGS_ART");
+        NSString *path=fixture ? [NSString stringWithUTF8String:fixture] :
+            [NSBundle.mainBundle.resourcePath stringByAppendingPathComponent:@"SettingsTab-Korean.png"];
+        NSData *data=[NSData dataWithContentsOfFile:path];
+        if (!data) return 0;
+        CGImageSourceRef source=CGImageSourceCreateWithData((__bridge CFDataRef)data,NULL);
+        if (!source) return 0;
+        CGImageRef image=CGImageSourceCreateImageAtIndex(source,0,NULL);
+        CFRelease(source);
+        if (!image) return 0;
+        size_t iw=CGImageGetWidth(image),ih=CGImageGetHeight(image);
+        // This independently generated lettering contains no original game pixels.
+        // The fixed crop excludes its transparent margins and faint edge noise.
+        if (iw!=1774 || ih!=887) { CGImageRelease(image); return 0; }
+        uint8_t *rgba=calloc(iw*ih,4);
+        CGColorSpaceRef space=CGColorSpaceCreateDeviceRGB();
+        CGContextRef context=rgba ? CGBitmapContextCreate(rgba,iw,ih,8,iw*4,space,
+            kCGImageAlphaPremultipliedLast|kCGBitmapByteOrder32Big) : NULL;
         CGColorSpaceRelease(space);
-        if (!context) return 0;
-        CTFontRef font=CTFontCreateWithName(CFSTR("AppleSDGothicNeo-Regular"),80,NULL);
-        NSDictionary *attributes=@{(__bridge NSString *)kCTFontAttributeName:(__bridge id)font,
-            (__bridge NSString *)kCTForegroundColorFromContextAttributeName:@YES};
-        NSAttributedString *text=[[NSAttributedString alloc] initWithString:@"설정" attributes:attributes];
-        CTLineRef line=CTLineCreateWithAttributedString((__bridge CFAttributedStringRef)text);
-        CGContextSetShouldAntialias(context,true);
-        CGContextSetGrayFillColor(context,1,1);
-        CGContextSetTextMatrix(context,CGAffineTransformMake(1,0,.18,1,0,0));
-        CGContextSetTextPosition(context,12,30);
-        CTLineDraw(line,context);
-        CFRelease(line);CFRelease(font);CGContextRelease(context);
-        // The consumer already uses this bitmap's row order. A second row
-        // reversal here flips only the Korean word on the finished plate.
+        if (!context) { free(rgba); CGImageRelease(image); return 0; }
+        CGContextDrawImage(context,CGRectMake(0,0,iw,ih),image);
+        CGImageRelease(image);CGContextRelease(context);
+        memset(mask,0,(size_t)width*height);
+        const unsigned w=240,h=112;
+        for (unsigned y=0;y<h;y++) for (unsigned x=0;x<w;x++) {
+            unsigned sx=503+(unsigned)((x+.5)*768/w);
+            unsigned sy=277+(unsigned)((y+.5)*357/h);
+            uint8_t alpha=rgba[(sy*iw+sx)*4+3];
+            mask[y*width+x]=alpha>16 ? alpha : 0;
+        }
+        free(rgba);
         return 1;
     }
 }
+
 static int displayMilliHz=60000;
 static unsigned motionEpoch;
 double ngb_ios_display_hz(void) { return __atomic_load_n(&displayMilliHz,__ATOMIC_RELAXED)/1000.0; }

@@ -174,8 +174,8 @@ void VulkanBackend::MotionFinish() {
         std::fprintf(stderr,"[Smooth Motion presenter] cumulative midpoint %llu, endpoint %llu, superseded pairs %llu\n",
             (unsigned long long)mids,(unsigned long long)ends,(unsigned long long)replaced);
 #ifdef NGB_IOS_APP
-        std::fprintf(stderr,"[Smooth Motion eligibility] requested %d; shared queue %d; scene draws %u; 2D %d; movie %d; quick menu %d; cooldown %u frames\n",
-            ngb_pc_setting(26),int(shared_),threed_,ngb_2d_screen_frame(int(threed_)),ngb_movie_active(),ngb_quick_wanted(),motion_cooldown_);
+        std::fprintf(stderr,"[Smooth Motion eligibility] requested %d; shared queue %d; scene draws %u; 2D %d; movie %d; quick menu %d; cooldown %u frames; EQUAL-depth draws %u\n",
+            ngb_pc_setting(26),int(shared_),threed_,ngb_2d_screen_frame(int(threed_)),ngb_movie_active(),ngb_quick_wanted(),motion_cooldown_,motion_equal_);
 #endif
         motion_log_ns_=now; motion_pictures_=0;
     }
@@ -210,7 +210,7 @@ void VulkanBackend::MotionFinish() {
         }
         if (motion_targets_.empty()) motion_gpu_bytes_=0;
     }
-    motion_commands_.clear(); motion_cpu_bytes_=0; motion_3d_=motion_changed_=0;
+    motion_commands_.clear(); motion_cpu_bytes_=0; motion_3d_=motion_changed_=motion_equal_=0;
     motion_capture_=motion_valid_=wanted; motion_last_ns_=now;
 }
 #endif

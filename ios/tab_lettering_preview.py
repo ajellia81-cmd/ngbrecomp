@@ -1,7 +1,7 @@
 """Render the actual Korean tab mask on macOS; no game assets are used."""
 from pathlib import Path
 import base64
-import re
+import os
 import struct
 import subprocess
 import tempfile
@@ -13,13 +13,13 @@ def main():
     start=source.index('int ngb_ios_settings_tab_mask(')
     end=source.index('\nstatic int displayMilliHz',start)
     function=source[start:end]
-    prefix='#import <Foundation/Foundation.h>\n#import <CoreText/CoreText.h>\n#include <stdint.h>\n#include <string.h>\n#include <stdio.h>\n'
+    prefix='#import <Foundation/Foundation.h>\n#import <ImageIO/ImageIO.h>\n#include <stdint.h>\n#include <string.h>\n#include <stdio.h>\n'
     suffix='\nint main(int argc,char **argv) { uint8_t mask[400*160]; if(argc!=2 || !ngb_ios_settings_tab_mask(mask,400,160)) return 1; FILE *f=fopen(argv[1],"wb"); if(!f) return 2; fwrite(mask,1,sizeof mask,f); return fclose(f); }\n'
     with tempfile.TemporaryDirectory() as directory:
         directory=Path(directory);code=directory/'preview.m';exe=directory/'preview';raw=directory/'mask.raw'
         code.write_text(prefix+function+suffix)
-        subprocess.run(['xcrun','--sdk','macosx','clang','-fobjc-arc',str(code),'-framework','Foundation','-framework','CoreText','-framework','CoreGraphics','-o',str(exe)],check=True)
-        subprocess.run([str(exe),str(raw)],check=True)
+        subprocess.run(['xcrun','--sdk','macosx','clang','-fobjc-arc',str(code),'-framework','Foundation','-framework','ImageIO','-framework','CoreGraphics','-o',str(exe)],check=True)
+        subprocess.run([str(exe),str(raw)],check=True,env={**os.environ,"NGB_SETTINGS_ART":str(ROOT/"ios/assets/settings-ko.png")})
         mask=raw.read_bytes()
     occupied=[(x,y) for y in range(160) for x in range(400) if mask[y*400+x]>16]
     assert occupied,'Empty Korean text mask'

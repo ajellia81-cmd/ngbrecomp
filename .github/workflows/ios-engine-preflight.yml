@@ -31,6 +31,10 @@ on:
       - 'ios/dsp_mailbox_test.py'
       - 'ios/tab_lettering_preview.py'
       - 'ios/fps_counter_test.py'
+      - 'ios/motion_precision_test.py'
+      - 'ios/rumble_warmup_test.py'
+      - 'ios/assets/settings-ko.png'
+      - 'xboxrecomp/src/input/xinput_device.c'
       - 'ios/presenter_pair_test.py'
       - 'xboxrecomp/src/kernel/kernel_hal.c'
       - 'tools/pipeline.sh'
@@ -196,6 +200,7 @@ jobs:
           python3 ios/tab_lettering_preview.py
           python3 ios/presenter_descriptor_test.py
           python3 ios/fps_counter_test.py
+          python3 ios/rumble_warmup_test.py
       - name: Compile actual Smooth Motion shaders and retained-pose tests
         shell: bash
         run: |
@@ -209,6 +214,7 @@ jobs:
             glslangValidator -D -V --target-env vulkan1.1 --auto-map-locations \
               -S vert -e main "$shader" -o "$shader.spv"
           done
+          python3 ios/motion_precision_test.py build/ios-platform/motion
 
   private-recompilation:
     # Standard GitHub-hosted runner: never the owner's PC or a paid larger runner.

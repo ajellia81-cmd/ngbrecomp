@@ -373,7 +373,7 @@ private:
     unsigned motion_epoch_=0;
     uint32_t motion_cooldown_=0,motion_late_=0;
     int64_t motion_swap_ns_=0;
-    uint32_t motion_3d_=0,motion_changed_=0,motion_pictures_=0;
+    uint32_t motion_3d_=0,motion_changed_=0,motion_pictures_=0,motion_equal_=0;
     int64_t motion_last_ns_=0,motion_log_ns_=0;
     std::vector<std::function<void()>> motion_commands_;
     std::unordered_map<VkImage,MotionTarget> motion_targets_;
@@ -3231,6 +3231,7 @@ void VulkanBackend::Draw(const State& s, uint32_t prim, uint32_t start, uint32_t
     if (motion_capture_ && motion_valid_) {
         auto packet=std::make_shared<MotionDraw>();
         packet->rt=rt; packet->ds=ds; packet->pipeline=pipe;
+        if (motion_shader && k.zen && k.zfunc==0x202) motion_equal_++;
         packet->vc=motion_vc; packet->dc=c; packet->viewport=vpt; packet->scissor=sc;
         packet->buffers=a.buffer_count; packet->index_count=a.index_count;
         packet->index16=a.index16; packet->base_vertex=a.base_vertex; packet->draw_count=a.draw_count;

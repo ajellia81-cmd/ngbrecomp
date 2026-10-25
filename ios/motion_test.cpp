@@ -41,7 +41,7 @@ int main(int argc,char **argv) {
         auto emit=[&](const char *name,std::string shader) {
             auto wrapped=MotionVertexHlsl(std::move(shader));
             check(!wrapped.empty() && wrapped.find("motion_previous")!=std::string::npos,"missing previous shader evaluation");
-            check(wrapped.find("n.pos=lerp(p.pos,n.pos,motion.x)")!=std::string::npos,"missing raster geometry interpolation");
+            check(wrapped.find("n.pos=MotionClipPosition(p.pos,n.pos,motion.x)")!=std::string::npos,"missing raster geometry interpolation");
             std::ofstream(std::string(argv[1])+"/"+name)<<wrapped;
         };
         emit("motion-fixed.vert.hlsl",FixedVertexHlsl(1,false));
