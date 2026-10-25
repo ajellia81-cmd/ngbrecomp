@@ -6,21 +6,25 @@ after restarting following the first load. Long-term reliability, performance an
 background resume still require testing. The older NGBBringup diagnostic app is
 a separate target.
 
-- App version: **0.2.0 (2.39)**; compiled revision and active log path are recorded in `Documents/build-info.txt`.
-- Build source: `9dc684b37f07682070f2884773a3995a2321fa85`, branch `ios-port`.
-- [Successful Actions run](https://github.com/ajellia81-cmd/ngbrecomp/actions/runs/40163143140).
-- [Encrypted IPA artifact](https://github.com/ajellia81-cmd/ngbrecomp/actions/runs/40163143140/artifacts/12587740301).
-- Unsigned IPA: **47,273,188 bytes**, containing **11,740 linked lifted game functions**,
+- App version: **0.2.0 (2.40)**; compiled revision and active log path are recorded in `Documents/build-info.txt`.
+- Build source: `c5b2fcfce37bf1e86f7067a6e9a1f797f1470ac0`, branch `ios-port`.
+- [Successful Actions run](https://github.com/ajellia81-cmd/ngbrecomp/actions/runs/40165400083).
+- [Encrypted IPA artifact](https://github.com/ajellia81-cmd/ngbrecomp/actions/runs/40165400083/artifacts/12588302387).
+- Unsigned IPA: **47,272,962 bytes**, containing **11,740 linked lifted game functions**,
   137 additional Korean variants, the real engine/runtime, SDL UIKit entry point,
   MoltenVK framework and private translation capsule.
-- IPA SHA-256: `ede341375d0ccbd72cf416a7c44b2af1615a8d4c5b457836af6bb4d38aa5a8fe`.
-- GitHub artifact ZIP SHA-256: `9749425e9f4627bd57092b1aec228372733c5c89d4a8c8f07c3a60cf3288d6e3`.
+- IPA SHA-256: `09b6a61604271f6812511445d65e7075fea7240c91ad58f3fe0ee43370440ccc`.
+- GitHub artifact ZIP SHA-256: `7782150682490eebe23d2735815340fec35602e8cecdfac8bf217f2e4439b1e1`.
 
-The build 2.37 phone log confirmed a portrait Metal drawable during landscape
-startup. The new source keeps preparation windows landscape and rebuilds the
-swapchain when actual drawable dimensions change even without an SDL resize
-event. Rotation regression tests and the full device build passed; a phone retest
-is required to establish that the cropped title is restored.
+The build 2.39 phone session confirmed landscape output at 2868x1320. It
+exposed missing menu/movie resources and New Game loading trouble caused by the
+old append-based Korean AFS overlay not matching rebuilt offsets. The new source
+rebuilds canonical archives and migrates only the disposable Korean cache while
+preserving original files and shared saves. Full-byte archive/cache-safety tests
+and the complete device build passed; phone rendering/progression needs a retest.
+The first Korean launch prepares the corrected archives once. Touch controls
+refresh on controller hotplug and periodic presence checks; main-menu QUIT matches
+its uppercase neighbors, with Quit retained in title/sentence-case screens.
 
 See [INSTALL.md](INSTALL.md) for download, LiveContainer import and game data.
 The download is an encrypted 7z inside GitHub's artifact ZIP. It expires seven

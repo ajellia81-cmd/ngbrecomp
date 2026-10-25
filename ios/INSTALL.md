@@ -7,17 +7,17 @@ A successful compile/package is not a gameplay result.
 
 ## Download the actual IPA
 
-1. Open the [encrypted game artifact](https://github.com/ajellia81-cmd/ngbrecomp/actions/runs/40163143140/artifacts/12587740301)
-   while signed into GitHub. It is from [Actions run 40163143140](https://github.com/ajellia81-cmd/ngbrecomp/actions/runs/40163143140).
+1. Open the [encrypted game artifact](https://github.com/ajellia81-cmd/ngbrecomp/actions/runs/40165400083/artifacts/12588302387)
+   while signed into GitHub. It is from [Actions run 40165400083](https://github.com/ajellia81-cmd/ngbrecomp/actions/runs/40165400083).
 2. Extract GitHub's outer ZIP. It contains `NinjaGaidenBlack-ios-arm64-unsigned.ipa.7z`.
 3. Open the inner archive with a 7z-capable tool such as 7-Zip and enter the same
    password stored in `NGB_IPA_PASSWORD`. Do not upload the password to an issue or chat.
 4. Extract `NinjaGaidenBlack-ios-arm64-unsigned.ipa`. Import this file, not the ZIP/7z.
 
-The artifact is retained for seven days. The unsigned IPA is 47,273,188 bytes and
-has SHA-256 `ede341375d0ccbd72cf416a7c44b2af1615a8d4c5b457836af6bb4d38aa5a8fe`.
-App version: **0.2.0 (2.39)**.
-Build source commit: `9dc684b37f07682070f2884773a3995a2321fa85`.
+The artifact is retained for seven days. The unsigned IPA is 47,272,962 bytes and
+has SHA-256 `09b6a61604271f6812511445d65e7075fea7240c91ad58f3fe0ee43370440ccc`.
+App version: **0.2.0 (2.40)**.
+Build source commit: `c5b2fcfce37bf1e86f7067a6e9a1f797f1470ac0`.
 It contains the real engine, 11,740 original lifted game functions and 137 Korean
 variants. It is not NGBBringup. Korean glyph rendering/gameplay still require a device test.
 The Korean-enabled build contains the pinned translation capsule; the original
@@ -229,3 +229,40 @@ against the iPhoneOS SDK. Physical-device verification remains necessary: the ne
 session should report a landscape swapchain and full landscape native target;
 `[iOS Orientation]`, `[iOS Drawable]` and `[iOS Fit]` identify any remaining mismatch.
 The original game data, saves, intro setting and simulation timing are unchanged.
+
+
+### Missing menu art/text and New Game loading after the movie
+
+The build 2.39 phone session confirmed landscape output at 2868x1320, but reported
+black main-menu art, mostly absent Options/Recomp Settings contents, a corrupted
+New Game movie and a loading screen that did not advance. Its file reads exposed
+an archive-layout mismatch: the patched executable requested rebuilt resource
+offsets (for example a 32 KiB shift after the grown demo resource), while the old
+on-device patcher appended replacement members and retained the original data at
+those positions. The AFS directory itself was valid, so the old directory-based
+synthetic checks did not catch the game's extra offset dependency.
+
+The patcher now streams every member in canonical order/alignment, preserving the
+header prefix, unchanged member contents, filename metadata and tail padding. It
+checks the source member layout and replacement preimage hashes. A state revision
+forces regeneration of old Korean overlays and removal of only the disposable
+saves-korean/Cache installation; shared UserData/TitleData saves and original game
+files are preserved. No manual game-data deletion or ISO reimport is needed.
+A native preparation screen runs once on the next Korean boot. Synthetic Foundation
+tests compare the complete resulting file against expected canonical bytes and
+verify both metadata preservation and save-safe cache migration. Restoration of
+phone menus, movie rendering and New Game progression still requires device testing.
+
+Touch controls reuse the existing virtual gamepad and landscape/safe-area layout.
+The transparent overlay attaches to SDL's current Metal root view, refreshes on
+controller notifications and also polls presence every 250 ms. Connecting a game
+controller hides it and releases/disconnects the virtual pad; disconnecting restores
+both sticks, D-pad, A/B/X/Y, White/Black, LT/RT, Back/Start and stick-click buttons.
+`[iOS Touch]` records attachment, visibility and virtual-input readiness. Actual
+multitouch and physical hotplug still need a phone test.
+
+All visible app-exit contexts were audited. The uppercase main-menu list uses
+**QUIT**; pause Exit pages, the auxiliary settings screen and native restart alert
+use **Quit** alongside their title/sentence-case neighbors. Confirmation boxes use
+**Quit?** with Yes/No. Desktop labels and menu-back Exit items retain their original
+roles. The application exit path itself is unchanged.

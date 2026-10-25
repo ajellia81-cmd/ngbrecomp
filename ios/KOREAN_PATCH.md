@@ -45,13 +45,21 @@ English Options values are retained until the selector is explicitly changed.
 
 On a Korean boot, the app checks every replaced archive member against the patch
 preimage hash, builds an isolated `Documents/korean-game` overlay, and verifies
-replacement hashes. Original files remain unchanged. Unchanged files are linked
+replacement hashes. Archives are rebuilt in member order with the release's
+2048-byte alignment, canonical offsets, complete filename metadata and tail
+padding. An append-only AFS directory is insufficient because the patched game
+also uses rebuilt resource offsets. Member order, sizes and data prefix are checked
+against the pinned layout before output. Original files remain unchanged. Unchanged files are linked
 from the original import. A transactional pending directory avoids accepting a
 partial patch. A mismatch reports an error and offers continuation in English.
 
 Korean uses `Documents/saves-korean` for a separate installed-game cache so the
 English cache cannot hide translated resources. UserData and TitleData link to the
-original save directories. Back up saves before testing this experimental build.
+original save directories. A `canonical-afs-v2` state marker upgrades previous
+append-based overlays once and clears only `saves-korean/Cache`, whose installed
+archives contain stale offsets. UserData, TitleData and the original import are
+preserved. The first launch after this upgrade prepares Korean archives again.
+Back up saves before testing this experimental build.
 The translated game text does not translate Recomp Settings or the import UI.
 
 ## Validation limits
@@ -59,6 +67,8 @@ The translated game text does not translate Recomp Settings or the import UI.
 All 17 patched executable section hashes match the pinned release plan. Native
 Foundation tests exercise AFS member replacement, alignment/reindexing, preservation
 of original data, preimage rejection and executable patch validation with synthetic
-fixtures. CI also checks persistence of all three text-language choices.
+fixtures, including byte-for-byte canonical output after a grown member shifts
+later entries, non-size metadata preservation, mismatched layout rejection and
+cache removal with shared-save links retained. CI also checks persistence of all three text-language choices.
 Actual USA archive compatibility, Korean glyph rendering, menu layout, gameplay,
 original-language regression and save compatibility require owner-device testing.
