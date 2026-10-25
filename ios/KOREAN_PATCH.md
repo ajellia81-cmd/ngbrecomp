@@ -29,9 +29,19 @@ No modified executable, game archive or generated game C is committed.
 ## Use
 
 Keep the existing imported USA game data. No large archive upload is required.
-In Recomp Settings (main menu or pause menu), open Startup and select Text Language:
-Japanese, English or Korean. Speech Language remains a separate original setting.
-Changing text language takes effect after completely closing and reopening the app.
+Open the original **Options → General → Text and Subtitles** selector. It offers
+Japanese, English and Korean. The duplicate Recomp Settings Startup selector has
+been removed. Speech Language remains the separate original voice setting.
+A native restart notice offers Quit or Later; completely reopen after changing
+text language. Existing imported game files and saves are retained.
+
+The previous integration only supplied an EEPROM default. The title then loaded
+its saved Options text value, which could select English/Japanese instead. The
+new private codegen boundary routes reads of that actual game text selector and
+its reversed text-table column to the selected boot. It never writes a third
+index into the two-language Xbox tables. After the original Options selector is
+used, its host value persists across overlay restarts. Older ordinary Japanese/
+English Options values are retained until the selector is explicitly changed.
 
 On a Korean boot, the app checks every replaced archive member against the patch
 preimage hash, builds an isolated `Documents/korean-game` overlay, and verifies

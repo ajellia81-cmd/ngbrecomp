@@ -87,7 +87,7 @@ Actual sustained 120 fps and image correctness require a device test. See
 [120FPS.md](120FPS.md) for unsupported cases and diagnostic log fields.
 
 The separately requested [Korean adaptation](KOREAN_PATCH.md) remains available:
-Startup → Text Language → Korean, then fully close and reopen the app. No archive
+Options → General → Text and Subtitles → Korean, then Quit and reopen. No archive
 upload is required; keep the original imported game data. Recomp menus remain English.
 
 Connect a supported controller for SDL's native iOS GameController backend.
@@ -124,3 +124,24 @@ If it fails, retain `Documents/saves/log.txt`; `[iOS] inactive` and `[iOS] activ
 identify the transitions, and `VK_ERROR_DEVICE_LOST` identifies GPU loss.
 GPU recovery after an already lost device, extended suspension semantics and
 120 Hz behavior are not established. Keep a copy of saves before longer testing.
+
+
+## Latest device-report fixes
+
+The owner reported ignored Korean selection, half-speed gameplay with Smooth
+Motion, an FPS strip hidden at the screen edge, and desktop-specific exit labels.
+The new source fixes these routes; installation on the owner's phone is pending:
+
+- Text selection uses the original Options menu and the actual saved game text
+  selector; the separate Recomp selector is removed. Voice selection is retained.
+- Midpoint rendering uses isolated targets. A bounded latest-pair presenter runs
+  display waits on its own thread, not inside guest Swap. Active GPU source images
+  are leased until their copy fences complete; superseded pending pairs are dropped.
+  Consecutive slow guest Swap intervals temporarily skip replay to protect game speed.
+- FPS uses the intersection of content bounds and UIKit safe-area insets, with padding.
+- iOS app-exit labels and confirmations say Quit. They use a process-exit path,
+  not just window closure. LiveContainer may close with its guest; the official
+  source reviewed did not interpose `_exit`. Actual host-version behavior needs
+  a device test. No claim is made that it returns to LiveContainer's app list.
+- Long **recomp-added** descriptions are shortened in main/pause settings. Original
+  disc-provided Options descriptions are unchanged.

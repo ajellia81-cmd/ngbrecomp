@@ -70,8 +70,8 @@ sustained 120 fps. See [120FPS.md](120FPS.md) for implementation, fallback and
 unverified limits.
 
 The v1.2 translation has a restricted USA adaptation with isolated Korean code
-and data. Startup settings add Text Language: Japanese, English, Korean; restart
-to apply. See [KOREAN_PATCH.md](KOREAN_PATCH.md) for validation limits.
+and data. The original Options → General → Text and Subtitles selector offers
+Japanese, English and Korean; quit and reopen to apply. See [KOREAN_PATCH.md](KOREAN_PATCH.md) for validation limits.
 
 On resign-active the iOS bridge now requests guest scheduler pause, freezes the
 guest monotonic clock, pauses APU/SDL audio, drains the Vulkan device and blocks
