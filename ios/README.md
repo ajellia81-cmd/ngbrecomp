@@ -6,15 +6,21 @@ after restarting following the first load. Long-term reliability, performance an
 background resume still require testing. The older NGBBringup diagnostic app is
 a separate target.
 
-- App version: **0.2.0 (2.37)**; compiled revision and active log path are recorded in `Documents/build-info.txt`.
-- Build source: `b0464871bc0392755a5212be8061906cf25cd5ce`, branch `ios-port`.
-- [Successful Actions run](https://github.com/ajellia81-cmd/ngbrecomp/actions/runs/40154920349).
-- [Encrypted IPA artifact](https://github.com/ajellia81-cmd/ngbrecomp/actions/runs/40154920349/artifacts/12584258274).
-- Unsigned IPA: **47,269,743 bytes**, containing **11,740 linked lifted game functions**,
+- App version: **0.2.0 (2.39)**; compiled revision and active log path are recorded in `Documents/build-info.txt`.
+- Build source: `9dc684b37f07682070f2884773a3995a2321fa85`, branch `ios-port`.
+- [Successful Actions run](https://github.com/ajellia81-cmd/ngbrecomp/actions/runs/40163143140).
+- [Encrypted IPA artifact](https://github.com/ajellia81-cmd/ngbrecomp/actions/runs/40163143140/artifacts/12587740301).
+- Unsigned IPA: **47,273,188 bytes**, containing **11,740 linked lifted game functions**,
   137 additional Korean variants, the real engine/runtime, SDL UIKit entry point,
   MoltenVK framework and private translation capsule.
-- IPA SHA-256: `379520f7c9b037db652cc9ae963cecfb74368eb9ee7a2b2ddf3ac465a430e542`.
-- GitHub artifact ZIP SHA-256: `c0d36c536386243ede51fac51c523382f27eb976c7814f8ea6469acbff6faca1`.
+- IPA SHA-256: `ede341375d0ccbd72cf416a7c44b2af1615a8d4c5b457836af6bb4d38aa5a8fe`.
+- GitHub artifact ZIP SHA-256: `9749425e9f4627bd57092b1aec228372733c5c89d4a8c8f07c3a60cf3288d6e3`.
+
+The build 2.37 phone log confirmed a portrait Metal drawable during landscape
+startup. The new source keeps preparation windows landscape and rebuilds the
+swapchain when actual drawable dimensions change even without an SDL resize
+event. Rotation regression tests and the full device build passed; a phone retest
+is required to establish that the cropped title is restored.
 
 See [INSTALL.md](INSTALL.md) for download, LiveContainer import and game data.
 The download is an encrypted 7z inside GitHub's artifact ZIP. It expires seven

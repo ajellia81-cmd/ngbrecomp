@@ -7,17 +7,17 @@ A successful compile/package is not a gameplay result.
 
 ## Download the actual IPA
 
-1. Open the [encrypted game artifact](https://github.com/ajellia81-cmd/ngbrecomp/actions/runs/40154920349/artifacts/12584258274)
-   while signed into GitHub. It is from [Actions run 40154920349](https://github.com/ajellia81-cmd/ngbrecomp/actions/runs/40154920349).
+1. Open the [encrypted game artifact](https://github.com/ajellia81-cmd/ngbrecomp/actions/runs/40163143140/artifacts/12587740301)
+   while signed into GitHub. It is from [Actions run 40163143140](https://github.com/ajellia81-cmd/ngbrecomp/actions/runs/40163143140).
 2. Extract GitHub's outer ZIP. It contains `NinjaGaidenBlack-ios-arm64-unsigned.ipa.7z`.
 3. Open the inner archive with a 7z-capable tool such as 7-Zip and enter the same
    password stored in `NGB_IPA_PASSWORD`. Do not upload the password to an issue or chat.
 4. Extract `NinjaGaidenBlack-ios-arm64-unsigned.ipa`. Import this file, not the ZIP/7z.
 
-The artifact is retained for seven days. The unsigned IPA is 47,269,743 bytes and
-has SHA-256 `379520f7c9b037db652cc9ae963cecfb74368eb9ee7a2b2ddf3ac465a430e542`.
-App version: **0.2.0 (2.37)**.
-Build source commit: `b0464871bc0392755a5212be8061906cf25cd5ce`.
+The artifact is retained for seven days. The unsigned IPA is 47,273,188 bytes and
+has SHA-256 `ede341375d0ccbd72cf416a7c44b2af1615a8d4c5b457836af6bb4d38aa5a8fe`.
+App version: **0.2.0 (2.39)**.
+Build source commit: `9dc684b37f07682070f2884773a3995a2321fa85`.
 It contains the real engine, 11,740 original lifted game functions and 137 Korean
 variants. It is not NGBBringup. Korean glyph rendering/gameplay still require a device test.
 The Korean-enabled build contains the pinned translation capsule; the original
@@ -198,3 +198,34 @@ negative control fails. This is a verified resource-lifetime defect, but its rol
 in the phone's cropped picture remains unconfirmed until the new session is read.
 Bounded `[iOS View]` and `[iOS Fit]` records expose guest/target/viewport/scissor and
 source/drawable/destination dimensions without a full picture capture.
+
+
+### Confirmed portrait drawable during a landscape Korean boot
+
+The correct saves-korean session identified build 2.37 and exposed the missing
+runtime evidence: Vulkan created a **1320 x 2868** portrait swapchain, while the
+configured landscape aspect was 2868/1320. The native target became **1320 x 608**;
+`[iOS Fit]` placed it at **(0,1130)** inside that portrait drawable. The owner's
+landscape screenshot consequently contained a small/cropped picture. No midpoint
+pairs were queued during this title screen, so interpolation was not its cause.
+
+The correction keeps both import and Korean preparation controllers landscape,
+sets SDL's orientation hint before those windows appear, and requests the scene's
+landscape geometry using public UIKit APIs. SDL's main-thread pump synchronizes
+CAMetalLayer.drawableSize with its actual view bounds and scale. It observes the
+actual drawable pixel size every pump and invalidates the swapchain on change,
+even without SDL_WINDOWEVENT_SIZE_CHANGED or VK_ERROR_OUT_OF_DATE. Resize requests
+are exchanged atomically so a concurrent rotation cannot be lost. No numeric
+width/height swap is used to pretend that a portrait Metal layer is landscape.
+Touch controls are reattached if SDL replaces its root view with the Metal view;
+old virtual-controller inputs are released and disconnected first. UIKit pump
+objects have a per-call autorelease pool.
+
+The production-function regression simulates 1320x2868 -> 2868x1320 without a
+resize event, verifies swapchain invalidation, and checks that unchanged/zero sizes
+do not cause repeated rebuilds. Removing the invalidation makes its negative
+control fail. The exact UIKit orientation helpers and full application compile
+against the iPhoneOS SDK. Physical-device verification remains necessary: the new
+session should report a landscape swapchain and full landscape native target;
+`[iOS Orientation]`, `[iOS Drawable]` and `[iOS Fit]` identify any remaining mismatch.
+The original game data, saves, intro setting and simulation timing are unchanged.
