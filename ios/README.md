@@ -6,30 +6,33 @@ after restarting following the first load. Long-term reliability, performance an
 background resume still require testing. The older NGBBringup diagnostic app is
 a separate target.
 
-- App version: **0.2.0 (2.55)**; compiled revision and active log path are recorded in `Documents/build-info.txt`.
-- Build source: `e4f37dc34106ad08ebd708b94a71cac4e906d562`, branch `ios-port`.
-- [Successful Actions run](https://github.com/ajellia81-cmd/ngbrecomp/actions/runs/40200373376).
-- [Encrypted IPA artifact](https://github.com/ajellia81-cmd/ngbrecomp/actions/runs/40200373376/artifacts/12601999037).
-- Unsigned IPA: **47,258,912 bytes**, containing **11,740 linked lifted game functions**,
+- App version: **0.2.0 (2.56)**; compiled revision and active log path are recorded in `Documents/build-info.txt`.
+- Build source: `7d4571426401d6a5e23ae9494d3595967633010b`, branch `ios-port`.
+- [Successful Actions run](https://github.com/ajellia81-cmd/ngbrecomp/actions/runs/40211789120).
+- [Encrypted IPA artifact](https://github.com/ajellia81-cmd/ngbrecomp/actions/runs/40211789120/artifacts/12605953900).
+- Unsigned IPA: **47,252,705 bytes**, containing **11,740 linked lifted game functions**,
   55 additional Korean variants, the real engine/runtime, SDL UIKit entry point,
   MoltenVK framework and private translation capsule.
-- IPA SHA-256: `6f69f0c84dee1f9d412f532ad1ad39d1ebbaaf708117bc1af610c18f9f183371`.
-- GitHub artifact ZIP SHA-256: `13fb1617ecc5e30a27eea86b455e80cbec5c0cf7f9a7e6bc2e72e2c15e550254`.
+- IPA SHA-256: `a7e245a78d7d37d4a586df87aeceef1729c5ee61cb17768387167b095f016916`.
+- GitHub artifact ZIP SHA-256: `550580366e3ae0ba5aeea0e7d1b283f29628587f2bfd89cf03c72797720011a4`.
 
 The owner confirms gameplay, Korean text and 120 FPS output/counter operation.
-Build 2.55 retains the image-based 설정 label, native controller haptics worker,
-engine stop/reset/error recovery, precise motion interpolation and half-cell
-Korean spaces. The reported Korean glyph-bottom clipping is addressed by removing
-only the lower-V trim on the three Korean font-page variants. Their bitmaps put
-ink on the final cell row; the next cell's first two rows are transparent. The
-horizontal gutter trim is retained. A native thin-bottom-stroke fixture passes
-and rejects the old vertical trim. The real generated variant is matched before
-adaptation. Final phone rendering is still a retest item, as are the prior
-polygon flicker and Backbone Pro recovery changes. The 2.54 font-height diagnostic
-was reading a character-byte-count field; it now reads the actual font-table
-height. The three uploaded original font assets were received and hash-checked
-privately. No original fonts, bitmaps or game code are committed. Imported data
-and shared saves are preserved.
+Build 2.56 interpolates retained vertex constants and transform matrices before
+running the original vertex program, following VF3's pre-transform scene blending
+boundary. It replaces the independent final clip-position/varying blend. Native
+history/input tests and fixed/program shader compilation pass; remaining camera
+flicker still needs a phone retest. The Korean 설정 image is smaller and slightly
+thinner. Full-width Shift-JIS spaces now use the same half-cell advance as ASCII
+spaces, in both measurement and draw paths. Font-map padding confirms that the
+code is a blank, not a translated Hangul glyph.
+
+The owner reports the 2.55 lower-V repair improved Korean glyph bottoms but a
+small amount of clipping remains. This build retains that repair; the exact
+remaining cause is unresolved, including whether the baked translation bitmap
+already constrains the lowest strokes. No unsupported extra UV/line-height change
+is included. Native controller haptics recovery also still needs device feedback.
+The uploaded original font assets were hash-checked privately; no original fonts,
+bitmaps or game code are committed. Imported data and shared saves are preserved.
 
 See [INSTALL.md](INSTALL.md) for download, LiveContainer import and game data.
 The download is an encrypted 7z inside GitHub's artifact ZIP. It expires seven
