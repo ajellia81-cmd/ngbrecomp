@@ -3063,6 +3063,12 @@ void VulkanBackend::Draw(const State& s, uint32_t prim, uint32_t start, uint32_t
     }
     VkDeviceSize vc;
 #ifdef NGB_SMOOTH_MOTION
+    // Uniforms and this draw's geometry must stay in the same ring generation.
+    // A wrap between their uploads would replace uniforms before the draw used them.
+    uint64_t required=sizeof(s.vsc)+sizeof(c)+ringAlign_*2+16*16+4;
+    for (uint32_t b=0;b<a.buffer_count;b++) required+=a.buffers[b].bytes;
+    required+=uint64_t(a.index_count)*(a.index16 ? 2 : 4);
+    if (required<=kRingSize && ring_pos_+required>kRingSize) Submit();
     auto motion_vc=s.vsc;
 #endif
     if (points && !prog) {   // the point sizes for PointHlsl, in registers fixed function leaves unused
@@ -3199,7 +3205,7 @@ void VulkanBackend::Draw(const State& s, uint32_t prim, uint32_t start, uint32_t
     if (motion_capture_ && motion_valid_) {
         uint64_t estimate=sizeof(MotionDraw)+ibytes;
         for (uint32_t b=0;b<a.buffer_count;b++) estimate+=a.buffers[b].bytes;
-        if (estimate+motion_cpu_bytes_>96u*1024u*1024u) motion_valid_=false;
+        if (estimate+motion_cpu_bytes_>96u*1024u*1024u || required>kRingSize) motion_valid_=false;
     }
     if (motion_capture_ && motion_valid_) {
         auto packet=std::make_shared<MotionDraw>();

@@ -45,6 +45,9 @@ void VulkanBackend::MotionTouch(Target *target) {
 void VulkanBackend::MotionReplay(const MotionDraw& p) {
     // Upload can submit/reset the ring. All following bindings are rebuilt from
     // this owned packet, exactly as the original draw rebuilds its bindings.
+    uint64_t required=sizeof p.vc+sizeof p.dc+ringAlign_*2+16*16+4+p.indices.size();
+    for (uint32_t i=0;i<p.buffers;i++) required+=p.vertices[i].size();
+    if (ring_pos_+required>kRingSize) Submit();
     VkDeviceSize vc=Upload(p.vc.data(),sizeof p.vc,ringAlign_);
     VkDeviceSize dc=Upload(&p.dc,sizeof p.dc,ringAlign_);
     VkDeviceSize offsets[16]{}; VkBuffer buffers[16]{};
