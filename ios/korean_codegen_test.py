@@ -66,4 +66,23 @@ int main(void) {
             subprocess.run(['cc',str(source),'-o',str(executable)],check=True,capture_output=True)
             subprocess.run([str(executable)],check=True)
 
+
+class InstructionRanges(unittest.TestCase):
+    def test_identical_machine_code_is_retained_and_shortened_detour_checks_full_span(self):
+        import struct
+        from merge_korean_codegen import changed_instructions,select_changed_functions
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory);image=bytearray(0x280)
+            struct.pack_into('<I',image,0x104,0x10000)
+            struct.pack_into('<II',image,0x11C,1,0x10180)
+            struct.pack_into('<9I20s',image,0x180,0,0x1000,128,0x200,128,0,0,0,0,bytes(20))
+            original=root/'original.bin';patched=root/'patched.bin'
+            original.write_bytes(image);patched.write_bytes(image)
+            old={'f':(0x1000,0x1040)};new={'f':(0x1000,0x1010)}
+            self.assertFalse(changed_instructions('f',old,new,original,patched))
+            self.assertEqual(select_changed_functions({'f':'safe call'},{'f':'direct call'},old,new,original,patched),{})
+            image[0x230]=1;patched.write_bytes(image)
+            self.assertTrue(changed_instructions('f',old,new,original,patched))
+            self.assertEqual(set(select_changed_functions({'f':'safe call'},{'f':'direct call'},old,new,original,patched)),{'f'})
+
 if __name__=='__main__':unittest.main()
