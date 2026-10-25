@@ -6,15 +6,15 @@ after restarting following the first load. Long-term reliability, performance an
 background resume still require testing. The older NGBBringup diagnostic app is
 a separate target.
 
-- App version: **0.2.0 (2.40)**; compiled revision and active log path are recorded in `Documents/build-info.txt`.
-- Build source: `c5b2fcfce37bf1e86f7067a6e9a1f797f1470ac0`, branch `ios-port`.
-- [Successful Actions run](https://github.com/ajellia81-cmd/ngbrecomp/actions/runs/40165400083).
-- [Encrypted IPA artifact](https://github.com/ajellia81-cmd/ngbrecomp/actions/runs/40165400083/artifacts/12588302387).
-- Unsigned IPA: **47,272,962 bytes**, containing **11,740 linked lifted game functions**,
+- App version: **0.2.0 (2.41)**; compiled revision and active log path are recorded in `Documents/build-info.txt`.
+- Build source: `cecc67c4191804bde8f67f4e0ea8fdcee05016c2`, branch `ios-port`.
+- [Successful Actions run](https://github.com/ajellia81-cmd/ngbrecomp/actions/runs/40167778298).
+- [Encrypted IPA artifact](https://github.com/ajellia81-cmd/ngbrecomp/actions/runs/40167778298/artifacts/12589750909).
+- Unsigned IPA: **47,274,190 bytes**, containing **11,740 linked lifted game functions**,
   137 additional Korean variants, the real engine/runtime, SDL UIKit entry point,
   MoltenVK framework and private translation capsule.
-- IPA SHA-256: `09b6a61604271f6812511445d65e7075fea7240c91ad58f3fe0ee43370440ccc`.
-- GitHub artifact ZIP SHA-256: `7782150682490eebe23d2735815340fec35602e8cecdfac8bf217f2e4439b1e1`.
+- IPA SHA-256: `33897f032b9a8cbd40afc43df2e677946d7bc898717223ba42c6f24d99e34d3d`.
+- GitHub artifact ZIP SHA-256: `64f848b754dbcbe1424ac63321f025d4e9780a92a632965df58bf77e6925302d`.
 
 The build 2.39 phone session confirmed landscape output at 2868x1320. It
 exposed missing menu/movie resources and New Game loading trouble caused by the
@@ -25,6 +25,14 @@ and the complete device build passed; phone rendering/progression needs a retest
 The first Korean launch prepares the corrected archives once. Touch controls
 refresh on controller hotplug and periodic presence checks; main-menu QUIT matches
 its uppercase neighbors, with Quit retained in title/sentence-case screens.
+
+Build 2.40 device screenshots showed restored menu art but corrupted dynamic
+text/subtitles. Build 2.41 repairs the two Korean font-bank PUSH/RET continuation
+paths and localizes only the added pause Settings tab to 설정 on Korean boots.
+The iOS FPS overlay now distinguishes successfully submitted motion-pair pictures
+from the 60 Hz guest rate. The full device compile, link and packaging passed;
+correct glyph display, New Game loading duration and sustained 120 FPS still need
+a fresh phone session and its current saves-korean/log.txt.
 
 See [INSTALL.md](INSTALL.md) for download, LiveContainer import and game data.
 The download is an encrypted 7z inside GitHub's artifact ZIP. It expires seven
