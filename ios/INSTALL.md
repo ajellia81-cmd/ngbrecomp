@@ -145,3 +145,22 @@ The new source fixes these routes; installation on the owner's phone is pending:
   a device test. No claim is made that it returns to LiveContainer's app list.
 - Long **recomp-added** descriptions are shortened in main/pause settings. Original
   disc-provided Options descriptions are unchanged.
+
+
+### Cropped title screen / unexpectedly skipped intro report
+
+The owner reported a small/cropped title picture after installing the asynchronous
+motion build, preventing access to its settings. The follow-up source serializes
+normal-frame and pair-worker publication of the image **and** its dimensions with
+the presentation lock. A concurrent production-function test rejects the old
+unlocked publication. Replay also preserves the clear state of newly created
+depth targets and explicitly ends rendering before the final composite.
+
+Boot movies and 2D/title menus now bypass midpoint replay, even if Smooth Motion
+is enabled in the existing settings. No in-game setting change, data reimport or
+save deletion is required to install this correction. iOS automatic warning-screen
+Start injection is disabled when Skip Intros is Off; a saved On choice continues
+to request skipping. Desktop warning behavior is unchanged. These source changes
+need a device retest; compilation alone cannot establish that the reported image
+is restored. The separate request to alter the description's first glyph was
+withdrawn, and no such glyph/content edit is included.
