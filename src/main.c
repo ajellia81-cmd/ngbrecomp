@@ -721,8 +721,8 @@ static bool load_file(const char *path, void **out_data, size_t *out_size)
  *                      the GP DSP mailbox and spins until the DSP clears it
  *                      (sub_0037DAAE). The DSP is not emulated, so complete it
  *                      at once. The mailbox is +0x810 into a contiguous block
- *                      whose address is deterministic for this build (it moves if the
- *                      contiguous allocator does: XBOX_CONTIG_ALLOC_BASE). */
+ *                      whose address moves with contiguous allocations. iOS uses
+ *                      the observed wait operand rather than a fixed address. */
 static void set_default(const char *name, const char *value)
 {
     if (getenv(name))
@@ -759,6 +759,26 @@ static void choose_renderer(void)
 #endif
 }
 
+#ifdef NGB_IOS_APP
+#include "kernel/kernel.h"
+/* The effects-image mailbox is heap-relative. Korean font reservations move
+ * it, so an absolute address can acknowledge unrelated memory and miss it. */
+int ngb_ios_service_spin(uint32_t loop_va)
+{
+    if (loop_va!=0x0037DC15u) return 0;
+    const char *policy=getenv("RECOMP_DSP_ACK");
+    if (!policy || strcmp(policy,"auto")) return 0;
+    uint32_t address=g_ebx;
+    if (!g_xbox_mem_offset || (address&3) || address<XBOX_CONTIG_BASE ||
+        (uint64_t)address+4>(uint64_t)XBOX_CONTIG_BASE+XBOX_CONTIG_SIZE) return 0;
+    uint32_t *command=(uint32_t *)(uintptr_t)(g_xbox_mem_offset+address);
+    uint32_t expected=3;
+    if (!__atomic_compare_exchange_n(command,&expected,0,0,__ATOMIC_RELEASE,__ATOMIC_RELAXED)) return 0;
+    fprintf(stderr,"[iOS DSP] effects-image command 3 acknowledged at %08X (observed mailbox)\n",address);
+    return 1;
+}
+#endif
+
 static void bringup_defaults(void)
 {
     /* With the GPU model, vblank comes from its CRTC. */
@@ -766,7 +786,12 @@ static void bringup_defaults(void)
         set_default("RECOMP_VBLANK", "1");
     set_default("RECOMP_AC97_READY", "1");
     set_default("RECOMP_USB", "1");
+#ifdef NGB_IOS_APP
+    set_default("RECOMP_DSP_ACK", "auto");   /* observe the actual effects-image wait */
+    fprintf(stderr,"[iOS DSP] mailbox policy: %s\n",getenv("RECOMP_DSP_ACK"));
+#else
     set_default("RECOMP_DSP_ACK", "0x86BF8810");   /* contiguous memory starts at 64 MB */
+#endif
 }
 
 #if defined(RECOMP_ICALL_FEEDBACK)
