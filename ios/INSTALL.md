@@ -7,17 +7,17 @@ A successful compile/package is not a gameplay result.
 
 ## Download the actual IPA
 
-1. Open the [encrypted game artifact](https://github.com/ajellia81-cmd/ngbrecomp/actions/runs/40188164967/artifacts/12596742478)
-   while signed into GitHub. It is from [Actions run 40188164967](https://github.com/ajellia81-cmd/ngbrecomp/actions/runs/40188164967).
+1. Open the [encrypted game artifact](https://github.com/ajellia81-cmd/ngbrecomp/actions/runs/40190646660/artifacts/12598261083)
+   while signed into GitHub. It is from [Actions run 40190646660](https://github.com/ajellia81-cmd/ngbrecomp/actions/runs/40190646660).
 2. Extract GitHub's outer ZIP. It contains `NinjaGaidenBlack-ios-arm64-unsigned.ipa.7z`.
 3. Open the inner archive with a 7z-capable tool such as 7-Zip and enter the same
    password stored in `NGB_IPA_PASSWORD`. Do not upload the password to an issue or chat.
 4. Extract `NinjaGaidenBlack-ios-arm64-unsigned.ipa`. Import this file, not the ZIP/7z.
 
-The artifact is retained for seven days. The unsigned IPA is 47,125,301 bytes and
-has SHA-256 `9d2070d3054aa0f3363d3f675ccb7e8658da4352c4735c1ee0ff5819c8ef3081`.
-App version: **0.2.0 (2.48)**.
-Build source commit: `bdaeb2fb74d3d0c81b1668e7fade3d324394e67e`.
+The artifact is retained for seven days. The unsigned IPA is 47,125,800 bytes and
+has SHA-256 `ae7c46810d9e7506c0a601698af2e6d45d50d0ba84bc710888ab2ed203c7f3a1`.
+App version: **0.2.0 (2.51)**.
+Build source commit: `7471451017e3f1011a8be0e34703206467ada1e0`.
 It contains the real engine, 11,740 original lifted game functions and 55 Korean
 variants. It is not NGBBringup. Korean glyph rendering/gameplay still require a device test.
 The Korean-enabled build contains the pinned translation capsule; the original
@@ -370,3 +370,52 @@ movies intentionally do not generate geometry-interpolated frames. A new log
 should show `[iOS GPU] synchronous queue submissions: 0` and three swap images
 when the device supports them. Sustained 120 distinct displayed pictures remains
 unverified until a device run establishes it.
+
+
+## Tab orientation and near-camera geometry (included in 2.51)
+
+The owner reports that 2.48's Korean tab is inverted and mismatched in weight
+and size. The unnecessary bitmap-row reversal is removed, the CoreText font is
+Regular, and the Korean word's plate-height budget is 32 pixels rather than 38.
+The platform job runs the actual production mask function on macOS and emits a
+preview without any game assets. Its upright orientation was manually reviewed.
+This checks native raster output; the final iPhone plate still needs visual
+verification and the original baked-art typeface is not known.
+
+The owner also reports 60 FPS and wall flicker during camera movement. The motion
+vertex shader used a per-vertex normalized-screen-distance cutoff. This could
+leave some vertices of a triangle at an endpoint while interpolating others,
+especially near the camera or viewport edge. The cutoff is removed: finite clip
+positions now interpolate in homogeneous space before GPU clipping. Replay still
+uses isolated targets and the original 60 Hz guest simulation. Cuts require
+whole-frame history reset; this change does not establish complete cut detection.
+Actual fixed/program shader compilation and source ownership tests are separate
+from physical-device rendering verification.
+
+The font and vertex changes do not establish a performance fix. Sustained 120
+FPS remains unresolved. Send the current log after active 3D gameplay, and check
+whether the same wall flickers with Smooth Motion Off. Retain game data and saves;
+no ISO reimport is required. Fully quit LiveContainer before replacing the IPA.
+
+
+## Build 2.51 output-counter correction
+
+The owner's fresh 2.48 log confirms three swap images and approximately 300
+midpoint/endpoint pairs per five seconds in multiple gameplay windows. Mean
+pair service improved to roughly 12–17 ms, with occasional superseded pairs and
+an overload cooldown. The owner also confirms that wall flicker stops with
+Smooth Motion Off. The vertex-coherence correction and upright, thinner Korean
+tab from the preceding changes are included in this IPA.
+
+The remaining 60 FPS overlay was compiled using an application-only define that
+is absent in the Xbox runtime library. The production sampler now uses Apple's
+iPhoneOS platform macros. A native synthetic-clock test compiles that exact
+sampler without the app define, verifies 120 submitted pictures/game 60, checks
+menu fallback to 60, retains desktop behavior, and rejects the old branch.
+
+A completed pair count means its presenter copies were submitted and fenced;
+it is not a hardware presentation timestamp or proof that every screen refresh
+was distinct and visually correct. Physical-device frame pacing, wall flicker
+and the final font appearance remain retest items. Keep the original 60 Hz game
+simulation and existing overload protection. No ISO reimport or save reset is
+needed. Fully quit LiveContainer, replace the IPA, and test active 3D gameplay.
