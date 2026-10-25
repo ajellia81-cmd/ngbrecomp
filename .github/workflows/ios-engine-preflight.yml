@@ -33,6 +33,9 @@ on:
       - 'ios/fps_counter_test.py'
       - 'ios/motion_precision_test.py'
       - 'ios/rumble_warmup_test.py'
+      - 'ios/haptics.m'
+      - 'ios/haptics.h'
+      - 'ios/haptics_policy.h'
       - 'ios/assets/settings-ko.png'
       - 'xboxrecomp/src/input/xinput_device.c'
       - 'ios/presenter_pair_test.py'
@@ -201,6 +204,8 @@ jobs:
           python3 ios/presenter_descriptor_test.py
           python3 ios/fps_counter_test.py
           python3 ios/rumble_warmup_test.py
+          xcrun --sdk iphoneos clang -arch arm64 -miphoneos-version-min=15.0 -fobjc-arc \
+            -c ios/haptics.m -o build/ios-platform/haptics.o
       - name: Compile actual Smooth Motion shaders and retained-pose tests
         shell: bash
         run: |

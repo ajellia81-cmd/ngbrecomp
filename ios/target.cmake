@@ -11,7 +11,7 @@ endif()
 set_property(SOURCE src/main.c APPEND PROPERTY COMPILE_DEFINITIONS main=SDL_main)
 set(NGB_IOS_BUILD_COMMIT "local" CACHE STRING "Source revision embedded in the app")
 set(NGB_IOS_BUILD_VERSION "2.0" CACHE STRING "Distinct LiveContainer update version")
-target_sources(${PROJECT_NAME} PRIVATE ios/app.m)
+target_sources(${PROJECT_NAME} PRIVATE ios/app.m ios/haptics.m)
 target_compile_definitions(${PROJECT_NAME} PRIVATE
     NGB_IOS_BUILD_COMMIT="${NGB_IOS_BUILD_COMMIT}"
     NGB_IOS_BUILD_VERSION="${NGB_IOS_BUILD_VERSION}")
@@ -38,7 +38,7 @@ target_include_directories(${PROJECT_NAME} PRIVATE
     ${XBOXRECOMP_DIR}/third_party/volk ${XBOXRECOMP_DIR}/third_party/Vulkan-Headers/include)
 target_link_libraries(${PROJECT_NAME} PRIVATE SDL2::SDL2main
     "-framework UIKit" "-framework Foundation" "-framework GameController"
-    "-framework AVFoundation" "-framework UniformTypeIdentifiers" "-framework QuartzCore" "-framework ImageIO")
+    "-framework AVFoundation" "-framework UniformTypeIdentifiers" "-framework QuartzCore" "-framework ImageIO" "-framework CoreHaptics")
 target_link_options(${PROJECT_NAME} PRIVATE "-Wl,-rpath,@executable_path/Frameworks")
 set_target_properties(${PROJECT_NAME} PROPERTIES
     MACOSX_BUNDLE TRUE

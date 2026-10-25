@@ -288,18 +288,8 @@ static DWORD g_packet[XBOX_MAX_CONTROLLERS];
 static SDL_mutex *g_pad_lock;
 
 #if defined(__APPLE__) && TARGET_OS_IPHONE
-/* SDL creates both CoreHaptics engines and their players on first nonzero
- * rumble. Prime that path at connection, before a game event waits on it.
- * One amplitude unit, immediately stopped, avoids a noticeable startup kick. */
-static void warm_controller_rumble(SDL_GameController *controller)
-{
-    if (!SDL_GameControllerHasRumble(controller)) return;
-    Uint64 started=SDL_GetTicks64();
-    int status=SDL_GameControllerRumble(controller,1,1,1);
-    SDL_GameControllerRumble(controller,0,0,0);
-    fprintf(stderr,"[iOS Haptics] connection warmup %llu ms; %s\n",
-        (unsigned long long)(SDL_GetTicks64()-started),status==0 ? "ready" : "unavailable");
-}
+extern void ngb_ios_haptics_prepare(unsigned port);
+extern void ngb_ios_haptics_set(unsigned port,uint16_t low,uint16_t high);
 #endif
 
 
@@ -333,7 +323,10 @@ static void open_controllers(void)
         g_pads[s] = SDL_GameControllerOpen(i);
         g_controller_connected[s] = g_pads[s] != NULL;
 #if defined(__APPLE__) && TARGET_OS_IPHONE
-        if (g_pads[s]) warm_controller_rumble(g_pads[s]);
+        if (g_pads[s]) {
+            SDL_GameControllerSetPlayerIndex(g_pads[s],s);
+            if (SDL_GameControllerHasRumble(g_pads[s])) ngb_ios_haptics_prepare((unsigned)s);
+        }
 #endif
         if (g_pads[s])
             fprintf(stderr, "[INPUT] pad %d: %s\n", s + 1,
@@ -653,9 +646,15 @@ DWORD xbox_InputSetState(DWORD dwPort, const XBOX_VIBRATION *pVibration)
     SDL_GameController *c = g_pads[dwPort];
     /* SDL rumble needs a duration; refresh for ~1s on each call (the game
      * polls vibration continuously). */
-    if (c)
-        SDL_GameControllerRumble(c, pVibration->wLeftMotorSpeed,
-                                 pVibration->wRightMotorSpeed, 1000);
+    if (c) {
+#if defined(__APPLE__) && TARGET_OS_IPHONE
+        // Atomic latest-value mailbox only. Engine creation/recovery and output
+        // happen on the haptic worker, never while holding this input lock.
+        ngb_ios_haptics_set(dwPort,pVibration->wLeftMotorSpeed,pVibration->wRightMotorSpeed);
+#else
+        SDL_GameControllerRumble(c,pVibration->wLeftMotorSpeed,pVibration->wRightMotorSpeed,1000);
+#endif
+    }
     SDL_UnlockMutex(g_pad_lock);
     return c ? ERROR_SUCCESS : ERROR_DEVICE_NOT_CONNECTED;
 }

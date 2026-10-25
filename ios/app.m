@@ -13,6 +13,7 @@
 #include <math.h>
 #include <unistd.h>
 #include "../src/install.h"
+#include "haptics.h"
 #include "platform/vcpu.h"
 void ngb_ios_log_build(void) {
     fprintf(stderr,"[iOS Build] version %s; source %s\n",NGB_IOS_BUILD_VERSION,NGB_IOS_BUILD_COMMIT);
@@ -263,6 +264,7 @@ static void game_set_active(BOOL active)
 {
     if (gameActive == active) return;
     gameActive = active;
+    ngb_ios_haptics_active(active);
     if (!active) {
         extern void nv2a_present_cancel_pairs(void);
         nv2a_present_cancel_pairs();
