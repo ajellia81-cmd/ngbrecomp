@@ -766,6 +766,12 @@ static bool create_swapchain(PGRAPHVkState *r)
         VkPresentModeKHR mode = choose_present_mode(r);
         /* Mailbox needs a spare image to replace; a FIFO queue is kept short. */
         uint32_t want = caps.minImageCount + (mode == VK_PRESENT_MODE_MAILBOX_KHR ? 1 : 0);
+#if defined(__APPLE__) && TARGET_OS_IPHONE
+        // Two drawable slots couple a 120 Hz pair to display retirement.
+        // A third lets the worker submit the next distinct picture while the
+        // previous drawable is scanned out. Keep the driver's maximum below.
+        if (want < 3) want = 3;
+#endif
         if (want < 2)
             want = 2;
         if (caps.maxImageCount && want > caps.maxImageCount)
@@ -1319,7 +1325,7 @@ static bool s_external_wait; /* protected by s_present_mu */
 static bool s_pair_render;   /* the worker never enters a blocking host menu */
 static VkDevice s_pair_copy_device; /* protected by s_present_mu */
 static VkFence s_pair_copy_fence;
-static uint64_t s_pair_acquire_us;
+static uint64_t s_pair_acquire_us,s_pair_lock_us,s_pair_submit_us,s_pair_present_us;
 
 static pthread_mutex_t s_pair_mu=PTHREAD_MUTEX_INITIALIZER;
 static pthread_cond_t s_pair_cv=PTHREAD_COND_INITIALIZER;
@@ -1353,9 +1359,9 @@ static void *pair_worker(void *unused) {
         pair_us+=(uint64_t)(completed-started);pair_n++;
         if (!report_at) report_at=started;
         if (completed-report_at>=5000000) {
-            fprintf(stderr,"[Smooth Motion pacing] %llu pairs; mean pair %.2f ms, drawable acquire %.2f ms, final copy wait %.2f ms\n",
-                (unsigned long long)pair_n,pair_us/1000.0/pair_n,s_pair_acquire_us/1000.0/pair_n,wait_us/1000.0/pair_n);
-            report_at=completed;pair_us=wait_us=pair_n=s_pair_acquire_us=0;
+            fprintf(stderr,"[Smooth Motion pacing] %llu pairs; mean pair %.2f ms, drawable acquire %.2f ms, final copy wait %.2f ms; presenter lock %.2f ms, queue submit %.2f ms, queue present %.2f ms\n",
+                (unsigned long long)pair_n,pair_us/1000.0/pair_n,s_pair_acquire_us/1000.0/pair_n,wait_us/1000.0/pair_n,s_pair_lock_us/1000.0/pair_n,s_pair_submit_us/1000.0/pair_n,s_pair_present_us/1000.0/pair_n);
+            report_at=completed;pair_us=wait_us=pair_n=s_pair_acquire_us=s_pair_lock_us=s_pair_submit_us=s_pair_present_us=0;
         }
         pthread_mutex_unlock(&s_present_mu);
         pthread_mutex_lock(&s_pair_mu);
@@ -1441,7 +1447,9 @@ static bool set_external(VkImage image, uint32_t width, uint32_t height, bool wa
 }
 
 static bool pair_present(const NgbPresentPair *pair,bool midpoint) {
+    int64_t lock_started=g_get_monotonic_time();
     pthread_mutex_lock(&s_present_mu);
+    s_pair_lock_us+=(uint64_t)(g_get_monotonic_time()-lock_started);
     pthread_mutex_lock(&s_pair_mu);
     bool valid=pair->epoch==s_pairs.epoch;
     pthread_mutex_unlock(&s_pair_mu);
@@ -1724,8 +1732,10 @@ static void present_locked(PGRAPHState *pg, bool on_pfifo)
             .signalSemaphoreCount = 1,
             .pSignalSemaphores = &s_render_done[idx],
         };
+        int64_t submit_started=s_pair_render ? g_get_monotonic_time() : 0;
         nv2a_vk_queue_lock();
         VK_CHECK(vkQueueSubmit(r->queue, 1, &si, s_fence[f]));
+        if (s_pair_render) s_pair_submit_us+=(uint64_t)(g_get_monotonic_time()-submit_started);
     }
     {
         VkPresentInfoKHR pi = {
@@ -1736,7 +1746,9 @@ static void present_locked(PGRAPHState *pg, bool on_pfifo)
             .pSwapchains = &s_swapchain,
             .pImageIndices = &idx,
         };
+        int64_t present_started=s_pair_render ? g_get_monotonic_time() : 0;
         res = vkQueuePresentKHR(r->queue, &pi);
+        if (s_pair_render) s_pair_present_us+=(uint64_t)(g_get_monotonic_time()-present_started);
         nv2a_vk_queue_unlock();
         if (res == VK_ERROR_OUT_OF_DATE_KHR || res == VK_SUBOPTIMAL_KHR)
             __atomic_store_n(&s_resized,true,__ATOMIC_RELEASE);

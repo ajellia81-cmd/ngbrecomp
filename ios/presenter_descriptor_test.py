@@ -52,6 +52,7 @@ static int64_t s_ext_set_us;
 static unsigned nv2a_ext_pictures,nv2a_ext_presented;
 static unsigned long nv2a_host_presents;
 static bool s_external_wait,s_pair_render;
+static uint64_t s_pair_lock_us;
 static int s_quality_set,phase,failed;
 static int64_t g_get_monotonic_time(void) {
     struct timespec t; clock_gettime(CLOCK_MONOTONIC,&t);

@@ -1,6 +1,7 @@
 /* UIKit services around the real SDL/main.c engine, not a separate harness. */
 #import <UIKit/UIKit.h>
 #import <QuartzCore/QuartzCore.h>
+#import <CoreText/CoreText.h>
 #import <GameController/GameController.h>
 #import <AVFoundation/AVFoundation.h>
 #import <UniformTypeIdentifiers/UniformTypeIdentifiers.h>
@@ -80,13 +81,31 @@ void ngb_ios_quit(void) {
 // the two glyphs extracted from its pinned Options texture, at tab-art size.
 int ngb_ios_settings_tab_mask(uint8_t *mask, int width, int height) {
     @autoreleasepool {
-        NSString *path=[NSBundle.mainBundle.resourcePath stringByAppendingPathComponent:@"KoreanPatch/settings-tab.mask"];
-        NSData *data=[NSData dataWithContentsOfFile:path];
-        if (!mask || data.length<8 || memcmp(data.bytes,"NGBM",4)) return 0;
-        const uint8_t *bytes=data.bytes;
-        unsigned w=bytes[4]|bytes[5]<<8,h=bytes[6]|bytes[7]<<8;
-        if (!w || !h || w>(unsigned)width || h>(unsigned)height || data.length!=8+w*h) return 0;
-        for (unsigned y=0;y<h;y++) memcpy(mask+y*width,bytes+8+y*w,w);
+        // Match the dark, slanted Korean tab lettering without enlarging
+        // the Options sprite's tiny, differently styled white glyphs.
+        if (!mask || width<240 || height<128) return 0;
+        memset(mask,0,(size_t)width*height);
+        CGColorSpaceRef space=CGColorSpaceCreateDeviceGray();
+        CGContextRef context=CGBitmapContextCreate(mask,width,height,8,width,space,kCGImageAlphaNone);
+        CGColorSpaceRelease(space);
+        if (!context) return 0;
+        CTFontRef font=CTFontCreateWithName(CFSTR("AppleSDGothicNeo-Medium"),80,NULL);
+        NSDictionary *attributes=@{(__bridge NSString *)kCTFontAttributeName:(__bridge id)font,
+            (__bridge NSString *)kCTForegroundColorFromContextAttributeName:@YES};
+        NSAttributedString *text=[[NSAttributedString alloc] initWithString:@"설정" attributes:attributes];
+        CTLineRef line=CTLineCreateWithAttributedString((__bridge CFAttributedStringRef)text);
+        CGContextSetShouldAntialias(context,true);
+        CGContextSetGrayFillColor(context,1,1);
+        CGContextSetTextMatrix(context,CGAffineTransformMake(1,0,.18,1,0,0));
+        CGContextSetTextPosition(context,12,30);
+        CTLineDraw(line,context);
+        CFRelease(line);CFRelease(font);CGContextRelease(context);
+        // Core Graphics' bitmap origin is bottom-left; the plate mask is top-left.
+        for (int y=0;y<height/2;y++) for (int x=0;x<width;x++) {
+            uint8_t value=mask[y*width+x];
+            mask[y*width+x]=mask[(height-1-y)*width+x];
+            mask[(height-1-y)*width+x]=value;
+        }
         return 1;
     }
 }
@@ -609,6 +628,10 @@ void ngb_ios_sync_drawable(SDL_Window *sdlWindow) {
 int ngb_ios_prepare(void)
 {
     @autoreleasepool {
+        // Keep Vulkan queue calls short: synchronous Metal encoding under the
+        // shared queue lock stalls the game producer behind presentation.
+        setenv("MVK_CONFIG_SYNCHRONOUS_QUEUE_SUBMITS","0",0);
+        fprintf(stderr,"[iOS GPU] synchronous queue submissions: %s\n",getenv("MVK_CONFIG_SYNCHRONOUS_QUEUE_SUBMITS"));
         SDL_SetHint(SDL_HINT_ORIENTATIONS, "LandscapeLeft LandscapeRight");
         request_display_cadence();
         CGSize pixels = UIScreen.mainScreen.nativeBounds.size;
