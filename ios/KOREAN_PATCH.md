@@ -108,3 +108,20 @@ neighboring tab's 27-pixel lettering height and italic slant, and bundles only
 that mask inside the encrypted game IPA. Existing plate shading and selected
 glow use this mask. No extracted glyph pixels are committed. Device appearance
 and text rendering still need verification with the new IPA.
+
+## Startup regression after broad entry gating
+
+The owner confirmed build 2.42 stalls before the first guest flip. Normalized
+C differences are insufficient to identify patched Xbox functions: unchanged
+instructions can be generated with a different direct/manual call form. The
+merge now compares the original and patched executable bytes over each complete
+original function range (also covering entries shortened into detours). It
+retains original callers when their instructions are unchanged. The pinned
+private check produces 25 gated entries and 55 variants, rather than 107/137.
+A native fixture checks identical instructions with different generated call
+forms and a patch beyond a shortened entry's prefix. An isolated private x86
+emulator versus compiled-C test also matched pool allocation retry, glyph-bank
+reservation, descriptors and preserved stack/registers; this is not full startup.
+The new iOS build samples the existing boot-thread trace at most three times if
+there has been no guest flip after twenty seconds. It stops sampling once flips
+begin. Startup recovery, Korean text and output throughput require a device retest.
