@@ -1119,9 +1119,12 @@ VOut main(VIn i) {
     VOut n=motion_current(i);
     if (motion.x>0 && motion.x<1) {
         VOut p=motion_previous(i);
-        // A projection discontinuity/cut must not sweep geometry across the screen.
-        if (p.pos.w*n.pos.w>0.000001 && all(isfinite(p.pos)) && all(isfinite(n.pos)) &&
-            all(abs(p.pos.xy/p.pos.w-n.pos.xy/n.pos.w)<float2(0.35,0.35))) {
+        // Interpolate in homogeneous clip space, including vertices outside
+        // the viewport or crossing the near plane. A per-vertex NDC threshold
+        // mixes midpoint and endpoint vertices within the same wall triangle,
+        // changing its shape as the camera moves. GPU clipping follows this
+        // interpolation; camera cuts must reset history for the whole frame.
+        if (all(isfinite(p.pos)) && all(isfinite(n.pos))) {
             n.pos=lerp(p.pos,n.pos,motion.x);
             n.tc0=lerp(p.tc0,n.tc0,motion.x); n.tc1=lerp(p.tc1,n.tc1,motion.x);
             n.tc2=lerp(p.tc2,n.tc2,motion.x); n.tc3=lerp(p.tc3,n.tc3,motion.x);
