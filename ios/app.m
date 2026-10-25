@@ -14,6 +14,14 @@
 #include "platform/vcpu.h"
 void ngb_ios_log_build(void) {
     fprintf(stderr,"[iOS Build] version %s; source %s\n",NGB_IOS_BUILD_VERSION,NGB_IOS_BUILD_COMMIT);
+    NSString *documents=NSSearchPathForDirectoriesInDomains(NSDocumentDirectory,NSUserDomainMask,YES).firstObject;
+    if (documents) {
+        const char *saves=getenv("NGB_SAVE_DIR");
+        NSString *info=[NSString stringWithFormat:@"Version: %s\nSource: %s\nCurrent log: %s/log.txt\n",
+            NGB_IOS_BUILD_VERSION,NGB_IOS_BUILD_COMMIT,saves ? saves : "unknown"];
+        [info writeToFile:[documents stringByAppendingPathComponent:@"build-info.txt"]
+            atomically:YES encoding:NSUTF8StringEncoding error:nil];
+    }
 }
 static int safeMillion[4]={80000,30000,80000,20000};
 void ngb_ios_safe_area(float *left,float *top,float *right,float *bottom) {

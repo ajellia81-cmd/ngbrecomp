@@ -1054,9 +1054,17 @@ int main(int argc, char **argv)
     /* No terminal and no file of the player's own (the Mac's Finder, Steam on Linux -- a Steam Deck in Game
      * Mode): the output to log.txt in the save folder, as on Windows, or a start that fails there leaves
      * nothing to look at (#11). Sent to a file already (`> log 2>&1`), it stays there. */
+#ifdef NGB_IOS_APP
+    // LiveContainer may already redirect stdout to a regular host log. Still
+    // replace our own current-session log so an old saves/log.txt is not mistaken
+    // for the just-installed executable's output.
+    bool capture_log = true;
+#else
     struct stat out_st;
     bool to_file = fstat(STDOUT_FILENO, &out_st) == 0 && S_ISREG(out_st.st_mode);
-    if (!getenv("NGB_TEST_HIDDEN") && !isatty(STDOUT_FILENO) && !to_file) {
+    bool capture_log = !isatty(STDOUT_FILENO) && !to_file;
+#endif
+    if (!getenv("NGB_TEST_HIDDEN") && capture_log) {
         char log[4200];
         save_dir_path(log, sizeof log - 16);
         ngb_mkdir(log);
