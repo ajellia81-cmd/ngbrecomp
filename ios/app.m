@@ -22,6 +22,13 @@ void ngb_ios_log_build(void) {
             NGB_IOS_BUILD_VERSION,NGB_IOS_BUILD_COMMIT,saves ? saves : "unknown"];
         [info writeToFile:[documents stringByAppendingPathComponent:@"build-info.txt"]
             atomically:YES encoding:NSUTF8StringEncoding error:nil];
+#ifdef NGB_IOS_KOREAN
+        extern int ngb_korean_active(void);
+        if (ngb_korean_active()) {
+            NSDictionary *state=[NSDictionary dictionaryWithContentsOfFile:[documents stringByAppendingPathComponent:@"korean-game.state.plist"]];
+            fprintf(stderr,"[Korean] active overlay layout: %s\n",[state[@"layout"] UTF8String] ?: "legacy");
+        }
+#endif
     }
 }
 // A preparation window must not return the LiveContainer scene to portrait
@@ -426,6 +433,8 @@ static void import_progress(uint64_t done, uint64_t total, void *context)
     if (!self) return nil;
     self.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
     self.multipleTouchEnabled = YES;
+    self.opaque = NO;
+    self.backgroundColor = UIColor.clearColor;
     self.buttons = [NSMutableArray new];
     NSArray *titles = @[@"A", @"B", @"X", @"Y", @"White", @"Black", @"LT", @"RT", @"Back", @"Start",
         @"↑", @"↓", @"←", @"→", @"L3", @"R3"];
@@ -507,11 +516,15 @@ static void import_progress(uint64_t done, uint64_t total, void *context)
 - (void)refresh
 {
     BOOL physical = GCController.controllers.count > 0;
+    BOOL wasHidden=self.hidden;
     self.hidden = physical;
+    if (wasHidden!=physical) fprintf(stderr,"[iOS Touch] %s; connected game controllers %lu\n",
+        physical ? "hidden" : "visible",(unsigned long)GCController.controllers.count);
     if (physical && self.joystick) {
         [self disconnectJoystick];
     } else if (!physical && !self.joystick) {
-        if (SDL_InitSubSystem(SDL_INIT_GAMECONTROLLER) != 0) return;
+        if (!(SDL_WasInit(SDL_INIT_GAMECONTROLLER)&SDL_INIT_GAMECONTROLLER) &&
+            SDL_InitSubSystem(SDL_INIT_GAMECONTROLLER) != 0) return;
         int device = SDL_JoystickAttachVirtual(SDL_JOYSTICK_TYPE_GAMECONTROLLER,
             SDL_CONTROLLER_AXIS_MAX, SDL_CONTROLLER_BUTTON_MAX, 0);
         if (device >= 0) self.joystick = SDL_JoystickOpen(device);
@@ -531,6 +544,9 @@ static void attach_controls(UIWindow *window)
     touchControls = [[NGBTouch alloc] initWithFrame:window.rootViewController.view.bounds];
     [window.rootViewController.view addSubview:touchControls];
     [touchControls refresh];
+    fprintf(stderr,"[iOS Touch] overlay attached %.0fx%.0f; %s; virtual input %s\n",
+        touchControls.bounds.size.width,touchControls.bounds.size.height,
+        touchControls.hidden ? "hidden" : "visible",touchControls.joystick ? "ready" : "off");
 }
 
 static void ngb_sync_metal_layers(UIView *view) {
@@ -568,6 +584,11 @@ void ngb_ios_sync_drawable(SDL_Window *sdlWindow) {
     [root layoutIfNeeded];
     ngb_sync_metal_layers(root);
     attach_controls(window);
+    static CFTimeInterval next_controls;
+    if (now>=next_controls) {
+        next_controls=now+0.25;
+        [touchControls refresh];
+    }
     }
 }
 
