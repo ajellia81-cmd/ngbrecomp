@@ -7,17 +7,17 @@ A successful compile/package is not a gameplay result.
 
 ## Download the actual IPA
 
-1. Open the [encrypted game artifact](https://github.com/ajellia81-cmd/ngbrecomp/actions/runs/40180460729/artifacts/12593619372)
-   while signed into GitHub. It is from [Actions run 40180460729](https://github.com/ajellia81-cmd/ngbrecomp/actions/runs/40180460729).
+1. Open the [encrypted game artifact](https://github.com/ajellia81-cmd/ngbrecomp/actions/runs/40188164967/artifacts/12596742478)
+   while signed into GitHub. It is from [Actions run 40188164967](https://github.com/ajellia81-cmd/ngbrecomp/actions/runs/40188164967).
 2. Extract GitHub's outer ZIP. It contains `NinjaGaidenBlack-ios-arm64-unsigned.ipa.7z`.
 3. Open the inner archive with a 7z-capable tool such as 7-Zip and enter the same
    password stored in `NGB_IPA_PASSWORD`. Do not upload the password to an issue or chat.
 4. Extract `NinjaGaidenBlack-ios-arm64-unsigned.ipa`. Import this file, not the ZIP/7z.
 
-The artifact is retained for seven days. The unsigned IPA is 47,124,696 bytes and
-has SHA-256 `94f2a0f4bcc4841a52451fcad4db87e03f3a9a4816cc8adabee4dcdab11f1dfc`.
-App version: **0.2.0 (2.47)**.
-Build source commit: `df56683dd4253816097d283b41141d45a757f969`.
+The artifact is retained for seven days. The unsigned IPA is 47,125,301 bytes and
+has SHA-256 `9d2070d3054aa0f3363d3f675ccb7e8658da4352c4735c1ee0ff5819c8ef3081`.
+App version: **0.2.0 (2.48)**.
+Build source commit: `bdaeb2fb74d3d0c81b1668e7fade3d324394e67e`.
 It contains the real engine, 11,740 original lifted game functions and 55 Korean
 variants. It is not NGBBringup. Korean glyph rendering/gameplay still require a device test.
 The Korean-enabled build contains the pinned translation capsule; the original
@@ -339,3 +339,34 @@ wrong commands, bad addresses and opt-out. Full iPhoneOS build and startup are
 separate checks: a successful package does not establish phone startup recovery,
 correct Korean text or sustained 120 FPS. If startup still stalls, leave the
 app foreground for thirty seconds and copy its new log and build-info.txt.
+
+
+## Build 2.48 presentation and Korean tab lettering
+
+The owner confirms that 2.47 enters gameplay and displays Korean dynamic text
+correctly. The next device log shows a 120 Hz display but only sparse midpoint
+pairs: 27–30 ms per pair, followed by the existing 120-guest-frame overload
+cooldown. Thus the 60 FPS report is not established as an overlay-only problem.
+
+The iOS host now selects asynchronous MoltenVK queue encoding before Vulkan is
+initialized, keeping Metal encoding out of the application's shared queue lock.
+The iOS swapchain requests three images, subject to the driver's maximum, rather
+than two. Existing fences still protect midpoint/endpoint source leases; guest
+simulation stays at 60 Hz and the overload guard remains enabled. Phase timings
+separate presenter-lock, queue-submit and queue-present time from drawable
+acquisition and final-copy waits. These are performance changes to validate on
+device, not evidence that sustained 120 FPS has already been achieved.
+
+The Korean 설정 tab uses CoreText vector lettering, medium Korean sans weight,
+matching slant, antialiasing and the plate's full text-height budget. It replaces
+the small Options-sprite crop; the plate's existing light edge and selection glow
+remain. The exact original baked-art typeface is not known, so visual matching
+still needs an owner-device check. Original game menu artwork is preserved.
+
+Fully quit LiveContainer before replacing the app. Keep imported data and saves;
+no ISO reimport or translation reset is needed. For a useful Smooth Motion test,
+play an active 3D scene with it enabled, then copy the new log. Static menus and
+movies intentionally do not generate geometry-interpolated frames. A new log
+should show `[iOS GPU] synchronous queue submissions: 0` and three swap images
+when the device supports them. Sustained 120 distinct displayed pictures remains
+unverified until a device run establishes it.
