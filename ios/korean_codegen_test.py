@@ -125,4 +125,48 @@ static uint32_t memory[128],esp,esi=0x100,result[3];
         broken=fixture();del broken['draw_b']
         with self.assertRaises(ValueError):repair_korean_spacing(broken)
 
+
+from merge_korean_codegen import repair_korean_vertical_uv
+
+class KoreanGlyphBottom(unittest.TestCase):
+    def test_vertical_ink_row_retained_and_horizontal_gutter_unchanged(self):
+        body=r'''void sample(void) {
+ if(sprite==0x56d || sprite==0x587 || sprite==0x588) {
+  xmm1.f[0] = xmm1.f[0] - MEMF(0xE0346C); /* subss */
+  xmm0.f[0] = xmm0.f[0] - MEMF(0xE0346C); /* subss */
+ }
+}'''
+        prefix=r'''#include <math.h>
+static unsigned sprite;
+static struct { float f[4]; } xmm0,xmm1;
+#define MEMF(a) (1.0f/256)
+// A synthetic font cell with its thin final stroke on row 15.
+static float final_ink(float v) { float d=fabsf(v*256-.5f-15); return d<1 ? 1-d : 0; }
+'''
+        main=r'''int main(void) {
+ unsigned ids[]={0x56d,0x587,0x588,0x123};
+ for(unsigned i=0;i<4;i++) {
+  sprite=ids[i];xmm0.f[0]=17.0f/256;xmm1.f[0]=16.5f/256;sample();
+  if(i==3 && fabsf(xmm0.f[0]-17.0f/256)>1e-7f) return 1;
+  float expected=(i<3 ? 15.5f : 16.5f)/256;
+  if(fabsf(xmm1.f[0]-expected)>1e-7f) return 2;
+  // The last safe console-pixel sample must retain the bottom stroke before
+  // fractional quad snapping excludes the destination's boundary pixel.
+  float v=1.5f/256+(xmm0.f[0]-1.5f/256)*(14.5f/16);
+  if(final_ink(v)<.9f) return 3;
+ }
+ return 0;
+}'''
+        with tempfile.TemporaryDirectory() as directory:
+            directory=Path(directory)
+            for name,adapt,success in [('fixed',True,True),('old',False,False)]:
+                bodies={'sub_00E03430':body}
+                if adapt:repair_korean_vertical_uv(bodies)
+                source=directory/(name+'.c');exe=directory/name
+                source.write_text(prefix+bodies['sub_00E03430']+main)
+                subprocess.run(['cc','-std=c11',str(source),'-lm','-o',str(exe)],check=True,capture_output=True)
+                result=subprocess.run([str(exe)],capture_output=True)
+                self.assertEqual(result.returncode==0,success)
+        with self.assertRaises(ValueError):repair_korean_vertical_uv({'sub_00E03430':'changed'})
+
 if __name__=='__main__':unittest.main()

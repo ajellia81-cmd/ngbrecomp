@@ -87,6 +87,18 @@ def repair_font_trampolines(bodies):
 
 
 
+def repair_korean_vertical_uv(bodies):
+    # The three Korean page IDs retain horizontal gutter protection. Their
+    # glyphs reach row 15; trimming the lower V edge loses the last ink row
+    # when the destination quad lands between console pixel boundaries.
+    key='sub_00E03430'
+    old='xmm0.f[0] = xmm0.f[0] - MEMF(0xE0346C); /* subss */'
+    body=bodies.get(key,'')
+    if body.count(old)!=1:
+        raise ValueError('Pinned Korean vertical UV adjustment changed')
+    bodies[key]=body.replace(old,'/* Keep the full vertical glyph interval, including the last ink row. */')
+
+
 def repair_korean_spacing(bodies):
     # These are the ASCII-space branches, not generic glyph or sprite bounds.
     # Adapt both the measurement pass and each draw continuation together.
@@ -213,12 +225,13 @@ def merge(original, translated, missing_seeds=None):
         if unimplemented-baseline_unimplemented:
             raise ValueError('New Korean instruction remains untranslated; refusing an incomplete font helper')
         selected[name]=body
+    repair_korean_vertical_uv(selected)
     repair_korean_spacing(selected)
     # Read-only metrics to distinguish font-cell clipping from renderer bounds.
     key='sub_001E6D36'
     marker='loc_001E6E59: ;'
     if selected[key].count(marker)!=1: raise ValueError('Pinned text metric entry changed')
-    selected[key]=selected[key].replace(marker,marker+'\n    ngb_korean_font_metrics(MEM32(esi + 0x38),ZX16(MEM16(esp + 0x88)),ZX16(MEM16(esp + 0x8C)),MEMF(esp + 0x1C),MEMF(esp + 0xC));')
+    selected[key]=selected[key].replace(marker,marker+'\n    ngb_korean_font_metrics(MEM32(esi + 0x38),ZX16(MEM16(esp + 0x88)),ZX16(MEM16(MEM32(esi + 0x38)*24 + 0x452A02)),MEMF(esp + 0x1C),MEMF(esp + 0xC));')
     output = ['/* PRIVATE generated language variants: never commit. */',
               '#ifdef NGB_IOS_KOREAN', '#define RECOMP_GENERATED_CODE', '#include "recomp_funcs.h"',
               '#include "korean.h"', '#include <stddef.h>', '#include <math.h>']
