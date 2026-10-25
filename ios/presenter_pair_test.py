@@ -21,7 +21,7 @@ static pthread_mutex_t s_present_mu=PTHREAD_MUTEX_INITIALIZER;
 static pthread_cond_t s_pair_cv=PTHREAD_COND_INITIALIZER;
 static VkDevice s_pair_copy_device;
 static VkFence s_pair_copy_fence;
-static uint64_t s_pair_mids,s_pair_ends,s_pair_acquire_us;
+static uint64_t s_pair_mids,s_pair_ends,s_pair_acquire_us,s_pair_lock_us,s_pair_submit_us,s_pair_present_us;
 static int take_count,stage,fail_end;
 #define VK_NULL_HANDLE 0
 #define VK_TRUE 1
