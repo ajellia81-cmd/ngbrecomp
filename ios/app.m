@@ -51,14 +51,17 @@ static void request_display_cadence(void) {
 
 #ifdef NGB_IOS_KOREAN
 #include "../src/launcher.h"
+#include "language_policy.h"
 extern BOOL ngb_prepare_korean(NSString *, NSString *, NSString *, void (^)(NSString *), NSError **);
 static int koreanActive;
+static int textOverride=-1;
+int ngb_ios_text_override(void) { return textOverride; }
 int ngb_korean_active(void) { return koreanActive; }
 
 void ngb_ios_language_changed(int language)
 {
     fprintf(stderr,"[iOS] Options text language saved; relaunch for overlay changes\n");
-    if (!koreanActive && language!=2) return;
+    (void)language;
     dispatch_async(dispatch_get_main_queue(),^{
         UIAlertController *alert=[UIAlertController alertControllerWithTitle:@"Restart required"
             message:@"Quit and reopen to apply the text language." preferredStyle:UIAlertControllerStyleAlert];
@@ -75,6 +78,7 @@ void ngb_ios_language_changed(int language)
 static NSString *prepare_language(NSString *documents, NSString *original)
 {
     NgbSettings settings; ngb_settings_load(&settings);
+    textOverride=settings.text_language_options ? (int)ngb_language_game_index(settings.text_language) : -1;
     setenv("NGB_TEXT_LANGUAGE",settings.text_language==1 ? "English" : "Japanese",1);
     if (settings.text_language!=2) return original;
     NSString *destination=[documents stringByAppendingPathComponent:@"korean-game"];
@@ -114,7 +118,7 @@ static NSString *prepare_language(NSString *documents, NSString *original)
     }
     window.hidden=YES;
     if (!ok) {
-        settings.text_language=1; ngb_settings_save(&settings);
+        settings.text_language=1; settings.text_language_options=1; textOverride=1; ngb_settings_save(&settings);
         setenv("NGB_TEXT_LANGUAGE","English",1);
         return original;
     }
@@ -132,7 +136,7 @@ static NSString *prepare_language(NSString *documents, NSString *original)
             [fm createSymbolicLinkAtPath:target withDestinationPath:source error:nil];
     }
     setenv("NGB_SAVE_DIR",localizedSaves.fileSystemRepresentation,1);
-    koreanActive=1;
+    koreanActive=1; textOverride=0;
     fprintf(stderr,"[Korean] verified text/font code and private archive overlay selected\n");
     return destination;
 }

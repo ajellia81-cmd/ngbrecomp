@@ -151,6 +151,7 @@ void ngb_pc_set_setting(int which, int value)
 #ifdef NGB_IOS_KOREAN
     case 25: {
         s_running.text_language=value<0 ? 0 : value>2 ? 2 : value;
+        s_running.text_language_options=1;
         break;
     }
 #endif

@@ -7,12 +7,14 @@
 extern void ngb_base_001E6AE0(void);
 extern void ngb_base_0017E8A0(void);
 extern int ngb_pc_setting(int);
+extern int ngb_ios_text_override(void);
 extern void ngb_pc_set_setting(int,int);
 
 /* The game's saved text enum is Japanese=0, English=1. The public text
  * lookup's pointer-column enum is the reverse. Never change speech settings. */
 unsigned ngb_ios_game_text_language(unsigned saved) {
-    return ngb_korean_active() ? 0u : saved;
+    int selected=ngb_ios_text_override();
+    return selected>=0 ? (unsigned)selected : saved;
 }
 void sub_001E6AE0(void) {
     uint32_t start=esp,caller=MEM32(esp),saved=MEM32(esp+4);
@@ -23,7 +25,8 @@ void sub_001E6AE0(void) {
             eax=MEM32(table+i*12+4); esp+=4; return;
         }
     }
-    if (ngb_korean_active()) MEM32(esp+4)=ngb_language_text_column(1,saved); // patched Japanese text/font column
+    int selected=ngb_ios_text_override();
+    if (selected>=0) MEM32(esp+4)=selected==0 ? 1 : 0; // patched Japanese text/font column
     ngb_korean_fn translated=ngb_korean_lookup_raw(0x001E6AE0u);
     if (translated) translated(); else ngb_base_001E6AE0();
     MEM32(start+4)=saved;

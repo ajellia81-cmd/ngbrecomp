@@ -219,6 +219,8 @@ void ngb_settings_load(NgbSettings *s)
             s->movie_43 = !strcmp(val, "4:3");
         } else if (!strcmp(key, "smooth_motion")) {
             s->smooth_motion=atoi(val)!=0;
+        } else if (!strcmp(key, "text_language_options")) {
+            s->text_language_options=atoi(val)!=0;
         } else if (!strcmp(key, "text_language")) {
             int language=atoi(val);
             s->text_language=language<0 ? 0 : language>2 ? 2 : language;
@@ -256,6 +258,7 @@ void ngb_settings_save(const NgbSettings *s)
     fprintf(f, "render_scale = %d\n", s->scale);
 #ifdef NGB_IOS_KOREAN
     fprintf(f, "text_language = %d\n", s->text_language);
+    fprintf(f, "text_language_options = %d\n", s->text_language_options);
 #endif
     fprintf(f, "vsync = %d\n", s->vsync);
     fprintf(f, "show_fps = %d\n", s->show_fps);
