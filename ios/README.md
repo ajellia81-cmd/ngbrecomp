@@ -6,44 +6,26 @@ after restarting following the first load. Long-term reliability, performance an
 background resume still require testing. The older NGBBringup diagnostic app is
 a separate target.
 
-- App version: **0.2.0 (2.42)**; compiled revision and active log path are recorded in `Documents/build-info.txt`.
-- Build source: `06c6205db5523dff01e88b2a1b59f0b594e55f95`, branch `ios-port`.
-- [Successful Actions run](https://github.com/ajellia81-cmd/ngbrecomp/actions/runs/40171449033).
-- [Encrypted IPA artifact](https://github.com/ajellia81-cmd/ngbrecomp/actions/runs/40171449033/artifacts/12590383163).
-- Unsigned IPA: **47,280,143 bytes**, containing **11,740 linked lifted game functions**,
+- App version: **0.2.0 (2.43)**; compiled revision and active log path are recorded in `Documents/build-info.txt`.
+- Build source: `97442e30a6ab3aae3b89f5052b8a1f3bb05aeebe`, branch `ios-port`.
+- [Successful Actions run](https://github.com/ajellia81-cmd/ngbrecomp/actions/runs/40173667289).
+- [Encrypted IPA artifact](https://github.com/ajellia81-cmd/ngbrecomp/actions/runs/40173667289/artifacts/12591273435).
+- Unsigned IPA: **47,125,911 bytes**, containing **11,740 linked lifted game functions**,
   137 additional Korean variants, the real engine/runtime, SDL UIKit entry point,
   MoltenVK framework and private translation capsule.
-- IPA SHA-256: `bdc31a828943480ccdb6628dd217456a92a065adae39bda84e9f31ab3acfadc1`.
-- GitHub artifact ZIP SHA-256: `b5a158f65aa0bd19f4ecb330ac9d9a028d4d29e3d4155f6b4b3d03725d50199d`.
+- IPA SHA-256: `5b710225a15fc7014753bf730510b8aaefdb3dabbc8a4597155af533450bf6dc`.
+- GitHub artifact ZIP SHA-256: `3bd24d4cf21df9991f0f735e8c9c3b2f2982596d60c833c036d86ebab3db56de`.
 
-The build 2.39 phone session confirmed landscape output at 2868x1320. It
-exposed missing menu/movie resources and New Game loading trouble caused by the
-old append-based Korean AFS overlay not matching rebuilt offsets. The new source
-rebuilds canonical archives and migrates only the disposable Korean cache while
-preserving original files and shared saves. Full-byte archive/cache-safety tests
-and the complete device build passed; phone rendering/progression needs a retest.
-The first Korean launch prepares the corrected archives once. Touch controls
-refresh on controller hotplug and periodic presence checks; main-menu QUIT matches
-its uppercase neighbors, with Quit retained in title/sentence-case screens.
-
-Build 2.40 device screenshots showed restored menu art but corrupted dynamic
-text/subtitles. Build 2.41 repairs the two Korean font-bank PUSH/RET continuation
-paths and localizes only the added pause Settings tab to 설정 on Korean boots.
-The iOS FPS overlay now distinguishes successfully submitted motion-pair pictures
-from the 60 Hz guest rate. The full device compile, link and packaging passed;
-correct glyph display, New Game loading duration and sustained 120 FPS still need
-a fresh phone session and its current saves-korean/log.txt.
-
-Build 2.41 still showed corrupted dynamic text and roughly 60 delivered pictures
-per second despite 120-Hz display cadence and 60 queued motion pairs per second.
-Build 2.42 adds 107 Korean entry gates for direct C calls, which bypass manual
-address dispatch; original boots retain the original bodies. It releases the
-shared GPU queue while acquiring a drawable and waits once for both pair copies,
-including failed-endpoint cases. The extra 설정 tab now reuses the translation's
-own lettering at the neighboring tab size. These changes passed regression tests
-and full device packaging, but correct phone text and sustained 120 FPS still
-need an owner retest. A later 2.41 launch entered gameplay without the long load;
-this does not establish a dedicated loading optimization.
+The owner confirmed a startup stall in build 2.42. Build 2.43 narrows Korean
+entry gating to functions whose actual Xbox instructions changed, retaining
+original callers whose C differs only around manual-call generation. The pinned
+build contains 25 gated entries and 55 variants. Full device compile, link,
+packaging and regression checks passed; startup recovery, correct Korean text
+and sustained 120 FPS still need a phone retest. The patch's own 설정 tab
+lettering and presenter pacing changes are retained. If no guest flip occurs,
+the app records at most three boot-thread snapshots after twenty seconds.
+Existing imported game files and shared saves are preserved. A previous later
+launch entered gameplay without the long load; no dedicated loading fix is claimed.
 
 See [INSTALL.md](INSTALL.md) for download, LiveContainer import and game data.
 The download is an encrypted 7z inside GitHub's artifact ZIP. It expires seven
