@@ -263,7 +263,7 @@ static void fps_track(void)
         double secs = (now - window_ns) / 1e9;
         unsigned frames_logged = frames;
         double fps = frames / secs;
-#ifdef NGB_IOS_APP
+#if defined(__APPLE__) && TARGET_OS_IPHONE
         // Guest flips remain 60 Hz. Count only successfully submitted midpoint
         // and endpoint pictures when the motion worker is presenting pairs.
         extern void nv2a_present_pair_counts(uint64_t *, uint64_t *, uint64_t *);
@@ -277,7 +277,7 @@ static void fps_track(void)
 #endif
         snprintf(s_fps_text, sizeof s_fps_text, "%.0f FPS  %.1f ms  max %.1f",
                  fps, frames ? secs * 1000.0 / frames : 0.0, max_ms);
-#ifdef NGB_IOS_APP
+#if defined(__APPLE__) && TARGET_OS_IPHONE
         previous_mid=mid; previous_end=end;
 #endif
         /* NV2A_FPS_LOG=1: to stderr; NV2A_FPS_LOG=<path>: appended to that
