@@ -23,7 +23,7 @@ PREFIX=r'''
 #include <assert.h>
 #define XBOX_CONTIG_BASE 0x80000000u
 #define XBOX_CONTIG_SIZE (128u*1024u*1024u)
-static uint32_t g_ebx;
+static uint32_t g_ebx,g_eax;
 static ptrdiff_t g_xbox_mem_offset;
 static int yields;
 int SwitchToThread(void) { yields++;return 1; }
@@ -50,6 +50,12 @@ int main(void) {
     setenv("RECOMP_DSP_ACK","auto",1);g_ebx=0x86C28811u;
     recomp_spin_pause(0x0037DC15u);assert(*moved==3 && yields==5);
     g_ebx=0x1000;recomp_spin_pause(0x0037DC15u);assert(yields==6);
+    g_eax=0x86C28800u;g_ebx=0;*moved=2;
+    recomp_spin_pause(0x0037DC78u);assert(*moved==0 && *old==0xDEADBEEFu && yields==6);
+    *moved=3;recomp_spin_pause(0x0037DC78u);assert(*moved==3 && yields==7);
+    g_eax=0xFFFFFFF0u;recomp_spin_pause(0x0037DC78u);assert(yields==8);
+    setenv("RECOMP_DSP_ACK","",1);g_eax=0x86C28800u;*moved=2;
+    recomp_spin_pause(0x0037DC78u);assert(*moved==2 && yields==9);
     return 0;
 }
 '''

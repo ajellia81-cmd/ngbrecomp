@@ -765,16 +765,24 @@ static void choose_renderer(void)
  * it, so an absolute address can acknowledge unrelated memory and miss it. */
 int ngb_ios_service_spin(uint32_t loop_va)
 {
-    if (loop_va!=0x0037DC15u) return 0;
+    if (loop_va!=0x0037DC15u && loop_va!=0x0037DC78u) return 0;
     const char *policy=getenv("RECOMP_DSP_ACK");
     if (!policy || strcmp(policy,"auto")) return 0;
-    uint32_t address=g_ebx;
+    /* Effects-image upload (3) uses EBX; parameter upload (2) waits
+     * on [EAX+0x10]. Both are consumed by the passthrough DSP. */
+    uint32_t address=loop_va==0x0037DC15u ? g_ebx : g_eax+0x10u;
     if (!g_xbox_mem_offset || (address&3) || address<XBOX_CONTIG_BASE ||
         (uint64_t)address+4>(uint64_t)XBOX_CONTIG_BASE+XBOX_CONTIG_SIZE) return 0;
     uint32_t *command=(uint32_t *)(uintptr_t)(g_xbox_mem_offset+address);
-    uint32_t expected=3;
+    uint32_t expected=loop_va==0x0037DC15u ? 3 : 2;
+    uint32_t submitted=expected;
     if (!__atomic_compare_exchange_n(command,&expected,0,0,__ATOMIC_RELEASE,__ATOMIC_RELAXED)) return 0;
-    fprintf(stderr,"[iOS DSP] effects-image command 3 acknowledged at %08X (observed mailbox)\n",address);
+    static unsigned reported;
+    unsigned bit=1u<<submitted;
+    if (!(reported&bit)) {
+        reported|=bit;
+        fprintf(stderr,"[iOS DSP] command %u acknowledged at %08X (observed mailbox)\n",submitted,address);
+    }
     return 1;
 }
 #endif
