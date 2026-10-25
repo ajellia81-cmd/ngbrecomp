@@ -228,6 +228,7 @@ extern "C" int ngb_pc_setting(int which);
 extern "C" int nv2a_dirty_stamp(const void* host, size_t len, uint64_t* stamp);   // xboxrecomp nv2a_dirty.c
 extern "C" float ngb_hud_shape(void);   // src/pc_menu.c: the menus' and HUD's narrowing
 extern "C" int ngb_2d_stretched(void);
+extern "C" int ngb_movie_active(void);
 extern "C" [[noreturn]] void ngb_renderer_fatal(const char* detail);  // src/ingame_menu.c  // src/pc_menu.c: the game in its widescreen mode, its 2D as drawn
 extern "C" int ngb_2d_screen_frame(int threed);   // src/pc_menu.c: a 2D screen (a menu, the title, a chapter
                                                 // card), knowing the 3D this frame has drawn so far

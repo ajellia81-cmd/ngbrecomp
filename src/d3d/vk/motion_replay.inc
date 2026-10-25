@@ -118,6 +118,10 @@ void VulkanBackend::MotionPresent(const Surface& front,Image& endpoint,float bar
 #ifdef NGB_IOS_APP
     if (motion_epoch_!=ngb_ios_motion_epoch() || ngb_ios_display_hz()<100 || !ngb_pc_setting(26)) return;
 #endif
+    // The boot/movie/menu graph changes viewport, video targets and 2D mode.
+    // It must always use the authoritative original picture, even when a title
+    // background happens to contain a few 3D draws.
+    if (ngb_movie_active() || ngb_2d_screen_frame(int(threed_)) || threed_<30) return;
     if (!motion_capture_ || !motion_valid_ || !motion_changed_ || !motion_3d_ ||
         ngb_quick_wanted() || !motion_last_ns_ || now-motion_last_ns_>50000000LL) return;
     Target *target=EnsureTarget(front,false);
@@ -179,7 +183,8 @@ void VulkanBackend::MotionFinish() {
     // Custom glow/MSAA paths need their own replay recipes. Keep their original
     // rendering intact rather than interpolate an incomplete graph.
     if (motion_cooldown_) { motion_cooldown_--; wanted=false; }
-    wanted=wanted && !ContinuousGlowEnabled() && GlowSoftenMode()==0 && msaa_==1 && threed_>0 && !ngb_quick_wanted();
+    wanted=wanted && !ContinuousGlowEnabled() && GlowSoftenMode()==0 && msaa_==1 && threed_>=30 && !ngb_movie_active() &&
+        !ngb_2d_screen_frame(int(threed_)) && !ngb_quick_wanted();
     bool reset=!motion_valid_ || !wanted || (motion_last_ns_ && now-motion_last_ns_>50000000LL);
 #ifdef NGB_IOS_APP
     reset=reset || motion_epoch_!=ngb_ios_motion_epoch(); motion_epoch_=ngb_ios_motion_epoch();
