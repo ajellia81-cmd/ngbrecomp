@@ -19,6 +19,7 @@ on:
       - 'ios/game_hooks.c'
       - 'ios/language_policy.h'
       - 'ios/runtime_ui_test.c'
+      - 'ios/presenter_descriptor_test.py'
       - 'ios/wrap_game_codegen_test.py'
       - 'ios/wrap_game_codegen.py'
       - 'src/quit_label.h'
@@ -171,6 +172,7 @@ jobs:
             ios/runtime_ui_test.c -o build/ios-platform/runtime-ui
           build/ios-platform/runtime-ui
           python3 ios/wrap_game_codegen_test.py
+          python3 ios/presenter_descriptor_test.py
       - name: Compile actual Smooth Motion shaders and retained-pose tests
         shell: bash
         run: |
