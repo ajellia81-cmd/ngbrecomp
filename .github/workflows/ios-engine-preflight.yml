@@ -30,6 +30,7 @@ on:
       - 'ios/korean_codegen_test.py'
       - 'ios/dsp_mailbox_test.py'
       - 'ios/tab_lettering_preview.py'
+      - 'ios/fps_counter_test.py'
       - 'ios/presenter_pair_test.py'
       - 'xboxrecomp/src/kernel/kernel_hal.c'
       - 'tools/pipeline.sh'
@@ -194,6 +195,7 @@ jobs:
           python3 ios/dsp_mailbox_test.py
           python3 ios/tab_lettering_preview.py
           python3 ios/presenter_descriptor_test.py
+          python3 ios/fps_counter_test.py
       - name: Compile actual Smooth Motion shaders and retained-pose tests
         shell: bash
         run: |
