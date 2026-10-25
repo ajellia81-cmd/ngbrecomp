@@ -6,15 +6,15 @@ after restarting following the first load. Long-term reliability, performance an
 background resume still require testing. The older NGBBringup diagnostic app is
 a separate target.
 
-- App version: **0.2.0 (2.41)**; compiled revision and active log path are recorded in `Documents/build-info.txt`.
-- Build source: `cecc67c4191804bde8f67f4e0ea8fdcee05016c2`, branch `ios-port`.
-- [Successful Actions run](https://github.com/ajellia81-cmd/ngbrecomp/actions/runs/40167778298).
-- [Encrypted IPA artifact](https://github.com/ajellia81-cmd/ngbrecomp/actions/runs/40167778298/artifacts/12589750909).
-- Unsigned IPA: **47,274,190 bytes**, containing **11,740 linked lifted game functions**,
+- App version: **0.2.0 (2.42)**; compiled revision and active log path are recorded in `Documents/build-info.txt`.
+- Build source: `06c6205db5523dff01e88b2a1b59f0b594e55f95`, branch `ios-port`.
+- [Successful Actions run](https://github.com/ajellia81-cmd/ngbrecomp/actions/runs/40171449033).
+- [Encrypted IPA artifact](https://github.com/ajellia81-cmd/ngbrecomp/actions/runs/40171449033/artifacts/12590383163).
+- Unsigned IPA: **47,280,143 bytes**, containing **11,740 linked lifted game functions**,
   137 additional Korean variants, the real engine/runtime, SDL UIKit entry point,
   MoltenVK framework and private translation capsule.
-- IPA SHA-256: `33897f032b9a8cbd40afc43df2e677946d7bc898717223ba42c6f24d99e34d3d`.
-- GitHub artifact ZIP SHA-256: `64f848b754dbcbe1424ac63321f025d4e9780a92a632965df58bf77e6925302d`.
+- IPA SHA-256: `bdc31a828943480ccdb6628dd217456a92a065adae39bda84e9f31ab3acfadc1`.
+- GitHub artifact ZIP SHA-256: `b5a158f65aa0bd19f4ecb330ac9d9a028d4d29e3d4155f6b4b3d03725d50199d`.
 
 The build 2.39 phone session confirmed landscape output at 2868x1320. It
 exposed missing menu/movie resources and New Game loading trouble caused by the
@@ -33,6 +33,17 @@ The iOS FPS overlay now distinguishes successfully submitted motion-pair picture
 from the 60 Hz guest rate. The full device compile, link and packaging passed;
 correct glyph display, New Game loading duration and sustained 120 FPS still need
 a fresh phone session and its current saves-korean/log.txt.
+
+Build 2.41 still showed corrupted dynamic text and roughly 60 delivered pictures
+per second despite 120-Hz display cadence and 60 queued motion pairs per second.
+Build 2.42 adds 107 Korean entry gates for direct C calls, which bypass manual
+address dispatch; original boots retain the original bodies. It releases the
+shared GPU queue while acquiring a drawable and waits once for both pair copies,
+including failed-endpoint cases. The extra 설정 tab now reuses the translation's
+own lettering at the neighboring tab size. These changes passed regression tests
+and full device packaging, but correct phone text and sustained 120 FPS still
+need an owner retest. A later 2.41 launch entered gameplay without the long load;
+this does not establish a dedicated loading optimization.
 
 See [INSTALL.md](INSTALL.md) for download, LiveContainer import and game data.
 The download is an encrypted 7z inside GitHub's artifact ZIP. It expires seven
