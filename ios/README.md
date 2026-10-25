@@ -6,14 +6,14 @@ after restarting following the first load. Long-term reliability, performance an
 background resume still require testing. The older NGBBringup diagnostic app is
 a separate target.
 
-- Build source: `392e02b48f1ead8a5e1bd8c3388ebfe309fdf53c`, branch `ios-port`.
-- [Successful Actions run](https://github.com/ajellia81-cmd/ngbrecomp/actions/runs/40122256419).
-- [Encrypted IPA artifact](https://github.com/ajellia81-cmd/ngbrecomp/actions/runs/40122256419/artifacts/12571398666).
-- Unsigned IPA: **47,240,533 bytes**, containing **11,740 linked lifted game functions**,
+- Build source: `9f2618df0282824233ec646cb98380db7dc0711e`, branch `ios-port`.
+- [Successful Actions run](https://github.com/ajellia81-cmd/ngbrecomp/actions/runs/40145202489).
+- [Encrypted IPA artifact](https://github.com/ajellia81-cmd/ngbrecomp/actions/runs/40145202489/artifacts/12580736502).
+- Unsigned IPA: **47,262,722 bytes**, containing **11,740 linked lifted game functions**,
   135 additional Korean variants, the real engine/runtime, SDL UIKit entry point,
   MoltenVK framework and private translation capsule.
-- IPA SHA-256: `5a1a2b1925cb1cdd6d25743a483542c9bbb5ba674a7026837c63f2297a11724d`.
-- GitHub artifact ZIP SHA-256: `1a6c0e89aa05baaa628172efd045e6b8187b5e5d2546421aaed265080d70c0da`.
+- IPA SHA-256: `a29ae29005e233a97e8807d72cc9d64c6d2da6a41efde0989961101ebbc321fd`.
+- GitHub artifact ZIP SHA-256: `61da5b38416b37fe09db56578493f27dcaddba0e0fbdfd413f8c69555b10ca6c`.
 
 See [INSTALL.md](INSTALL.md) for download, LiveContainer import and game data.
 The download is an encrypted 7z inside GitHub's artifact ZIP. It expires seven
@@ -92,6 +92,7 @@ pause state is preserved. This lifecycle path needs an owner-device retest.
 | IPA | iPhoneOS platform and engine symbols checked; ZIP integrity passed |
 | Encrypted delivery | 7z password/integrity test and artifact upload passed |
 | Korean build | Pinned patch, all 17 section hashes, 135 variants, iPhoneOS ARM64 compilation/link and encrypted IPA packaging passed |
+| Smooth Motion build | Actual fixed/program HLSL compiled to SPIR-V; retained-pose tests and iPhoneOS ARM64 engine link/package passed; device scenes/performance unverified |
 | Korean archive/settings fixtures | Actual Foundation AFS/delta tests and Japanese/English/Korean settings persistence passed; not a real-disc/device test |
 | VM semantics | Allocation collision, protected writes, protection restoration and 64 MiB backing-file shared aliases passed on macOS and iPhone simulator |
 | Scheduler/thread regressions | Existing macOS and Linux regressions passed |

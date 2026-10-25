@@ -7,16 +7,16 @@ A successful compile/package is not a gameplay result.
 
 ## Download the actual IPA
 
-1. Open the [encrypted game artifact](https://github.com/ajellia81-cmd/ngbrecomp/actions/runs/40122256419/artifacts/12571398666)
-   while signed into GitHub. It is from [Actions run 40122256419](https://github.com/ajellia81-cmd/ngbrecomp/actions/runs/40122256419).
+1. Open the [encrypted game artifact](https://github.com/ajellia81-cmd/ngbrecomp/actions/runs/40145202489/artifacts/12580736502)
+   while signed into GitHub. It is from [Actions run 40145202489](https://github.com/ajellia81-cmd/ngbrecomp/actions/runs/40145202489).
 2. Extract GitHub's outer ZIP. It contains `NinjaGaidenBlack-ios-arm64-unsigned.ipa.7z`.
 3. Open the inner archive with a 7z-capable tool such as 7-Zip and enter the same
    password stored in `NGB_IPA_PASSWORD`. Do not upload the password to an issue or chat.
 4. Extract `NinjaGaidenBlack-ios-arm64-unsigned.ipa`. Import this file, not the ZIP/7z.
 
-The artifact is retained for seven days. The unsigned IPA is 47,240,533 bytes and
-has SHA-256 `5a1a2b1925cb1cdd6d25743a483542c9bbb5ba674a7026837c63f2297a11724d`.
-Build source commit: `392e02b48f1ead8a5e1bd8c3388ebfe309fdf53c`.
+The artifact is retained for seven days. The unsigned IPA is 47,262,722 bytes and
+has SHA-256 `a29ae29005e233a97e8807d72cc9d64c6d2da6a41efde0989961101ebbc321fd`.
+Build source commit: `9f2618df0282824233ec646cb98380db7dc0711e`.
 It contains the real engine, 11,740 original lifted game functions and 135 Korean
 variants. It is not NGBBringup. Korean glyph rendering/gameplay still require a device test.
 The Korean-enabled build contains the pinned translation capsule; the original
