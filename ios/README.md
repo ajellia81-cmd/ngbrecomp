@@ -6,26 +6,30 @@ after restarting following the first load. Long-term reliability, performance an
 background resume still require testing. The older NGBBringup diagnostic app is
 a separate target.
 
-- App version: **0.2.0 (2.48)**; compiled revision and active log path are recorded in `Documents/build-info.txt`.
-- Build source: `bdaeb2fb74d3d0c81b1668e7fade3d324394e67e`, branch `ios-port`.
-- [Successful Actions run](https://github.com/ajellia81-cmd/ngbrecomp/actions/runs/40188164967).
-- [Encrypted IPA artifact](https://github.com/ajellia81-cmd/ngbrecomp/actions/runs/40188164967/artifacts/12596742478).
-- Unsigned IPA: **47,125,301 bytes**, containing **11,740 linked lifted game functions**,
+- App version: **0.2.0 (2.51)**; compiled revision and active log path are recorded in `Documents/build-info.txt`.
+- Build source: `7471451017e3f1011a8be0e34703206467ada1e0`, branch `ios-port`.
+- [Successful Actions run](https://github.com/ajellia81-cmd/ngbrecomp/actions/runs/40190646660).
+- [Encrypted IPA artifact](https://github.com/ajellia81-cmd/ngbrecomp/actions/runs/40190646660/artifacts/12598261083).
+- Unsigned IPA: **47,125,800 bytes**, containing **11,740 linked lifted game functions**,
   55 additional Korean variants, the real engine/runtime, SDL UIKit entry point,
   MoltenVK framework and private translation capsule.
-- IPA SHA-256: `9d2070d3054aa0f3363d3f675ccb7e8658da4352c4735c1ee0ff5819c8ef3081`.
-- GitHub artifact ZIP SHA-256: `2fd6eeb60eda5384e4b27f4d7401d6766db4a37ec7b81c58b9b5a2d1c4cc765c`.
+- IPA SHA-256: `ae7c46810d9e7506c0a601698af2e6d45d50d0ba84bc710888ab2ed203c7f3a1`.
+- GitHub artifact ZIP SHA-256: `46b128b2608d223ff722bba9f1ba3aaae4363ee12a09d6e674d45446df847b2f`.
 
 The owner confirms that build 2.47 enters gameplay and displays Korean dynamic
-text correctly. Its Smooth Motion log still shows 27–30 ms per output pair and
-repeated overload cooldowns. Build 2.48 selects asynchronous MoltenVK queue
-encoding, requests a third iOS swap image, and records submission/presentation
-phase timings. The game simulation and overload guard remain at 60 Hz. Sustained
-120 distinct displayed frames is not yet verified. Korean 설정 lettering now
-uses antialiased CoreText vector rendering instead of the small Options-sprite
-crop; its size, weight and slant are adjusted to the surrounding tab art. Exact
-baked-art font matching remains a visual retest item. Imported files and shared
-saves are preserved; no ISO reimport is required.
+text correctly. The 2.48 device log now shows approximately 300 midpoint/end
+pairs per five seconds in several active gameplay windows, with occasional
+backpressure and one overload cooldown. The overlay still reported 60 because
+its iOS output-count path used an application-only define absent from the runtime
+library. Build 2.51 selects that path using the actual iPhoneOS platform macros;
+its regression test reports 120 submitted pictures/game 60 and returns to 60 in
+menus. This is submission evidence, not physical display-timestamp validation.
+The owner confirms camera-dependent wall flicker stops when Smooth Motion is Off.
+The vertex-level NDC cutoff is removed to avoid mixing midpoint and endpoint
+vertices in a triangle. Korean tab row reversal is removed, its weight is Regular
+and its plate height is 32 pixels. The actual CoreText function's upright macOS
+preview was reviewed. Final iPhone tab appearance and wall correctness still need
+retesting. Imported data and saves are preserved; no ISO reimport is required.
 
 See [INSTALL.md](INSTALL.md) for download, LiveContainer import and game data.
 The download is an encrypted 7z inside GitHub's artifact ZIP. It expires seven
