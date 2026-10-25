@@ -1,0 +1,44 @@
+name: Read-only font input extractor
+on:
+  workflow_dispatch:
+  push:
+    branches: [ios-port]
+    paths:
+      - 'ios/Extract-NGBFontInput.ps1'
+      - 'ios/font_input_fixture.py'
+      - '.github/workflows/font-input-extractor-check.yml'
+permissions:
+  contents: read
+jobs:
+  font-extractor:
+    runs-on: windows-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Test Windows PowerShell against a synthetic Xbox disc
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $scratch = Join-Path $env:RUNNER_TEMP 'font-fixture'
+          python ios/font_input_fixture.py $scratch
+          if ($LASTEXITCODE) { throw 'Fixture generation failed.' }
+          $iso = Join-Path $scratch 'synthetic.iso'
+          $out = Join-Path $scratch 'font-output'
+          & powershell.exe -NoProfile -ExecutionPolicy Bypass -File ios/Extract-NGBFontInput.ps1 -IsoPath $iso -OutputDirectory $out
+          if ($LASTEXITCODE) { throw 'Extractor failed.' }
+          $expected = Get-Content (Join-Path $scratch 'expected.json') -Raw | ConvertFrom-Json
+          if ((Get-FileHash $iso -Algorithm SHA256).Hash.ToLower() -ne $expected.iso) { throw 'Source ISO changed.' }
+          $unzip = Join-Path $scratch 'unzipped'
+          Expand-Archive (Join-Path $out 'NGB-font-input.zip') $unzip
+          foreach ($entry in $expected.files.PSObject.Properties) {
+            $path = Join-Path $unzip $entry.Name
+            if ((Get-FileHash $path -Algorithm SHA256).Hash.ToLower() -ne $entry.Value) { throw "Font mismatch: $path" }
+          }
+          $ErrorActionPreference = 'Continue'
+          & powershell.exe -NoProfile -ExecutionPolicy Bypass -File ios/Extract-NGBFontInput.ps1 -IsoPath $iso -OutputDirectory $out 2>$null
+          $rejected = $LASTEXITCODE
+          $ErrorActionPreference = 'Stop'
+          if (-not $rejected) { throw 'Existing output was overwritten.' }
+          if ((Get-FileHash $iso -Algorithm SHA256).Hash.ToLower() -ne $expected.iso) { throw 'Source changed on rejected overwrite.' }
+          Write-Output 'Windows PowerShell 5.1: nested/case-insensitive lookup, exact font-only ZIP, read-only source and overwrite rejection PASS. No owner ISO or PC was used.'
+          exit 0
