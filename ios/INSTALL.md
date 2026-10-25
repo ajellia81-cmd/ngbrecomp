@@ -7,16 +7,17 @@ A successful compile/package is not a gameplay result.
 
 ## Download the actual IPA
 
-1. Open the [encrypted game artifact](https://github.com/ajellia81-cmd/ngbrecomp/actions/runs/40152627909/artifacts/12583292229)
-   while signed into GitHub. It is from [Actions run 40152627909](https://github.com/ajellia81-cmd/ngbrecomp/actions/runs/40152627909).
+1. Open the [encrypted game artifact](https://github.com/ajellia81-cmd/ngbrecomp/actions/runs/40154920349/artifacts/12584258274)
+   while signed into GitHub. It is from [Actions run 40154920349](https://github.com/ajellia81-cmd/ngbrecomp/actions/runs/40154920349).
 2. Extract GitHub's outer ZIP. It contains `NinjaGaidenBlack-ios-arm64-unsigned.ipa.7z`.
 3. Open the inner archive with a 7z-capable tool such as 7-Zip and enter the same
    password stored in `NGB_IPA_PASSWORD`. Do not upload the password to an issue or chat.
 4. Extract `NinjaGaidenBlack-ios-arm64-unsigned.ipa`. Import this file, not the ZIP/7z.
 
-The artifact is retained for seven days. The unsigned IPA is 47,267,191 bytes and
-has SHA-256 `c60ff2037130d5ef912db374dbcd9443502c2c34a233ca89254464969e607d7a`.
-Build source commit: `435c0f7d940bf56540b0872f6b1df2180b0ca596`.
+The artifact is retained for seven days. The unsigned IPA is 47,269,743 bytes and
+has SHA-256 `379520f7c9b037db652cc9ae963cecfb74368eb9ee7a2b2ddf3ac465a430e542`.
+App version: **0.2.0 (2.37)**.
+Build source commit: `b0464871bc0392755a5212be8061906cf25cd5ce`.
 It contains the real engine, 11,740 original lifted game functions and 137 Korean
 variants. It is not NGBBringup. Korean glyph rendering/gameplay still require a device test.
 The Korean-enabled build contains the pinned translation capsule; the original
@@ -164,3 +165,36 @@ proposed boot-input change was withdrawn; intro behavior is unchanged. These
 rendering changes need a device retest; compilation alone cannot establish that
 the reported image is restored. The separate request to alter the description's first glyph was
 withdrawn, and no such glyph/content edit is included.
+
+
+### Identify the running build and current log
+
+The follow-up phone report still showed the cropped title. Its attached session
+log contained the old synchronous `midpoint scenes submitted` signature and no
+new asynchronous presenter counters. The owner confirmed copying it immediately
+after running. This establishes a log/binary mismatch to investigate, not that the
+owner selected an old file: the app previously left saves/log.txt untouched when
+LiveContainer already redirected stdout to a regular file. Korean boots can also
+use saves-korean/log.txt instead of saves/log.txt.
+
+New builds use short version **0.2.0** and a distinct **2.<Actions run number>**
+build version. The executable prints its compiled source revision after log setup.
+Packaging verifies that the revision and version in Info.plist occur in the
+linked executable. iOS always refreshes its session log, and Documents/build-info.txt
+records the executing version, source commit and actual current log path.
+
+Close the running guest and LiveContainer completely, import the newly downloaded
+IPA, and select replacement of the existing app to preserve its data. Check that
+the selected entry is version 0.2.0 before launching. If multiple entries have the
+same name, verify the version rather than launching a previous copy. Do not delete
+a data container or reimport the ISO to diagnose this display failure.
+
+The additional renderer correction reserves each draw within the actual **32 MiB
+frame slot**, rather than the full 64 MiB two-slot allocation. Otherwise Upload()
+can submit/reset between uniforms and geometry, reusing their offsets. Normal and
+replay draws now share the same slot capacity, with oversized replay rejected.
+Boundary tests reject a 31 MiB position plus a 2 MiB draw; the old 64 MiB capacity
+negative control fails. This is a verified resource-lifetime defect, but its role
+in the phone's cropped picture remains unconfirmed until the new session is read.
+Bounded `[iOS View]` and `[iOS Fit]` records expose guest/target/viewport/scissor and
+source/drawable/destination dimensions without a full picture capture.
