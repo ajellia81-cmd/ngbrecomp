@@ -113,6 +113,16 @@ int ngb_ios_settings_tab_mask(uint8_t *mask, int width, int height) {
             uint8_t alpha=rgba[(sy*iw+sx)*4+3];
             mask[y*width+x]=alpha>16 ? alpha : 0;
         }
+        // Lightly thin the generated strokes before the final plate resample.
+        // Work on coverage, preserving the transparent image and its orientation.
+        uint8_t original[240*112];
+        for (unsigned y=0;y<h;y++) memcpy(original+y*w,mask+y*width,w);
+        for (unsigned y=1;y+1<h;y++) for (unsigned x=1;x+1<w;x++) {
+            unsigned v=original[y*w+x],edge=v;
+            for (int dy=-1;dy<=1;dy++) for (int dx=-1;dx<=1;dx++)
+                if (original[(y+dy)*w+x+dx]<edge) edge=original[(y+dy)*w+x+dx];
+            mask[y*width+x]=(3*v+edge)/4;
+        }
         free(rgba);
         return 1;
     }

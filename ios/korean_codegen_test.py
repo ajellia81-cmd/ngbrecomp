@@ -93,11 +93,13 @@ class KoreanSpaces(unittest.TestCase):
         def fixture():
             result={}
             for name,label,reg,index in [('measure','001E7462','ecx',0),('draw_a','001E8481','eax',1),('draw_b','001E8481','eax',2)]:
-                result[name]=f'void {name}(void) {{ unsigned {reg};\nloc_{label}: ;\n    {reg} = ZX16(MEM16(esp + 0x88));\n result[{index}]={reg};\n}}\n'
+                parse='001E734F' if index==0 else '001E8147'
+                result[name]=f'void {name}(void) {{ unsigned {reg};\nloc_{parse}: ;\nloc_{label}: ;\n    {reg} = ZX16(MEM16(esp + 0x88));\n result[{index}]={reg};\n}}\n'
             return result
         prefix=r'''#include <stdint.h>
 #include "korean.h"
-static uint32_t memory[128],esp,esi=0x100,result[3];
+static uint32_t memory[128],esp,esi=0x100,edi=0x180,result[3];
+#define MEM8(a) (*((uint8_t *)memory+(a)))
 #define MEM32(a) memory[(a)/4]
 #define MEM16(a) (*(uint16_t *)((uint8_t *)memory+(a)))
 #define ZX16(a) ((uint16_t)(a))
@@ -110,6 +112,15 @@ static uint32_t memory[128],esp,esi=0x100,result[3];
   unsigned expected=font==1 ? (widths[i]+1)/2 : widths[i];
   if(result[0]!=expected || result[1]!=expected || result[2]!=expected) return 1;
  }
+ MEM32(esi+0x38)=1; MEM16(esp+0x88)=16;
+ edi=0x180; MEM8(edi)=0x81; MEM8(edi+1)=0x40;
+ measure(); if(edi!=0x181 || result[0]!=8) return 2;
+ edi=0x180; MEM32(esp+0x18)=edi; draw_a();
+ if(MEM32(esp+0x18)!=0x181 || result[1]!=8) return 3;
+ MEM32(esp+0x18)=edi; draw_b();
+ if(MEM32(esp+0x18)!=0x181 || result[2]!=8) return 4;
+ MEM32(esi+0x38)=0; edi=0x180; measure();
+ if(edi!=0x180) return 5;
  return 0;
 }'''
         with tempfile.TemporaryDirectory() as directory:

@@ -508,3 +508,20 @@ reset or ISO reimport is needed. Fully quit LiveContainer before replacement.
 The previously reported whole-scene polygon flicker and controller haptic
 behavior remain device retest items. This log had Smooth Motion disabled; it does
 not independently validate the prior interpolation-precision change.
+
+
+## Build 2.56: motion input interpolation and remaining typography
+
+The previous clip-output interpolation is replaced by retained vertex-input and
+matrix interpolation before the original program, following the VF3 scene
+reference. The Korean-only 설정 image height is reduced from 32 to 29 plate units
+and its source coverage is slightly thinned. No original tab images are changed.
+Korean full-width Shift-JIS spaces (0x8140), which bypassed the previous ASCII
+space repair, now consume both bytes and take the same half-cell advance in
+measurement and both draw continuations. Other font modes retain their parser.
+
+The owner's 2.55 report says glyph-bottom clipping improved but remains slightly
+visible. This build retains the 2.55 UV repair; no further unsupported change to
+the font-cell geometry is made. The final glyph ink may also be constrained by
+the translation's baked bitmap. Its exact remaining cause is unresolved. Phone
+checks are still needed for spacing, image weight and camera-motion flicker.

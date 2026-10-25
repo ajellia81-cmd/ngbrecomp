@@ -110,6 +110,20 @@ def repair_korean_spacing(bodies):
             counts[label]+=body.count(old)
             body=body.replace(old,new)
         bodies[name]=body
+    # Shift-JIS full-width spaces bypass the ASCII-space branch. The pinned
+    # translation still contains 0x8140 pairs. Consume both bytes and use the
+    # same measured advance, without rewriting the translated resource files.
+    wide_counts={"001E734F":0,"001E8147":0}
+    for name,body in list(bodies.items()):
+        for label,target,advance in [("001E734F","001E7462","edi++;"),
+                                     ("001E8147","001E8481","MEM32(esp + 0x18)++;" )]:
+            old=f"loc_{label}: ;"
+            new=old+f"\n    if (MEM32(esi + 0x38)==1 && MEM8(edi)==0x81 && MEM8(edi+1)==0x40) {{ {advance} goto loc_{target}; }}"
+            wide_counts[label]+=body.count(old)
+            body=body.replace(old,new)
+        bodies[name]=body
+    if wide_counts!={"001E734F":1,"001E8147":2}:
+        raise ValueError("Pinned Korean full-width space branches changed")
     if counts!={"001E7462":1,"001E8481":2}:
         raise ValueError("Pinned Korean space measurement/draw branches changed")
 

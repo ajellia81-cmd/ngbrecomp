@@ -3266,7 +3266,7 @@ void VulkanBackend::Draw(const State& s, uint32_t prim, uint32_t start, uint32_t
         }
         if (motion_shader) {
             motion_3d_++;
-            if (motion_history_.Add(identity,MotionPose::Capture(s,c),packet->dc)) motion_changed_++;
+            if (motion_history_.Add(identity,MotionPose::Capture(s,c),packet->dc,&packet->vc)) motion_changed_++;
         }
         motion_cpu_bytes_+=bytes;
         if (motion_cpu_bytes_>96u*1024u*1024u || motion_commands_.size()>16384) motion_valid_=false;

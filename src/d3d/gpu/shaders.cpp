@@ -1106,45 +1106,10 @@ std::string MotionVertexHlsl(std::string s) {
     const std::string entry="VOut main(VIn i)";
     size_t start=s.find(entry);
     if (start==std::string::npos) return {}; // never silently advertise an unwrapped shader
-    std::string body=s.substr(start);
-    body.replace(0,entry.size(),"VOut motion_previous(VIn i)");
-    for (const char* name : {"c","wvp","wv","wvn","wvb","wvbn","pv"}) {
-        std::string replacement=std::string("motion_")+(std::string(name)=="c" ? "vc" : name);
-        body=std::regex_replace(body,std::regex(std::string(R"(\b)")+name+R"(\b)"),replacement);
-    }
-    s.replace(start,entry.size(),"VOut motion_current(VIn i)");
-    s += body;
-    s += R"(
-float4 MotionClipPosition(float4 previous, float4 current, float factor) {
-    // Multipass terrain uses EQUAL depth tests. Both passes must produce the
-    // same position bits: forbid reassociation/FMA in the added interpolation,
-    // just as the original vertex program forbids it in its position math.
-    precise float4 delta=current-previous;
-    precise float4 offset=delta*factor;
-    precise float4 result=previous+offset;
-    return result;
-}
-VOut main(VIn i) {
-    VOut n=motion_current(i);
-    if (motion.x>0 && motion.x<1) {
-        VOut p=motion_previous(i);
-        // Interpolate in homogeneous clip space, including vertices outside
-        // the viewport or crossing the near plane. A per-vertex NDC threshold
-        // mixes midpoint and endpoint vertices within the same wall triangle,
-        // changing its shape as the camera moves. GPU clipping follows this
-        // interpolation; camera cuts must reset history for the whole frame.
-        if (all(isfinite(p.pos)) && all(isfinite(n.pos))) {
-            n.pos=MotionClipPosition(p.pos,n.pos,motion.x);
-            n.tc0=lerp(p.tc0,n.tc0,motion.x); n.tc1=lerp(p.tc1,n.tc1,motion.x);
-            n.tc2=lerp(p.tc2,n.tc2,motion.x); n.tc3=lerp(p.tc3,n.tc3,motion.x);
-            n.d0=lerp(p.d0,n.d0,motion.x); n.d1=lerp(p.d1,n.d1,motion.x);
-            n.b0=lerp(p.b0,n.b0,motion.x); n.b1=lerp(p.b1,n.b1,motion.x);
-            n.fogamt=lerp(p.fogamt,n.fogamt,motion.x);
-        }
-    }
-    return n;
-}
-)";
+    // Retained inputs are interpolated by MotionPose::Midpoint. Keep the
+    // authoritative position program, varying generation and depth epilogue.
+    // Blending final clip positions independently in each material shader can
+    // disagree at EQUAL-depth boundaries even with precise interpolation.
     return s;
 }
 }

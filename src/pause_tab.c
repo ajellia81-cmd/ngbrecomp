@@ -591,7 +591,7 @@ static void tab_word(uint8_t *m, int mw, int mh, float cx, float cy, float bw, f
         extern int ngb_korean_active(void);
         extern int ngb_ios_settings_tab_mask(uint8_t *, int, int);
         int localized = ngb_korean_active() && ngb_ios_settings_tab_mask(tmp, 400, 160);
-        if (localized) text_height = bh * 32.0f / 38.0f;
+        if (localized) text_height = bh * 29.0f / 38.0f;
         if (!localized)
 #endif
         {

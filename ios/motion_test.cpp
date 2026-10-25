@@ -22,16 +22,29 @@ int main(int argc,char **argv) {
     MotionHistory history;
     source.vsc[96]={1,0,0,0.1f};
     DrawConstants midpoint{};
-    check(!history.Add(7,MotionPose::Capture(source,constants),midpoint),"first frame cannot interpolate");
+    auto vertices=source.vsc;
+    check(!history.Add(7,MotionPose::Capture(source,constants),midpoint,&vertices),"first frame cannot interpolate");
     // Mutation after capture cannot change the retained previous frame.
-    source.vsc[96][3]=0.3f; history.Finish();
-    check(history.Add(7,MotionPose::Capture(source,constants),midpoint),"moved geometry must pair");
-    check(std::abs(midpoint.motion_vc[96][3]-0.1f)<1e-6f,"history aliases mutable current constants");
-    check(midpoint.motion[0]==0.5f,"midpoint is an endpoint");
-    check(!history.Add(8,MotionPose::Capture(source,constants),midpoint),"new topology must not pair");
+    source.vsc[96][3]=0.3f; history.Finish(); vertices=source.vsc;
+    check(history.Add(7,MotionPose::Capture(source,constants),midpoint,&vertices),"moved geometry must pair");
+    check(std::abs(vertices[96][3]-0.2f)<1e-6f,"history aliases mutable current constants");
+    check(midpoint.motion[0]==0.0f,"midpoint must use the original vertex program");
+    check(!history.Add(8,MotionPose::Capture(source,constants),midpoint,&vertices),"new topology must not pair");
     history.Finish(); history.Reset();
-    check(!history.Add(7,MotionPose::Capture(source,constants),midpoint),"lifecycle/cut reset retained history");
-    // Newly rasterized midpoint geometry, not a copy of an endpoint. Four output
+    check(!history.Add(7,MotionPose::Capture(source,constants),midpoint,&vertices),"lifecycle/cut reset retained history");
+    // Coplanar passes must receive identical midpoint inputs; a different
+    // material does not add independent clip-position arithmetic afterwards.
+    MotionPose prior=MotionPose::Capture(source,constants);
+    prior.wvp[0]=1; constants.wvp[0]=3;
+    auto pass_a=source.vsc,pass_b=source.vsc;
+    DrawConstants depth=constants,color=constants;
+    check(prior.Midpoint(pass_a,depth) && prior.Midpoint(pass_b,color),"valid shared pose rejected");
+    check(depth.wvp[0]==2 && !std::memcmp(depth.wvp,color.wvp,sizeof depth.wvp),"multipass inputs differ");
+    check(constants.wvp[0]==3,"authoritative endpoint mutated");
+    pass_b[0][0]=INFINITY; auto unchanged=pass_b;
+    check(!prior.Midpoint(pass_b,color),"non-finite pose accepted");
+    check(!std::memcmp(pass_b.data(),unchanged.data(),sizeof pass_b),"invalid pose partially blended");
+        // Newly rasterized midpoint geometry, not a copy of an endpoint. Four output
     // aspects must retain their distinct projected positions and game time.
     for (float aspect : {4.f/3,16.f/9,16.f/10,64.f/27}) {
         float old_x=0.1f/aspect,now_x=0.3f/aspect,mid_x=(old_x+now_x)*0.5f;
@@ -39,9 +52,9 @@ int main(int argc,char **argv) {
     }
     if (argc==2) {
         auto emit=[&](const char *name,std::string shader) {
-            auto wrapped=MotionVertexHlsl(std::move(shader));
-            check(!wrapped.empty() && wrapped.find("motion_previous")!=std::string::npos,"missing previous shader evaluation");
-            check(wrapped.find("n.pos=MotionClipPosition(p.pos,n.pos,motion.x)")!=std::string::npos,"missing raster geometry interpolation");
+            auto wrapped=MotionVertexHlsl(shader);
+            check(!wrapped.empty() && wrapped.find("motion_previous")==std::string::npos,"clip-space interpolation unexpectedly retained");
+            check(wrapped==shader,"authoritative position program changed");
             std::ofstream(std::string(argv[1])+"/"+name)<<wrapped;
         };
         emit("motion-fixed.vert.hlsl",FixedVertexHlsl(1,false));
