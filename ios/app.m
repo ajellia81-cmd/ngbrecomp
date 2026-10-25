@@ -76,25 +76,18 @@ void ngb_ios_quit(void) {
     };
     if (NSThread.isMainThread) close(); else dispatch_async(dispatch_get_main_queue(),close);
 }
-// Rasterize the two Hangul glyphs with the system font; no extra font asset.
+// Match the translation's own lettering; the private capsule carries only
+// the two glyphs extracted from its pinned Options texture, at tab-art size.
 int ngb_ios_settings_tab_mask(uint8_t *mask, int width, int height) {
     @autoreleasepool {
-        if (!mask || width<=0 || height<=0 || width>400 || height>160) return 0;
-        uint32_t *pixels=calloc((size_t)width*height,4);
-        if (!pixels) return 0;
-        CGColorSpaceRef space=CGColorSpaceCreateDeviceRGB();
-        CGContextRef context=CGBitmapContextCreate(pixels,width,height,8,width*4,space,
-            kCGImageAlphaPremultipliedLast|kCGBitmapByteOrder32Big);
-        CGColorSpaceRelease(space);
-        if (!context) { free(pixels); return 0; }
-        CGContextTranslateCTM(context,0,height); CGContextScaleCTM(context,1,-1);
-        UIGraphicsPushContext(context);
-        [@"설정" drawAtPoint:CGPointMake(6,48) withAttributes:@{
-            NSFontAttributeName:[UIFont boldSystemFontOfSize:58],
-            NSForegroundColorAttributeName:UIColor.whiteColor}];
-        UIGraphicsPopContext();
-        for (int i=0;i<width*height;i++) mask[i]=((uint8_t *)pixels)[i*4+3];
-        CGContextRelease(context); free(pixels); return 1;
+        NSString *path=[NSBundle.mainBundle.resourcePath stringByAppendingPathComponent:@"KoreanPatch/settings-tab.mask"];
+        NSData *data=[NSData dataWithContentsOfFile:path];
+        if (!mask || data.length<8 || memcmp(data.bytes,"NGBM",4)) return 0;
+        const uint8_t *bytes=data.bytes;
+        unsigned w=bytes[4]|bytes[5]<<8,h=bytes[6]|bytes[7]<<8;
+        if (!w || !h || w>(unsigned)width || h>(unsigned)height || data.length!=8+w*h) return 0;
+        for (unsigned y=0;y<h;y++) memcpy(mask+y*width,bytes+8+y*w,w);
+        return 1;
     }
 }
 static int displayMilliHz=60000;

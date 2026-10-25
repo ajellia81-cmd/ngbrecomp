@@ -62,6 +62,45 @@ def apply_xbe(source, plan):
     return bytes(output)
 
 
+def settings_tab_mask(sprite):
+    # Reuse the pinned translation's own 설정 glyphs from Options, rather
+    # than introducing a different system typeface. The tab art is italic.
+    header=0x72C
+    if sprite[:4]!=b'XPR0': raise ValueError('Invalid Korean Options sprite')
+    data_start=struct.unpack_from('<I',sprite,8)[0]
+    common,data,_,fmt,_=struct.unpack_from('<5I',sprite,header)
+    palette=struct.unpack_from('<I',sprite,header+24)[0]
+    if common!=0x40001 or (fmt>>8)&255!=11 or (fmt>>20)&15!=10 or (fmt>>24)&15!=5:
+        raise ValueError('Pinned Korean settings lettering layout changed')
+    def swizzled(x,y):
+        out=0;bit=1;shift=0
+        while bit<1024:
+            out|=bool(x&bit)<<shift;shift+=1
+            if bit<32: out|=bool(y&bit)<<shift;shift+=1
+            bit<<=1
+        return out
+    source=[]
+    for y in range(32):
+        row=[]
+        for x in range(85,124):
+            index=sprite[data_start+data+swizzled(x,y)]
+            color=struct.unpack_from('<I',sprite,data_start+palette+index*4)[0]
+            light=sum((color>>s)&255 for s in (0,8,16))/3
+            row.append(round((color>>24)*max(0,min(1,(light-70)/185))))
+        source.append(row)
+    occupied=[(x,y) for y,row in enumerate(source) for x,v in enumerate(row) if v>12]
+    if not occupied: raise ValueError('Korean settings lettering is empty')
+    y0=min(y for x,y in occupied);y1=max(y for x,y in occupied)
+    scale=27/(y1-y0+1);height=27;width=round(39*scale+height*.18)+2
+    mask=bytearray(width*height)
+    for y in range(height):
+        sy=min(y1,y0+int((y+.5)/scale));slant=(height-1-y)*.18
+        for x in range(width):
+            sx=int((x-slant)/scale)
+            if x>=slant and 0<=sx<39: mask[y*width+x]=source[sy][sx]
+    return b'NGBM'+struct.pack('<HH',width,height)+mask
+
+
 def prepare(source_path, archive_path, output):
     archive = archive_path.read_bytes()
     if sha(archive) != PATCH_SHA256:
@@ -83,6 +122,8 @@ def prepare(source_path, archive_path, output):
                 target = assets / 'members' / str(relative)
                 target.parent.mkdir(parents=True, exist_ok=True)
                 target.write_bytes(data)
+    (assets/'settings-tab.mask').write_bytes(settings_tab_mask(
+        (assets/'members/spr.afs/option.spr').read_bytes()))
     capsule = {
         'patch_zip_sha256': PATCH_SHA256,
         'source_xbe_sha256': USA_SHA256,

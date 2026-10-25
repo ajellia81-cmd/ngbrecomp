@@ -1317,6 +1317,10 @@ static void present_locked(PGRAPHState *pg, bool on_pfifo);
 static pthread_mutex_t s_present_mu = PTHREAD_MUTEX_INITIALIZER;
 static bool s_external_wait; /* protected by s_present_mu */
 static bool s_pair_render;   /* the worker never enters a blocking host menu */
+static VkDevice s_pair_copy_device; /* protected by s_present_mu */
+static VkFence s_pair_copy_fence;
+static uint64_t s_pair_acquire_us;
+
 static pthread_mutex_t s_pair_mu=PTHREAD_MUTEX_INITIALIZER;
 static pthread_cond_t s_pair_cv=PTHREAD_COND_INITIALIZER;
 static NgbPairMailbox s_pairs;
@@ -1325,6 +1329,7 @@ static uint64_t s_pair_mids,s_pair_ends;
 static bool pair_present(const NgbPresentPair *pair,bool midpoint);
 static void *pair_worker(void *unused) {
     (void)unused;
+    int64_t report_at=0; uint64_t pair_us=0,wait_us=0,pair_n=0;
     for (;;) {
         NgbPresentPair pair;
         pthread_mutex_lock(&s_pair_mu);
@@ -1335,6 +1340,24 @@ static void *pair_worker(void *unused) {
         int64_t remaining=started+8333-g_get_monotonic_time();
         if (mid && remaining>0) g_usleep((unsigned long)remaining);
         bool end=pair_present(&pair,false);
+        // The last copy fence orders both midpoint and endpoint. Wait once,
+        // including when endpoint acquisition failed after a midpoint copy.
+        pthread_mutex_lock(&s_present_mu);
+        int64_t copy_wait_started=g_get_monotonic_time();
+        if (s_pair_copy_fence) {
+            vkWaitForFences(s_pair_copy_device,1,&s_pair_copy_fence,VK_TRUE,UINT64_MAX);
+            s_pair_copy_fence=VK_NULL_HANDLE;
+        }
+        int64_t completed=g_get_monotonic_time();
+        wait_us+=(uint64_t)(completed-copy_wait_started);
+        pair_us+=(uint64_t)(completed-started);pair_n++;
+        if (!report_at) report_at=started;
+        if (completed-report_at>=5000000) {
+            fprintf(stderr,"[Smooth Motion pacing] %llu pairs; mean pair %.2f ms, drawable acquire %.2f ms, final copy wait %.2f ms\n",
+                (unsigned long long)pair_n,pair_us/1000.0/pair_n,s_pair_acquire_us/1000.0/pair_n,wait_us/1000.0/pair_n);
+            report_at=completed;pair_us=wait_us=pair_n=s_pair_acquire_us=0;
+        }
+        pthread_mutex_unlock(&s_present_mu);
         pthread_mutex_lock(&s_pair_mu);
         s_pair_mids+=mid; s_pair_ends+=end;
         ngb_pair_complete(&s_pairs); pthread_cond_broadcast(&s_pair_cv);
@@ -1519,10 +1542,13 @@ static void present_locked(PGRAPHState *pg, bool on_pfifo)
     f = s_frame++ % FRAMES_IN_FLIGHT;
     vkWaitForFences(r->device, 1, &s_fence[f], VK_TRUE, UINT64_MAX);
 
-    nv2a_vk_queue_lock();
+    // Acquire synchronizes the swapchain, not VkQueue. s_present_mu already
+    // serializes this path. Holding the shared GPU queue here blocks the game
+    // producer while waiting for the display to release a drawable.
+    int64_t acquire_started=s_pair_render ? g_get_monotonic_time() : 0;
     res = vkAcquireNextImageKHR(r->device, s_swapchain, s_external_wait ? 50000000 : 0, s_acquired[f],
                                 VK_NULL_HANDLE, &idx);
-    nv2a_vk_queue_unlock();
+    if (s_pair_render) s_pair_acquire_us+=(uint64_t)(g_get_monotonic_time()-acquire_started);
     if (res == VK_ERROR_OUT_OF_DATE_KHR) {
         __atomic_store_n(&s_resized,true,__ATOMIC_RELEASE);
         return;
@@ -1715,7 +1741,8 @@ static void present_locked(PGRAPHState *pg, bool on_pfifo)
         if (res == VK_ERROR_OUT_OF_DATE_KHR || res == VK_SUBOPTIMAL_KHR)
             __atomic_store_n(&s_resized,true,__ATOMIC_RELEASE);
     }
-    if (s_pair_render) vkWaitForFences(r->device,1,&s_fence[f],VK_TRUE,UINT64_MAX);
+    // Keep both source leases until the worker waits the last successful copy.
+    if (s_pair_render) { s_pair_copy_device=r->device; s_pair_copy_fence=s_fence[f]; }
     lat_note(ext);
 }
 

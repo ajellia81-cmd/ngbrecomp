@@ -152,3 +152,5 @@ def main():
 
 if __name__ == '__main__':
     main()
+    from presenter_pair_test import main as pair_main
+    pair_main()
