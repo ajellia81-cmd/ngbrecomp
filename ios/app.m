@@ -548,11 +548,13 @@ static void ngb_sync_metal_layers(UIView *view) {
 // Called only by SDL's main-thread event pump, never while holding the Vulkan
 // presentation/queue mutex. UIKit geometry and CAMetalLayer stay on this thread.
 void ngb_ios_sync_drawable(SDL_Window *sdlWindow) {
+    @autoreleasepool {
     if (!NSThread.isMainThread || !sdlWindow) return;
     SDL_SysWMinfo info; SDL_VERSION(&info.version);
     if (!SDL_GetWindowWMInfo(sdlWindow,&info) || info.subsystem!=SDL_SYSWM_UIKIT) return;
     UIWindow *window=info.info.uikit.window;
     UIView *root=window.rootViewController.view;
+    if (!window || !root) return;
     static CFTimeInterval next_request;
     CFTimeInterval now=CACurrentMediaTime();
     if (root.bounds.size.width<root.bounds.size.height && now>=next_request) {
@@ -566,6 +568,7 @@ void ngb_ios_sync_drawable(SDL_Window *sdlWindow) {
     [root layoutIfNeeded];
     ngb_sync_metal_layers(root);
     attach_controls(window);
+    }
 }
 
 int ngb_ios_prepare(void)
