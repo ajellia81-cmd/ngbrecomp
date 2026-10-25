@@ -6,26 +6,28 @@ after restarting following the first load. Long-term reliability, performance an
 background resume still require testing. The older NGBBringup diagnostic app is
 a separate target.
 
-- App version: **0.2.0 (2.43)**; compiled revision and active log path are recorded in `Documents/build-info.txt`.
-- Build source: `97442e30a6ab3aae3b89f5052b8a1f3bb05aeebe`, branch `ios-port`.
-- [Successful Actions run](https://github.com/ajellia81-cmd/ngbrecomp/actions/runs/40173667289).
-- [Encrypted IPA artifact](https://github.com/ajellia81-cmd/ngbrecomp/actions/runs/40173667289/artifacts/12591273435).
-- Unsigned IPA: **47,125,911 bytes**, containing **11,740 linked lifted game functions**,
+- App version: **0.2.0 (2.46)**; compiled revision and active log path are recorded in `Documents/build-info.txt`.
+- Build source: `400eb5b4f0c0d10c38ee1726dfc7c1e030bbf156`, branch `ios-port`.
+- [Successful Actions run](https://github.com/ajellia81-cmd/ngbrecomp/actions/runs/40176510651).
+- [Encrypted IPA artifact](https://github.com/ajellia81-cmd/ngbrecomp/actions/runs/40176510651/artifacts/12592922098).
+- Unsigned IPA: **47,125,932 bytes**, containing **11,740 linked lifted game functions**,
   55 additional Korean variants, the real engine/runtime, SDL UIKit entry point,
   MoltenVK framework and private translation capsule.
-- IPA SHA-256: `5b710225a15fc7014753bf730510b8aaefdb3dabbc8a4597155af533450bf6dc`.
-- GitHub artifact ZIP SHA-256: `3bd24d4cf21df9991f0f735e8c9c3b2f2982596d60c833c036d86ebab3db56de`.
+- IPA SHA-256: `a76b519086ce85c262e7ee0d70f93805d49e549572cb4ea3f31b281ec0bec2d4`.
+- GitHub artifact ZIP SHA-256: `f19efa6a4de009ce9dd61cd63f115b9f83ff61c0e83396f453444013e43f348b`.
 
-The owner confirmed a startup stall in build 2.42. Build 2.43 narrows Korean
-entry gating to functions whose actual Xbox instructions changed, retaining
-original callers whose C differs only around manual-call generation. The pinned
-build contains 25 gated entries and 55 variants. Full device compile, link,
-packaging and regression checks passed; startup recovery, correct Korean text
-and sustained 120 FPS still need a phone retest. The patch's own 설정 tab
-lettering and presenter pacing changes are retained. If no guest flip occurs,
-the app records at most three boot-thread snapshots after twenty seconds.
-Existing imported game files and shared saves are preserved. A previous later
-launch entered gameplay without the long load; no dedicated loading fix is claimed.
+The owner confirmed the 2.43 stall in DirectSound's effects-image DSP completion
+loop. The actual mailbox had moved with Korean font allocations, while the old
+fixed-address completion probe targeted different memory. Build 2.46 registers
+an iOS startup spin service and acknowledges command 3 only at the observed
+wait operand, with address/alignment/command checks. It no longer installs a
+fixed DSP mailbox address by default on iOS. Desktop defaults remain unchanged.
+Native regression tests, macOS optional-service linkage, full device compile,
+link and packaging passed. Startup recovery, Korean text and sustained 120 FPS
+still need an owner-device retest. The 25 gated entries, 55 Korean variants,
+patch-derived 설정 lettering and presenter pacing changes are retained.
+Fully quit LiveContainer before replacing and launching this IPA to discard
+previous guest environment state. Imported files and shared saves are preserved.
 
 See [INSTALL.md](INSTALL.md) for download, LiveContainer import and game data.
 The download is an encrypted 7z inside GitHub's artifact ZIP. It expires seven
