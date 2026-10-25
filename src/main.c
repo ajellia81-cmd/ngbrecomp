@@ -787,6 +787,7 @@ static void bringup_defaults(void)
     set_default("RECOMP_AC97_READY", "1");
     set_default("RECOMP_USB", "1");
 #ifdef NGB_IOS_APP
+    xbox_SetSpinService(ngb_ios_service_spin);
     set_default("RECOMP_DSP_ACK", "auto");   /* observe the actual effects-image wait */
     fprintf(stderr,"[iOS DSP] mailbox policy: %s\n",getenv("RECOMP_DSP_ACK"));
 #else

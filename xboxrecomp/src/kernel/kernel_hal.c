@@ -1138,17 +1138,16 @@ void xbox_PortOut(uint32_t port, uint32_t value, int size)
 #include <time.h>
 #include "platform/vcpu.h"
 
-#ifdef __APPLE__
-/* Optional title-specific completion of an already stubbed hardware wait.
- * Other frontends retain the normal scheduler/yield path. */
-extern int ngb_ios_service_spin(uint32_t loop_va) __attribute__((weak_import));
-#endif
+/* Installed before guest threads run; NULL preserves the ordinary scheduler. */
+static XBOX_SPIN_SERVICE g_spin_service;
+void xbox_SetSpinService(XBOX_SPIN_SERVICE service)
+{
+    g_spin_service=service;
+}
 
 void recomp_spin_pause(uint32_t loop_va)
 {
-#ifdef __APPLE__
-    if (ngb_ios_service_spin && ngb_ios_service_spin(loop_va)) return;
-#endif
+    if (g_spin_service && g_spin_service(loop_va)) return;
 #if XBOX_HAS_VCPU
     static __thread uint32_t t_va;
     static __thread int64_t t_start, t_last;

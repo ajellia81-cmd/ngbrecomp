@@ -392,6 +392,11 @@ typedef VOID (__stdcall *PXBOX_SYSTEM_ROUTINE)(PVOID StartContext);
  * MmAllocateContiguousMemory hands back addresses inside it, and
  * MmClaimGpuInstanceMemory reports GPU instance memory at its top. Shared so
  * the layout and the bridges cannot disagree about where it is. */
+/* Optional title hardware service, registered before guest threads start.
+ * Return nonzero only when a known spin wait was completed. */
+typedef int (*XBOX_SPIN_SERVICE)(uint32_t loop_va);
+void xbox_SetSpinService(XBOX_SPIN_SERVICE service);
+
 #define XBOX_CONTIG_BASE 0x80000000u
 /* 128 MB, as on a development kit, with every allocation above the first
  * 64 MB (XBOX_CONTIG_ALLOC_BASE). Physical addresses then say which storage
