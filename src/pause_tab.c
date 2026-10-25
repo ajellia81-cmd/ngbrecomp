@@ -582,6 +582,7 @@ static void tab_word(uint8_t *m, int mw, int mh, float cx, float cy, float bw, f
 {
     static uint8_t tmp[400 * 160];
     const float cap = 58, rest = 40, sx = 0.82f, base = 110;
+    float text_height = bh;
     memset(tmp, 0, sizeof tmp);
     {   /* always the typeface: it looks like the other plates' lettering */
         int game = s_game_font;
@@ -590,6 +591,7 @@ static void tab_word(uint8_t *m, int mw, int mh, float cx, float cy, float bw, f
         extern int ngb_korean_active(void);
         extern int ngb_ios_settings_tab_mask(uint8_t *, int, int);
         int localized = ngb_korean_active() && ngb_ios_settings_tab_mask(tmp, 400, 160);
+        if (localized) text_height = bh * 32.0f / 38.0f;
         if (!localized)
 #endif
         {
@@ -610,7 +612,7 @@ static void tab_word(uint8_t *m, int mw, int mh, float cx, float cy, float bw, f
     if (x1 < 0)
         return;
     float tw = (float)(x1 - x0 + 1), th = (float)(y1 - y0 + 1);
-    float k = fminf(fminf(bw / tw, bh / th), 1.0f);
+    float k = fminf(fminf(bw / tw, text_height / th), 1.0f);
     int ow = (int)(tw * k), oh = (int)(th * k);
     int ox = (int)lroundf(cx - ow / 2.0f), oy = (int)lroundf(cy - oh / 2.0f);
     /* Area-average resample into place. */

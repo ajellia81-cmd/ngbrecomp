@@ -78,7 +78,7 @@ void ngb_ios_quit(void) {
     if (NSThread.isMainThread) close(); else dispatch_async(dispatch_get_main_queue(),close);
 }
 // Match the translation's own lettering; the private capsule carries only
-// the two glyphs extracted from its pinned Options texture, at tab-art size.
+// scalable lettering rasterized into the existing tab-art mask.
 int ngb_ios_settings_tab_mask(uint8_t *mask, int width, int height) {
     @autoreleasepool {
         // Match the dark, slanted Korean tab lettering without enlarging
@@ -89,7 +89,7 @@ int ngb_ios_settings_tab_mask(uint8_t *mask, int width, int height) {
         CGContextRef context=CGBitmapContextCreate(mask,width,height,8,width,space,kCGImageAlphaNone);
         CGColorSpaceRelease(space);
         if (!context) return 0;
-        CTFontRef font=CTFontCreateWithName(CFSTR("AppleSDGothicNeo-Medium"),80,NULL);
+        CTFontRef font=CTFontCreateWithName(CFSTR("AppleSDGothicNeo-Regular"),80,NULL);
         NSDictionary *attributes=@{(__bridge NSString *)kCTFontAttributeName:(__bridge id)font,
             (__bridge NSString *)kCTForegroundColorFromContextAttributeName:@YES};
         NSAttributedString *text=[[NSAttributedString alloc] initWithString:@"설정" attributes:attributes];
@@ -100,12 +100,8 @@ int ngb_ios_settings_tab_mask(uint8_t *mask, int width, int height) {
         CGContextSetTextPosition(context,12,30);
         CTLineDraw(line,context);
         CFRelease(line);CFRelease(font);CGContextRelease(context);
-        // Core Graphics' bitmap origin is bottom-left; the plate mask is top-left.
-        for (int y=0;y<height/2;y++) for (int x=0;x<width;x++) {
-            uint8_t value=mask[y*width+x];
-            mask[y*width+x]=mask[(height-1-y)*width+x];
-            mask[(height-1-y)*width+x]=value;
-        }
+        // The consumer already uses this bitmap's row order. A second row
+        // reversal here flips only the Korean word on the finished plate.
         return 1;
     }
 }
