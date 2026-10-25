@@ -6,31 +6,30 @@ after restarting following the first load. Long-term reliability, performance an
 background resume still require testing. The older NGBBringup diagnostic app is
 a separate target.
 
-- App version: **0.2.0 (2.54)**; compiled revision and active log path are recorded in `Documents/build-info.txt`.
-- Build source: `d13842d334c5e6ebbb1bf64b80accd0a4cbbf7db`, branch `ios-port`.
-- [Successful Actions run](https://github.com/ajellia81-cmd/ngbrecomp/actions/runs/40196789155).
-- [Encrypted IPA artifact](https://github.com/ajellia81-cmd/ngbrecomp/actions/runs/40196789155/artifacts/12600557788).
-- Unsigned IPA: **47,258,571 bytes**, containing **11,740 linked lifted game functions**,
+- App version: **0.2.0 (2.55)**; compiled revision and active log path are recorded in `Documents/build-info.txt`.
+- Build source: `e4f37dc34106ad08ebd708b94a71cac4e906d562`, branch `ios-port`.
+- [Successful Actions run](https://github.com/ajellia81-cmd/ngbrecomp/actions/runs/40200373376).
+- [Encrypted IPA artifact](https://github.com/ajellia81-cmd/ngbrecomp/actions/runs/40200373376/artifacts/12601999037).
+- Unsigned IPA: **47,258,912 bytes**, containing **11,740 linked lifted game functions**,
   55 additional Korean variants, the real engine/runtime, SDL UIKit entry point,
   MoltenVK framework and private translation capsule.
-- IPA SHA-256: `ba0990d69044a9bd91becb510c2d3a96fdab80ea04b1207be791ecb5ee1f9344`.
-- GitHub artifact ZIP SHA-256: `3ce8947241dc0f8beab652681c7a2d0a10213950d49f9d261462744dfb175c43`.
+- IPA SHA-256: `6f69f0c84dee1f9d412f532ad1ad39d1ebbaaf708117bc1af610c18f9f183371`.
+- GitHub artifact ZIP SHA-256: `13fb1617ecc5e30a27eea86b455e80cbec5c0cf7f9a7e6bc2e72e2c15e550254`.
 
 The owner confirms gameplay, Korean text and 120 FPS output/counter operation.
-Polygon faces still flicker during camera motion with Smooth Motion enabled;
-the prior vertex-cutoff fix did not resolve it. This build preserves precise
-subtract/multiply/add in clip-position interpolation; native SPIR-V checks verify
-NoContraction and reject an unprotected control. Device visual validation is still
-required. The Korean 설정 tab now uses newly generated image lettering rather
-than a system font, with its native plate-sized preview reviewed on macOS.
-Controller haptics run on a separate serial queue with silent player prewarm,
-latest-value commands, expiry, foreground silence and engine stop/reset/error
-recovery. The actual iPhoneOS haptics source compiles and policy/bridge tests pass;
-Backbone Pro recovery and first-output latency still need a device retest.
-Korean-bank ASCII spaces use half-cell advance consistently in measurement and
-both draw continuations. The reported glyph-bottom clipping remains unresolved;
-bounded font metrics are logged and a read-only Windows font extractor is supplied
-for private asset inspection. Imported data and shared saves are preserved.
+Build 2.55 retains the image-based 설정 label, native controller haptics worker,
+engine stop/reset/error recovery, precise motion interpolation and half-cell
+Korean spaces. The reported Korean glyph-bottom clipping is addressed by removing
+only the lower-V trim on the three Korean font-page variants. Their bitmaps put
+ink on the final cell row; the next cell's first two rows are transparent. The
+horizontal gutter trim is retained. A native thin-bottom-stroke fixture passes
+and rejects the old vertical trim. The real generated variant is matched before
+adaptation. Final phone rendering is still a retest item, as are the prior
+polygon flicker and Backbone Pro recovery changes. The 2.54 font-height diagnostic
+was reading a character-byte-count field; it now reads the actual font-table
+height. The three uploaded original font assets were received and hash-checked
+privately. No original fonts, bitmaps or game code are committed. Imported data
+and shared saves are preserved.
 
 See [INSTALL.md](INSTALL.md) for download, LiveContainer import and game data.
 The download is an encrypted 7z inside GitHub's artifact ZIP. It expires seven
