@@ -7,17 +7,17 @@ A successful compile/package is not a gameplay result.
 
 ## Download the actual IPA
 
-1. Open the [encrypted game artifact](https://github.com/ajellia81-cmd/ngbrecomp/actions/runs/40165400083/artifacts/12588302387)
-   while signed into GitHub. It is from [Actions run 40165400083](https://github.com/ajellia81-cmd/ngbrecomp/actions/runs/40165400083).
+1. Open the [encrypted game artifact](https://github.com/ajellia81-cmd/ngbrecomp/actions/runs/40167778298/artifacts/12589750909)
+   while signed into GitHub. It is from [Actions run 40167778298](https://github.com/ajellia81-cmd/ngbrecomp/actions/runs/40167778298).
 2. Extract GitHub's outer ZIP. It contains `NinjaGaidenBlack-ios-arm64-unsigned.ipa.7z`.
 3. Open the inner archive with a 7z-capable tool such as 7-Zip and enter the same
    password stored in `NGB_IPA_PASSWORD`. Do not upload the password to an issue or chat.
 4. Extract `NinjaGaidenBlack-ios-arm64-unsigned.ipa`. Import this file, not the ZIP/7z.
 
-The artifact is retained for seven days. The unsigned IPA is 47,272,962 bytes and
-has SHA-256 `09b6a61604271f6812511445d65e7075fea7240c91ad58f3fe0ee43370440ccc`.
-App version: **0.2.0 (2.40)**.
-Build source commit: `c5b2fcfce37bf1e86f7067a6e9a1f797f1470ac0`.
+The artifact is retained for seven days. The unsigned IPA is 47,274,190 bytes and
+has SHA-256 `33897f032b9a8cbd40afc43df2e677946d7bc898717223ba42c6f24d99e34d3d`.
+App version: **0.2.0 (2.41)**.
+Build source commit: `cecc67c4191804bde8f67f4e0ea8fdcee05016c2`.
 It contains the real engine, 11,740 original lifted game functions and 137 Korean
 variants. It is not NGBBringup. Korean glyph rendering/gameplay still require a device test.
 The Korean-enabled build contains the pinned translation capsule; the original
@@ -266,3 +266,18 @@ All visible app-exit contexts were audited. The uppercase main-menu list uses
 use **Quit** alongside their title/sentence-case neighbors. Confirmation boxes use
 **Quit?** with Yes/No. Desktop labels and menu-back Exit items retain their original
 roles. The application exit path itself is unchanged.
+
+## Build 2.41 follow-up
+
+Replace the existing LiveContainer game app with this IPA; retain its data and
+saves. No ISO reimport is required. Dynamic Korean text/subtitle corruption in
+2.40 exposed two font-bank continuation jumps that were lifted as host returns.
+The corrected merger resumes all caller paths and keeps their stack/register
+state. Korean mode also labels the extra pause tab 설정.
+
+The FPS overlay can show output and guest rates separately when motion pairs
+are submitted. This does not establish sustained 120 FPS. If text, long New Game
+loading or 60-FPS-only output persists, copy the current saves-korean/log.txt
+after the problem and include Documents/build-info.txt. For motion diagnosis,
+move in actual gameplay with Smooth Motion on for at least ten seconds before
+copying. Menus and movies deliberately bypass intermediate-scene replay.
