@@ -72,3 +72,19 @@ later entries, non-size metadata preservation, mismatched layout rejection and
 cache removal with shared-save links retained. CI also checks persistence of all three text-language choices.
 Actual USA archive compatibility, Korean glyph rendering, menu layout, gameplay,
 original-language regression and save compatibility require owner-device testing.
+
+## Font continuation correction
+
+The pinned patch uses two `PUSH continuation; RET` jumps in its font-bank helpers.
+Treating these as ordinary host returns skipped the original glyph-bank setup
+and selection continuations, including their stack cleanup. The private merger
+now rejoins all three original caller branches, preserves the selected EBP value,
+and rejects any unexpected patch shape. No new game-function body is published.
+Synthetic CI tests cover the branch adaptation. An isolated local execution of
+the actual private helpers checked stack/register preservation, seven font-bank
+ranges and the three dedicated Korean banks; removing register publication failed
+the negative control. These checks do not establish correct on-device glyph output.
+
+On iOS Korean boots only, the extra pause-menu Settings tab uses the system
+Hangul font to display 설정. Japanese and English retain Settings. The rest of
+the recomp settings are not translated.
