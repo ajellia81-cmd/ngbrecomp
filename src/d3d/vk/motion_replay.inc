@@ -42,7 +42,10 @@ void VulkanBackend::MotionTouch(Target *target) {
     saved.source=target; saved.seen=frame_;
     // Snapshot directly into the isolated replay target before the guest writes
     // it. Replay never overwrites authoritative guest pixels or query results.
-    MotionCopyImage(target->img,saved.replay.img); saved.replay.drawn=true;
+    // A new target has not been cleared yet. Copying its undefined depth and
+    // then LOADing it would make replay fail depth tests from its first draw.
+    if (target->drawn) MotionCopyImage(target->img,saved.replay.img);
+    saved.replay.drawn=target->drawn;
 }
 Target *VulkanBackend::MotionTargetFor(Target *target) {
     if (!target) return nullptr;
@@ -130,6 +133,7 @@ void VulkanBackend::MotionPresent(const Surface& front,Image& endpoint,float bar
     // separate targets. No CPU fence wait is needed between the two graphs.
     EndRendering();
     for (auto& command:motion_commands_) { command(); if (!motion_valid_) return; }
+    EndRendering();
     Target *replayed=MotionTargetFor(target);
     if (midpoint_image.image && (midpoint_image.w!=target->img.w || midpoint_image.h!=target->img.h)) {
         Submit(); nv2a_vk_queue_lock(); d_.vkDeviceWaitIdle(dev_); nv2a_vk_queue_unlock();

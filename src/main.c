@@ -144,7 +144,11 @@ static void movie_read_hook(const char *host_path, uint64_t off, size_t len)
     (void)len;
     if (host_path) {
         ngb_movie_read(host_path);
+#ifdef NGB_IOS_APP
+        if (ngb_skip_intro) warning_read(host_path, off);
+#else
         warning_read(host_path, off);
+#endif
     }
 }
 #endif
@@ -1272,7 +1276,16 @@ int main(int argc, char **argv)
          * what the box does); the boot movie with Skip intro. */
         if (cfg.skip_intro)
             ngb_skip_intro = 1;
-        if (!getenv("NGB_KEEP_WARNINGS")) {
+        int skip_warnings=!getenv("NGB_KEEP_WARNINGS");
+#ifdef NGB_IOS_APP
+        // Never inject Start during an ordinary iOS boot: slow shader/asset
+        // loading can carry the warning skipper into the logo/intro movie.
+        // Keep desktop behavior, and skip only when explicitly requested here.
+        skip_warnings=skip_warnings && cfg.skip_intro;
+#endif
+        fprintf(stderr,"[Boot] Skip Intros %s; automatic warning input %s\n",
+            cfg.skip_intro ? "On" : "Off",skip_warnings ? "On" : "Off");
+        if (skip_warnings) {
             if (!s_headless) {
                 pthread_t th;
                 nv2a_present_set_blank(true);

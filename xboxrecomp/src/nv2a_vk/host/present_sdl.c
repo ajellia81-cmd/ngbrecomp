@@ -90,19 +90,10 @@ volatile int64_t nv2a_ext_set_us;   /* when the newest one came */
 /* How many pictures the other renderer has handed over, and the count when
  * the one presented last came (nv2a_host.c's vblank thread paces them). */
 volatile unsigned nv2a_ext_pictures, nv2a_ext_presented;
-static bool present_external_now(bool wait_image);
 static volatile int s_quality_set;
 
-static bool set_external(VkImage image, uint32_t width, uint32_t height, bool wait_image)
-{
-    __atomic_store_n(&s_ext_set_us, g_get_monotonic_time(), __ATOMIC_RELAXED);
-    __atomic_store_n(&s_ext_w, width, __ATOMIC_RELAXED);
-    __atomic_store_n(&s_ext_h, height, __ATOMIC_RELAXED);
-    __atomic_store_n(&s_ext_image, image, __ATOMIC_RELEASE);
-    if (!image) return false;
-    __atomic_add_fetch(&nv2a_ext_pictures, 1, __ATOMIC_RELEASE);
-    return present_external_now(wait_image);
-}
+static bool set_external(VkImage image, uint32_t width, uint32_t height, bool wait_image);
+
 void nv2a_present_set_external(VkImage image, uint32_t width, uint32_t height)
 {
     (void)set_external(image,width,height,false);
@@ -1373,21 +1364,28 @@ void nv2a_host_vk_present(PGRAPHState *pg)
  * no wait for the PFIFO thread, which is busy with the next frame's
  * commands by then (presented through it, they came out unevenly, and at
  * the tick a whole refresh late). False to leave it to the tick. */
-static bool present_external_now(bool wait_image)
+/* Publish image and dimensions under the same lock used by the pair worker.
+ * Atomics on the individual fields do not make a coherent image descriptor:
+ * a 640x480 movie and a native-sized frame can otherwise be mixed mid-blit. */
+static bool set_external(VkImage image, uint32_t width, uint32_t height, bool wait_image)
 {
     static int on = -1;
-    PGRAPHState *pg = s_pg;
-    if (on < 0)
-        on = !(getenv("NV2A_PACE") && !strcmp(getenv("NV2A_PACE"), "tick"));
-    if (!on || !pg || __atomic_load_n(&s_quality_set, __ATOMIC_ACQUIRE))
-        return false;   /* (quality changes are the renderer's, applied on its thread) */
-    /* claimed first: the tick must not present it again meanwhile */
-    __atomic_store_n(&nv2a_ext_presented, __atomic_load_n(&nv2a_ext_pictures, __ATOMIC_ACQUIRE),
-                     __ATOMIC_RELEASE);
     pthread_mutex_lock(&s_present_mu);
+    __atomic_store_n(&s_ext_set_us,g_get_monotonic_time(),__ATOMIC_RELAXED);
+    __atomic_store_n(&s_ext_w,width,__ATOMIC_RELAXED);
+    __atomic_store_n(&s_ext_h,height,__ATOMIC_RELAXED);
+    __atomic_store_n(&s_ext_image,image,__ATOMIC_RELEASE);
+    if (!image) { pthread_mutex_unlock(&s_present_mu); return false; }
+    unsigned pictures=__atomic_add_fetch(&nv2a_ext_pictures,1,__ATOMIC_RELEASE);
+    PGRAPHState *pg=s_pg;
+    if (on < 0) on=!(getenv("NV2A_PACE") && !strcmp(getenv("NV2A_PACE"),"tick"));
+    if (!on || !pg || __atomic_load_n(&s_quality_set,__ATOMIC_ACQUIRE)) {
+        pthread_mutex_unlock(&s_present_mu); return false;
+    }
+    __atomic_store_n(&nv2a_ext_presented,pictures,__ATOMIC_RELEASE);
     unsigned long before=nv2a_host_presents;
     s_external_wait=wait_image;
-    present_locked(pg, false);
+    present_locked(pg,false);
     s_external_wait=false;
     bool submitted=nv2a_host_presents!=before;
     pthread_mutex_unlock(&s_present_mu);
