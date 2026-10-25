@@ -12,6 +12,9 @@
 #include <unistd.h>
 #include "../src/install.h"
 #include "platform/vcpu.h"
+void ngb_ios_log_build(void) {
+    fprintf(stderr,"[iOS Build] version %s; source %s\n",NGB_IOS_BUILD_VERSION,NGB_IOS_BUILD_COMMIT);
+}
 static int safeMillion[4]={80000,30000,80000,20000};
 void ngb_ios_safe_area(float *left,float *top,float *right,float *bottom) {
     float *out[4]={left,top,right,bottom};

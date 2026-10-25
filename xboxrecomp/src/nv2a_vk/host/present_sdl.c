@@ -1558,6 +1558,14 @@ static void present_locked(PGRAPHState *pg, bool on_pfifo)
             dw = (int32_t)(wh * s_aspect);
         }
         int32_t x0 = (ww - dw) / 2, y0 = (wh - dh) / 2;
+#if defined(__APPLE__) && TARGET_OS_IPHONE
+        static unsigned fit_logs;
+        if (fit_logs<4 || nv2a_host_presents%300==0) {
+            fit_logs++;
+            fprintf(stderr,"[iOS Fit] source %dx%d; drawable %dx%d; destination %d,%d %dx%d; aspect %.6f; external %d\n",
+                pw,ph,ww,wh,x0,y0,dw,dh,s_aspect,(int)ext);
+        }
+#endif
         VkImageBlit blit = {
             .srcSubresource = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1 },
             /* Bottom-up: xemu's display shader writes GL row order (its GL

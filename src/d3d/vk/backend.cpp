@@ -3187,6 +3187,15 @@ void VulkanBackend::Draw(const State& s, uint32_t prim, uint32_t start, uint32_t
                 std::fprintf(stderr, "\n");
             }
     }
+#ifdef NGB_IOS_APP
+    static unsigned view_logs;
+    if (gw>=640 && gh>=448 && view_logs<12) {
+        ++view_logs;
+        std::fprintf(stderr,"[iOS View] frame %u; guest %ux%u; target %ux%u; viewport %u,%u %ux%u; scissor %d,%d %ux%u; pre %d; program %d\n",
+            presents_,gw,gh,any.w,any.h,s.viewport.x,s.viewport.y,s.viewport.w,s.viewport.h,
+            sc.offset.x,sc.offset.y,sc.extent.width,sc.extent.height,int(a.pretransformed),int(prog));
+    }
+#endif
     d_.vkCmdSetScissor(cmd_, 0, 1, &sc);
     float bf[4];
     Color(SimpleState(s, kMBlendColor), bf);

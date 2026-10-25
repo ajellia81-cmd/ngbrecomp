@@ -1135,6 +1135,9 @@ int main(int argc, char **argv)
     }
 
     printf("=== Ninja Gaiden Black - Static Recompilation ===\n");
+#ifdef NGB_IOS_APP
+    { extern void ngb_ios_log_build(void); ngb_ios_log_build(); }
+#endif
     printf("Game directory: %s\n", s_game_dir);
     { extern void ngb_quick_set_game_dir(const char *); ngb_quick_set_game_dir(s_game_dir); }
 

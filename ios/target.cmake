@@ -9,7 +9,12 @@ if(NOT EXISTS "${NGB_MOLTENVK_FRAMEWORK}/MoltenVK")
     message(FATAL_ERROR "An iPhoneOS MoltenVK framework is required; set NGB_MOLTENVK_ROOT")
 endif()
 set_property(SOURCE src/main.c APPEND PROPERTY COMPILE_DEFINITIONS main=SDL_main)
+set(NGB_IOS_BUILD_COMMIT "local" CACHE STRING "Source revision embedded in the app")
+set(NGB_IOS_BUILD_VERSION "2.0" CACHE STRING "Distinct LiveContainer update version")
 target_sources(${PROJECT_NAME} PRIVATE ios/app.m)
+target_compile_definitions(${PROJECT_NAME} PRIVATE
+    NGB_IOS_BUILD_COMMIT="${NGB_IOS_BUILD_COMMIT}"
+    NGB_IOS_BUILD_VERSION="${NGB_IOS_BUILD_VERSION}")
 target_compile_definitions(${PROJECT_NAME} PRIVATE NGB_IOS_APP=1)
 target_compile_definitions(ngb_gen PRIVATE NGB_IOS_APP=1)
 if(NGB_IOS_KOREAN)

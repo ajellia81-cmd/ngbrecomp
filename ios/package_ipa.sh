@@ -10,7 +10,18 @@ plutil -lint "$app/Info.plist"
 python3 - "$app/Info.plist" <<'PY'
 import plistlib, sys
 with open(sys.argv[1], 'rb') as stream:
-    icons = plistlib.load(stream).get('CFBundleIcons', {}).get('CFBundlePrimaryIcon', {})
+    metadata = plistlib.load(stream)
+    icons = metadata.get('CFBundleIcons', {}).get('CFBundlePrimaryIcon', {})
+from pathlib import Path
+import re
+revision = metadata.get('NGBSourceCommit', '')
+version = metadata.get('CFBundleVersion', '')
+if not re.fullmatch('[0-9a-f]{40}', revision) or not re.fullmatch(r'2\.[0-9]+', version):
+    raise SystemExit('A unique build version and source revision are required')
+binary = Path(sys.argv[1]).with_name('NinjaGaidenBlack').read_bytes()
+if revision.encode() not in binary or version.encode() not in binary:
+    raise SystemExit('App metadata does not match the linked runtime build identifiers')
+print('Packaged runtime build:', version, revision)
 if icons.get('CFBundleIconName') != 'AppIcon' or not icons.get('CFBundleIconFiles'):
     raise SystemExit('The original NGB iPhone icon catalog must be packaged')
 print('Original NGB app icon metadata: OK')
