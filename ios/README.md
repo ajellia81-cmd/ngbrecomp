@@ -6,26 +6,26 @@ after restarting following the first load. Long-term reliability, performance an
 background resume still require testing. The older NGBBringup diagnostic app is
 a separate target.
 
-- App version: **0.2.0 (2.47)**; compiled revision and active log path are recorded in `Documents/build-info.txt`.
-- Build source: `df56683dd4253816097d283b41141d45a757f969`, branch `ios-port`.
-- [Successful Actions run](https://github.com/ajellia81-cmd/ngbrecomp/actions/runs/40180460729).
-- [Encrypted IPA artifact](https://github.com/ajellia81-cmd/ngbrecomp/actions/runs/40180460729/artifacts/12593619372).
-- Unsigned IPA: **47,124,696 bytes**, containing **11,740 linked lifted game functions**,
+- App version: **0.2.0 (2.48)**; compiled revision and active log path are recorded in `Documents/build-info.txt`.
+- Build source: `bdaeb2fb74d3d0c81b1668e7fade3d324394e67e`, branch `ios-port`.
+- [Successful Actions run](https://github.com/ajellia81-cmd/ngbrecomp/actions/runs/40188164967).
+- [Encrypted IPA artifact](https://github.com/ajellia81-cmd/ngbrecomp/actions/runs/40188164967/artifacts/12596742478).
+- Unsigned IPA: **47,125,301 bytes**, containing **11,740 linked lifted game functions**,
   55 additional Korean variants, the real engine/runtime, SDL UIKit entry point,
   MoltenVK framework and private translation capsule.
-- IPA SHA-256: `94f2a0f4bcc4841a52451fcad4db87e03f3a9a4816cc8adabee4dcdab11f1dfc`.
-- GitHub artifact ZIP SHA-256: `95b4664a043a1478edd0d98ee2a0d0f8a323f2340776ebe5012d0969a068bdea`.
+- IPA SHA-256: `9d2070d3054aa0f3363d3f675ccb7e8658da4352c4735c1ee0ff5819c8ef3081`.
+- GitHub artifact ZIP SHA-256: `2fd6eeb60eda5384e4b27f4d7401d6766db4a37ec7b81c58b9b5a2d1c4cc765c`.
 
-The owner's 2.46 log confirms that effects-image command 3 now completes at the
-observed mailbox. Startup then stalls at a second DirectSound wait, 0x0037DC78,
-for parameter-upload command 2. Build 2.47 completes that command at [EAX+0x10]
-under the same auto policy and guarded address/value checks. It retains the
-command-3 fix and does not implement DSP effects. Native regression tests cover
-both paths, relocation, unrelated-memory preservation and policy opt-out.
-Startup recovery, Korean text and sustained 120 FPS still need an owner-device
-retest. The 25 gated entries, 55 Korean variants, patch-derived 설정 lettering
-and presenter pacing changes are retained. Imported files and shared saves are
-preserved; no ISO reimport is required.
+The owner confirms that build 2.47 enters gameplay and displays Korean dynamic
+text correctly. Its Smooth Motion log still shows 27–30 ms per output pair and
+repeated overload cooldowns. Build 2.48 selects asynchronous MoltenVK queue
+encoding, requests a third iOS swap image, and records submission/presentation
+phase timings. The game simulation and overload guard remain at 60 Hz. Sustained
+120 distinct displayed frames is not yet verified. Korean 설정 lettering now
+uses antialiased CoreText vector rendering instead of the small Options-sprite
+crop; its size, weight and slant are adjusted to the surrounding tab art. Exact
+baked-art font matching remains a visual retest item. Imported files and shared
+saves are preserved; no ISO reimport is required.
 
 See [INSTALL.md](INSTALL.md) for download, LiveContainer import and game data.
 The download is an encrypted 7z inside GitHub's artifact ZIP. It expires seven
