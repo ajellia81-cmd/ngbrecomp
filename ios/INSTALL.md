@@ -7,17 +7,17 @@ A successful compile/package is not a gameplay result.
 
 ## Download the actual IPA
 
-1. Open the [encrypted game artifact](https://github.com/ajellia81-cmd/ngbrecomp/actions/runs/40190646660/artifacts/12598261083)
-   while signed into GitHub. It is from [Actions run 40190646660](https://github.com/ajellia81-cmd/ngbrecomp/actions/runs/40190646660).
+1. Open the [encrypted game artifact](https://github.com/ajellia81-cmd/ngbrecomp/actions/runs/40196789155/artifacts/12600557788)
+   while signed into GitHub. It is from [Actions run 40196789155](https://github.com/ajellia81-cmd/ngbrecomp/actions/runs/40196789155).
 2. Extract GitHub's outer ZIP. It contains `NinjaGaidenBlack-ios-arm64-unsigned.ipa.7z`.
 3. Open the inner archive with a 7z-capable tool such as 7-Zip and enter the same
    password stored in `NGB_IPA_PASSWORD`. Do not upload the password to an issue or chat.
 4. Extract `NinjaGaidenBlack-ios-arm64-unsigned.ipa`. Import this file, not the ZIP/7z.
 
-The artifact is retained for seven days. The unsigned IPA is 47,125,800 bytes and
-has SHA-256 `ae7c46810d9e7506c0a601698af2e6d45d50d0ba84bc710888ab2ed203c7f3a1`.
-App version: **0.2.0 (2.51)**.
-Build source commit: `7471451017e3f1011a8be0e34703206467ada1e0`.
+The artifact is retained for seven days. The unsigned IPA is 47,258,571 bytes and
+has SHA-256 `ba0990d69044a9bd91becb510c2d3a96fdab80ea04b1207be791ecb5ee1f9344`.
+App version: **0.2.0 (2.54)**.
+Build source commit: `d13842d334c5e6ebbb1bf64b80accd0a4cbbf7db`.
 It contains the real engine, 11,740 original lifted game functions and 55 Korean
 variants. It is not NGBBringup. Korean glyph rendering/gameplay still require a device test.
 The Korean-enabled build contains the pinned translation capsule; the original
@@ -419,3 +419,63 @@ was distinct and visually correct. Physical-device frame pacing, wall flicker
 and the final font appearance remain retest items. Keep the original 60 Hz game
 simulation and existing overload protection. No ISO reimport or save reset is
 needed. Fully quit LiveContainer, replace the IPA, and test active 3D gameplay.
+
+
+## Build 2.54: image label, haptics recovery and Korean spaces
+
+The owner confirms 120 FPS output/counter operation but reports camera-dependent
+polygon-face flicker across the scene. The previous NDC-cutoff removal was not
+sufficient. The new interpolation helper uses precise subtract/multiply/add for
+multipass EQUAL-depth consistency. CI inspects its actual SPIR-V NoContraction
+decorations and rejects the unprotected control. This verifies compiler precision,
+not on-device visual correctness. EQUAL-depth draw counts are logged for retesting.
+
+설정 is now a new transparent image generated at the owner's request, fitted
+through the original plate/shadow/glow code. No original game pixels are committed.
+The actual native mask loader's plate-sized preview was reviewed on macOS. Its
+font/style match still needs an owner-device check.
+
+Backbone Pro's first-rumble stall and later loss of vibration prompted a native
+controller haptics worker. The guest input path only publishes an atomic latest
+command; it never initializes or calls a haptic engine under the input lock.
+GameController player indexes retain port routing. Controller-supported localities
+use separate handle motors or a default motor. Engines and reusable players are
+prepared at zero intensity, with no warmup pulse. Stops, resets and parameter
+errors invalidate the engine and retry after one second; disconnected or
+backgrounded controllers stop, and expired commands are not replayed. Native
+CoreHaptics source compiles for iPhoneOS; synthetic tests cover the production
+bridge, latest-command coalescing, expiry, foreground silence and timer wrap.
+No real controller was driven by those tests. Actual latency and recovery remain
+owner-device retest items. Desktop SDL/XInput paths remain unchanged.
+
+Dynamic Korean text used a full-cell ASCII-space advance, unlike the baked menu
+art. The Korean-bank space is now half a cell in width calculation and both draw
+continuations. Latin modes and non-space glyphs retain their metrics. A native
+fixture rejects the old behavior and verifies matching measure/draw results.
+The reported bottom clipping is still unresolved. The log now records bounded
+font-cell metrics; original font assets are needed to compare ink bounds.
+
+### Extract only the font assets on Windows
+
+The session cannot execute commands on the owner's desktop. The supplied script
+can be run manually without installation, administrator rights or ISO modification.
+It reads only the three known paths and directory metadata, rejects existing
+output folders and creates Downloads/NGB-font-input/NGB-font-input.zip. It has
+no upload or network code. The three paths are Media/font.ttf, Media/font.xpr,
+and Media/Fonts/kfont.xpr. Missing files are recorded in its manifest.
+
+Run in ordinary Windows PowerShell:
+
+```powershell
+$script = Join-Path $env:TEMP 'Extract-NGBFontInput.ps1'
+Invoke-WebRequest -UseBasicParsing 'https://raw.githubusercontent.com/ajellia81-cmd/ngbrecomp/ios-port/ios/Extract-NGBFontInput.ps1' -OutFile $script
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File $script
+```
+
+The default ISO path is the previously supplied Downloads/Ninja Gaiden Black
+(USA) (En,Ja).iso. Use -IsoPath to override it. Upload only the resulting font ZIP
+privately in chat, never to the public repository. Keep the original ISO backup.
+After upload, the PC need not remain running. The existing Drive ISO is 7.83 GB,
+above the connector's 256 MB raw-download limit; its sharing settings were not
+changed. Windows PowerShell is checked using synthetic XDVDFS fixtures, not the
+owner's ISO or desktop.
