@@ -125,3 +125,24 @@ reservation, descriptors and preserved stack/registers; this is not full startup
 The new iOS build samples the existing boot-thread trace at most three times if
 there has been no guest flip after twenty seconds. It stops sampling once flips
 begin. Startup recovery, Korean text and output throughput require a device retest.
+
+## Confirmed DirectSound startup wait after memory relocation
+
+The 2.43 boot-thread samples consistently stopped in DirectSound at the
+`0x0037DC15` effects-image completion loop. The guest had posted command 3 at
+its actual mailbox `0x86C28810`, while the title's old default DSP completion
+probe still cleared `0x86BF8810`. Activating the Korean font reservation changed
+contiguous allocation layout, invalidating that fixed-address assumption.
+
+The iOS frontend now registers a title spin service before guest threads start
+and selects `RECOMP_DSP_ACK=auto`. At that verified loop only, the service uses
+the current thread's EBX operand, checks alignment and the mapped contiguous
+window, and atomically acknowledges command 3. It never scans memory or clears
+unrelated words. No fixed-address probe is installed in auto mode. Explicit
+empty/manual policies are retained; desktop defaults are unchanged. Frontends
+that register no service use the original scheduler path without optional
+linker symbols. Native tests cover both observed allocations, preservation of a
+sentinel at the old address, unknown commands/PCs, invalid addresses, explicit
+policies and the unregistered service; the old behavior fails the negative
+control. This completes the existing DSP passthrough handshake; it does not add
+DSP effects emulation. Physical-device startup and Korean output need retesting.
