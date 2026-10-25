@@ -108,10 +108,16 @@ int ngb_ios_settings_tab_mask(uint8_t *mask, int width, int height) {
         memset(mask,0,(size_t)width*height);
         const unsigned w=240,h=112;
         for (unsigned y=0;y<h;y++) for (unsigned x=0;x<w;x++) {
-            unsigned sx=503+(unsigned)((x+.5)*768/w);
-            unsigned sy=277+(unsigned)((y+.5)*357/h);
-            uint8_t alpha=rgba[(sy*iw+sx)*4+3];
-            mask[y*width+x]=alpha>16 ? alpha : 0;
+            double x0=503+x*768.0/w,x1=503+(x+1)*768.0/w;
+            double y0=277+y*357.0/h,y1=277+(y+1)*357.0/h;
+            double coverage=0;
+            for (unsigned sy=(unsigned)floor(y0);sy<(unsigned)ceil(y1);sy++)
+                for (unsigned sx=(unsigned)floor(x0);sx<(unsigned)ceil(x1);sx++) {
+                    double area=(fmin(sx+1,x1)-fmax(sx,x0))*
+                                (fmin(sy+1,y1)-fmax(sy,y0));
+                    coverage+=rgba[(sy*iw+sx)*4+3]*area;
+                }
+            mask[y*width+x]=(uint8_t)lround(coverage/((x1-x0)*(y1-y0)));
         }
         // Lightly thin the generated strokes before the final plate resample.
         // Work on coverage, preserving the transparent image and its orientation.
@@ -121,7 +127,7 @@ int ngb_ios_settings_tab_mask(uint8_t *mask, int width, int height) {
             unsigned v=original[y*w+x],edge=v;
             for (int dy=-1;dy<=1;dy++) for (int dx=-1;dx<=1;dx++)
                 if (original[(y+dy)*w+x+dx]<edge) edge=original[(y+dy)*w+x+dx];
-            mask[y*width+x]=(3*v+edge)/4;
+            mask[y*width+x]=edge;
         }
         free(rgba);
         return 1;

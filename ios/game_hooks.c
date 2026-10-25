@@ -53,5 +53,5 @@ void sub_0017E8A0(void) {
 void ngb_korean_font_metrics(unsigned font,unsigned width,unsigned height,float sx,float sy) {
     static unsigned seen;
     if (font>2 || (__atomic_fetch_or(&seen,1u<<font,__ATOMIC_RELAXED)&(1u<<font))) return;
-    fprintf(stderr,"[Korean metrics] font %u; cell %ux%u; scale %.3f,%.3f; Korean ASCII space uses half-cell advance\n",font,width,height,(double)sx,(double)sy);
+    fprintf(stderr,"[Korean metrics] font %u; cell %ux%u; scale %.3f,%.3f; Korean font-bank ASCII/full-width spaces use quarter-cell advance\n",font,width,height,(double)sx,(double)sy);
 }

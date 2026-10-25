@@ -23,15 +23,60 @@ int main(int argc,char **argv) {
     source.vsc[96]={1,0,0,0.1f};
     DrawConstants midpoint{};
     auto vertices=source.vsc;
-    check(!history.Add(7,MotionPose::Capture(source,constants),midpoint,&vertices),"first frame cannot interpolate");
+    history.Add(7,MotionPose::Capture(source,constants),midpoint,&vertices);
+    check(history.Resolve().matched==0,"first frame cannot interpolate");
     // Mutation after capture cannot change the retained previous frame.
     source.vsc[96][3]=0.3f; history.Finish(); vertices=source.vsc;
-    check(history.Add(7,MotionPose::Capture(source,constants),midpoint,&vertices),"moved geometry must pair");
+    history.Add(7,MotionPose::Capture(source,constants),midpoint,&vertices);
+    check(history.Resolve().changed==1,"moved geometry must pair");
     check(std::abs(vertices[96][3]-0.2f)<1e-6f,"history aliases mutable current constants");
     check(midpoint.motion[0]==0.0f,"midpoint must use the original vertex program");
-    check(!history.Add(8,MotionPose::Capture(source,constants),midpoint,&vertices),"new topology must not pair");
+    history.Add(8,MotionPose::Capture(source,constants),midpoint,&vertices);
+    check(history.Resolve().missing==1,"new topology must not pair");
     history.Finish(); history.Reset();
-    check(!history.Add(7,MotionPose::Capture(source,constants),midpoint,&vertices),"lifecycle/cut reset retained history");
+    history.Add(7,MotionPose::Capture(source,constants),midpoint,&vertices);
+    check(history.Resolve().matched==0,"lifecycle/cut reset retained history");
+    // Repeated meshes change draw order as the camera culls room pieces.
+    // The old occurrence matching pulls both pieces to the middle of the room.
+    MotionHistory room;
+    State left,right;left.vsc[96][3]=10;right.vsc[96][3]=20;
+    DrawConstants lc{},rc{};auto lv=left.vsc,rv=right.vsc;
+    room.Add(99,MotionPose::Capture(left,lc),lc,&lv);
+    room.Add(99,MotionPose::Capture(right,rc),rc,&rv);room.Finish();
+    right.vsc[96][3]=20.2f;left.vsc[96][3]=10.2f;
+    rv=right.vsc;lv=left.vsc;
+    room.Add(99,MotionPose::Capture(right,rc),rc,&rv);
+    room.Add(99,MotionPose::Capture(left,lc),lc,&lv);
+    auto paired=room.Resolve();
+    check(paired.matched==2 && paired.reordered==2,"reordered meshes paired by occurrence");
+    check(std::abs(rv[96][3]-20.1f)<1e-5f && std::abs(lv[96][3]-10.1f)<1e-5f,"room pieces moved to unrelated poses");
+    room.Resolve();check(std::abs(rv[96][3]-20.1f)<1e-5f,"Resolve averaged a midpoint twice");
+    room.Finish();
+    left.vsc[96][3]=10.4f;lv=left.vsc;
+    room.Add(99,MotionPose::Capture(left,lc),lc,&lv);
+    check(room.Resolve().matched==1 && std::abs(lv[96][3]-10.3f)<1e-5f,"culling paired the remaining mesh with its neighbour");
+    MotionHistory global;
+    State zero,two,near_one,near_two;
+    two.vsc[96][3]=2;near_one.vsc[96][3]=1.1f;near_two.vsc[96][3]=2.1f;
+    DrawConstants a0{},a1{},b0{},b1{};
+    auto z=zero.vsc,t=two.vsc,n1=near_one.vsc,n2=near_two.vsc;
+    global.Add(88,MotionPose::Capture(zero,a0),a0,&z);
+    global.Add(88,MotionPose::Capture(two,a1),a1,&t);global.Finish();
+    global.Add(88,MotionPose::Capture(near_one,b0),b0,&n1);
+    global.Add(88,MotionPose::Capture(near_two,b1),b1,&n2);global.Resolve();
+    check(std::abs(n1[96][3]-.55f)<1e-5f && std::abs(n2[96][3]-2.05f)<1e-5f,"first draw stole a closer pose from another draw");
+    // Same byte storage and relative indices can select different submeshes.
+    Assembled range;State target;
+    range.index_count=3;range.index16=true;
+    auto key=MotionRangeKey(123,range,target);
+    range.base_vertex=3;
+    check(MotionRangeKey(123,range,target)!=key,"different absolute indexed vertices share a motion key");
+    range.base_vertex=0;range.draw_count=6;
+    check(MotionRangeKey(123,range,target)!=key,"different unindexed lengths share a motion key");
+    range.draw_count=0;target.rt.data=0x8000;
+    check(MotionRangeKey(123,range,target)==key,"rotating swap buffers lost adjacent history");
+    target.rt.format=0x100;
+    check(MotionRangeKey(123,range,target)!=key,"incompatible render formats share a motion key");
     // Coplanar passes must receive identical midpoint inputs; a different
     // material does not add independent clip-position arithmetic afterwards.
     MotionPose prior=MotionPose::Capture(source,constants);

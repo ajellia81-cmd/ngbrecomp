@@ -123,8 +123,10 @@ void VulkanBackend::MotionPresent(const Surface& front,Image& endpoint,float bar
     // It must always use the authoritative original picture, even when a title
     // background happens to contain a few 3D draws.
     if (ngb_movie_active() || ngb_2d_screen_frame(int(threed_)) || threed_<30) return;
-    if (!motion_capture_ || !motion_valid_ || !motion_changed_ || !motion_3d_ ||
-        ngb_quick_wanted() || !motion_last_ns_ || now-motion_last_ns_>50000000LL) return;
+    if (!motion_capture_ || !motion_valid_ || !motion_3d_) return;
+    motion_match_stats_=motion_history_.Resolve();
+    motion_changed_=motion_match_stats_.changed;
+    if (!motion_changed_ || ngb_quick_wanted() || !motion_last_ns_ || now-motion_last_ns_>50000000LL) return;
     Target *target=EnsureTarget(front,false);
     if (!target || !motion_valid_) return;
     int slot=-1;
@@ -177,6 +179,8 @@ void VulkanBackend::MotionFinish() {
         std::fprintf(stderr,"[Smooth Motion eligibility] requested %d; shared queue %d; scene draws %u; 2D %d; movie %d; quick menu %d; cooldown %u frames; EQUAL-depth draws %u\n",
             ngb_pc_setting(26),int(shared_),threed_,ngb_2d_screen_frame(int(threed_)),ngb_movie_active(),ngb_quick_wanted(),motion_cooldown_,motion_equal_);
 #endif
+        std::fprintf(stderr,"[Smooth Motion matching] matched %u; missing %u; reordered %u; bounded groups %u\n",
+            motion_match_stats_.matched,motion_match_stats_.missing,motion_match_stats_.reordered,motion_match_stats_.bounded);
         motion_log_ns_=now; motion_pictures_=0;
     }
     bool wanted=false;
@@ -210,7 +214,7 @@ void VulkanBackend::MotionFinish() {
         }
         if (motion_targets_.empty()) motion_gpu_bytes_=0;
     }
-    motion_commands_.clear(); motion_cpu_bytes_=0; motion_3d_=motion_changed_=motion_equal_=0;
+    motion_commands_.clear(); motion_cpu_bytes_=0; motion_3d_=motion_changed_=motion_equal_=0; motion_match_stats_={};
     motion_capture_=motion_valid_=wanted; motion_last_ns_=now;
 }
 #endif

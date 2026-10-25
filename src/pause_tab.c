@@ -583,6 +583,7 @@ static void tab_word(uint8_t *m, int mw, int mh, float cx, float cy, float bw, f
     static uint8_t tmp[400 * 160];
     const float cap = 58, rest = 40, sx = 0.82f, base = 110;
     float text_height = bh;
+    int localized = 0;
     memset(tmp, 0, sizeof tmp);
     {   /* always the typeface: it looks like the other plates' lettering */
         int game = s_game_font;
@@ -590,8 +591,8 @@ static void tab_word(uint8_t *m, int mw, int mh, float cx, float cy, float bw, f
 #ifdef NGB_IOS_KOREAN
         extern int ngb_korean_active(void);
         extern int ngb_ios_settings_tab_mask(uint8_t *, int, int);
-        int localized = ngb_korean_active() && ngb_ios_settings_tab_mask(tmp, 400, 160);
-        if (localized) text_height = bh * 29.0f / 38.0f;
+        localized = ngb_korean_active() && ngb_ios_settings_tab_mask(tmp, 400, 160);
+        if (localized) { text_height = bh * 30.0f / 38.0f; cy -= 2.0f * mh / 64.0f; }
         if (!localized)
 #endif
         {
@@ -613,17 +614,29 @@ static void tab_word(uint8_t *m, int mw, int mh, float cx, float cy, float bw, f
         return;
     float tw = (float)(x1 - x0 + 1), th = (float)(y1 - y0 + 1);
     float k = fminf(fminf(bw / tw, text_height / th), 1.0f);
-    int ow = (int)(tw * k), oh = (int)(th * k);
+    int ow = localized ? (int)lroundf(tw * k) : (int)(tw * k);
+    int oh = localized ? (int)lroundf(th * k) : (int)(th * k);
     int ox = (int)lroundf(cx - ow / 2.0f), oy = (int)lroundf(cy - oh / 2.0f);
     /* Area-average resample into place. */
     for (int y = 0; y < oh; y++)
         for (int x = 0; x < ow; x++) {
             float sx0 = x0 + x / k, sy0 = y0 + y / k, sum = 0, n = 0;
-            for (float yy = sy0; yy < sy0 + 1 / k; yy += 0.5f)
-                for (float xx = sx0; xx < sx0 + 1 / k; xx += 0.5f) {
-                    int X = (int)xx, Y = (int)yy;
-                    if (X <= x1 && Y <= y1) { sum += tmp[Y * 400 + X]; n++; }
-                }
+            if (localized) {
+                // Integrate coverage instead of point sampling thin strokes.
+                float sx1=fminf(sx0+1/k,x1+1), sy1=fminf(sy0+1/k,y1+1);
+                for (int Y=(int)floorf(sy0); Y<(int)ceilf(sy1); Y++)
+                    for (int X=(int)floorf(sx0); X<(int)ceilf(sx1); X++) {
+                        float area=(fminf(X+1,sx1)-fmaxf(X,sx0))*
+                                   (fminf(Y+1,sy1)-fmaxf(Y,sy0));
+                        if (area>0) { sum+=tmp[Y*400+X]*area; n+=area; }
+                    }
+            } else {
+                for (float yy = sy0; yy < sy0 + 1 / k; yy += 0.5f)
+                    for (float xx = sx0; xx < sx0 + 1 / k; xx += 0.5f) {
+                        int X = (int)xx, Y = (int)yy;
+                        if (X <= x1 && Y <= y1) { sum += tmp[Y * 400 + X]; n++; }
+                    }
+            }
             int X = ox + x, Y = oy + y;
             if (n && X >= 0 && Y >= 0 && X < mw && Y < mh)
                 m[Y * mw + X] = (uint8_t)(sum / n);
@@ -4895,6 +4908,16 @@ static void edge_inset(uint32_t p, uint32_t verts)
     uint32_t fmt = MEM32(hdr + 0xC);
     float tw = (float)(1 << (fmt >> 20 & 0xF)), th = (float)(1 << (fmt >> 24 & 0xF));
     for (int axis = 0; axis < 2; axis++) {
+#ifdef NGB_IOS_KOREAN
+        // Korean ink reaches the last cell row. QuadSnap already clamps to
+        // console sample centres; another vertical inset cuts off its fade.
+        // Keep horizontal seam protection and every non-font sprite intact.
+        extern int ngb_korean_active(void);
+        uint32_t id = MEM32(p) & 0xFFFF;
+        if (axis == 1 && ngb_korean_active() &&
+            (id == 0x56D || id == 0x587 || id == 0x588))
+            continue;
+#endif
         uint32_t off = 20 + 4 * axis;
         float lo = MEMF(verts + off), hi = lo;
         for (int v = 1; v < 4; v++) {

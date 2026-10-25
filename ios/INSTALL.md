@@ -525,3 +525,71 @@ visible. This build retains the 2.55 UV repair; no further unsupported change to
 the font-cell geometry is made. The final glyph ink may also be constrained by
 the translation's baked bitmap. Its exact remaining cause is unresolved. Phone
 checks are still needed for spacing, image weight and camera-motion flicker.
+
+
+## Build 2.57: preserve Korean sprite edge coverage
+
+The 2.56 device log confirms font bank 1 uses 16x16 cells. The sprite path
+also applies `edge_inset` after glyph UV construction: its vertical shrink was
+still present after the 2.55 Korean helper repair. For the three verified Korean
+font sprite IDs only, vertical edge inset is now bypassed. Horizontal inset,
+QuadSnap's console-sample clamp, other sprites and other language boots remain
+unchanged. The font-page audit checks every one of 768 cells, without selecting
+only final-consonant characters. 715 cells have substantial ink on the last row;
+the first two rows of every following cell are transparent. This is evidence of
+edge sensitivity, not proof that every source glyph outline is complete.
+
+The native regression extracts the actual sprite inset function. At scales 1–8
+it checks that all three Korean IDs retain vertical UVs, other IDs/languages keep
+their inset and horizontal protection is preserved. A synthetic last-row stroke
+must finish its bilinear fade inside the console-sample-clamped quad; the old
+function cuts that fade and is rejected. This does not replace an iPhone render
+test. If cropping remains, the baked source bitmap is still a separate question.
+
+The owner-approved Korean 설정 preview uses a 30-unit height with a two-unit
+upward shift, matching the neighbouring dark-ink bounds (rows 8–37 on a 128x64
+plate). Exact coverage filtering replaces nearest source sampling and approximate
+final sampling; stroke erosion remains. The native preview now runs the actual
+plate lettering function. The owner approved the comparison before IPA building.
+
+
+### Build 2.57 spacing refinement (owner request)
+
+The Korean font-bank space advance is reduced from half to quarter cell (8 to 4
+at the measured 16-pixel cell). Measurement, both draw continuations, ASCII and
+full-width blanks use the same value; non-Korean font modes retain their widths.
+The reference is the existing baked Options labels, rather than a system-font
+space. Private analysis of 기본 설정, 소리 설정, 조작 설정 and 화면 설정 finds visible
+word gaps of 7–10 texture pixels for roughly 20-pixel glyphs, versus inter-glyph
+gaps around 1–4. Visible gaps include side bearings; the additional word-space
+advance is therefore smaller than the entire visible gap. A quarter-cell integer
+advance is the closest compact setting in the existing integer layout. No baked
+text image is modified. Device appearance remains to be checked.
+
+The Settings-tab comparison was approved; the owner then authorized the IPA build.
+
+
+### Build 2.57 repeated-geometry motion matching
+
+The 2.56 device logs show EQUAL-depth draw counts of zero in the reported room;
+that depth comparison alone cannot explain this case. The owner then captured
+one lamp's luminous geometry between the two lamps while its frame stayed at the
+original position. The previous occurrence-order history can produce exactly
+that failure when identical draw groups change order or are culled.
+
+Following VF3's scene-pair planning, NGB now gathers the entire frame's retained
+poses and sorts candidate matches within each geometry/material group before
+applying interpolation. It uses finite normalized vertex-input/matrix distance;
+NGB has no VF3 model graph or camera-prediction data, so this is an adaptation,
+not a claim of identical algorithms. Each previous pose can be consumed once.
+Groups over 32 entries retain endpoint inputs to bound sorting work. Unique
+pairs skip the distance calculation. The geometry key now includes base vertex,
+draw/index counts, index type, decode/register layout and render-surface formats/extents; equal
+buffer bytes with different draw ranges must not share motion history.
+
+Native fixtures reproduce the wrong central pose under occurrence matching,
+then check reordered meshes, removal of one instance, globally planned pairing,
+repeatable resolution, range/format separation and rotating-buffer continuity, original endpoints and finite
+inputs. The phone has not yet run this source. Matching counters were added to
+make the next device log actionable. Existing 60 Hz simulation and 120 Hz pair
+presentation remain unchanged.

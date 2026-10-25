@@ -1,15 +1,19 @@
 #pragma once
 #include "gpu/shaders.h"
+#include "gpu/vertex.h"
 #include <array>
 #include <cstring>
 #include <cmath>
 #include <unordered_map>
 #include <vector>
+#include <algorithm>
+#include <limits>
+#include <tuple>
 
 namespace gpu {
 #ifdef NGB_SMOOTH_MOTION
 // History has no guest pointers or GPU allocations. Geometry/material keys are
-// matched in occurrence order; changed topology starts a new history entry.
+// matched by owned pose within geometry/material groups; topology changes reset them.
 struct MotionPose {
     std::array<std::array<float,4>,192> vc{};
     float wvp[16]{}, wv[16]{}, wvn[16]{}, wvb[4][16]{}, wvbn[4][16]{}, pv[16]{};
@@ -42,19 +46,96 @@ struct MotionPose {
         return true;
     }
 };
+// Identical buffer bytes need not mean identical geometry: indexed base
+// vertices and unindexed draw lengths select different parts of those bytes.
+inline uint64_t MotionRangeKey(uint64_t key,const Assembled& a,const State& s) {
+    key=Hash(&a.base_vertex,sizeof a.base_vertex,key);
+    key=Hash(&a.draw_count,sizeof a.draw_count,key);
+    key=Hash(&a.index_count,sizeof a.index_count,key);
+    key=Hash(&a.index16,sizeof a.index16,key);
+    key=Hash(&a.topology,sizeof a.topology,key);
+    key=Hash(&a.regs,sizeof a.regs,key);
+    key=Hash(&a.decode,sizeof a.decode,key);
+    // Swap-chain buffer addresses can rotate each game frame. Their logical
+    // format/extent is stable; raw addresses would reject all adjacent pairs.
+    key=Hash(&s.rt.format,sizeof s.rt.format,key);
+    key=Hash(&s.rt.size,sizeof s.rt.size,key);
+    key=Hash(&s.zs.format,sizeof s.zs.format,key);
+    return Hash(&s.zs.size,sizeof s.zs.size,key);
+}
 class MotionHistory {
+    using Constants=std::array<std::array<float,4>,192>;
+    struct Pending { MotionPose pose; DrawConstants* output; Constants* vertices; };
     using Entries=std::unordered_map<uint64_t,std::vector<MotionPose>>;
-    Entries before_,now_;
+    Entries before_;
+    std::unordered_map<uint64_t,std::vector<Pending>> now_;
 public:
-    bool Add(uint64_t key,const MotionPose& p,DrawConstants& c,std::array<std::array<float,4>,192>* vertices=nullptr) {
-        auto& list=now_[key]; size_t occurrence=list.size();
-        auto it=before_.find(key);
-        bool matched=it!=before_.end() && occurrence<it->second.size();
-        if (matched && vertices) matched=it->second[occurrence].Midpoint(*vertices,c);
-        list.push_back(p);
-        return matched && std::memcmp(&it->second[occurrence],&p,sizeof p)!=0;
+    struct Stats { unsigned matched=0,changed=0,missing=0,reordered=0,bounded=0; };
+    // Outputs belong to heap-allocated replay packets, pinned by the recipe
+    // list through Resolve. No guest memory or pointers survive Finish/Reset.
+    void Add(uint64_t key,const MotionPose& p,DrawConstants& c,Constants* vertices) {
+        now_[key].push_back({p,&c,vertices});
     }
-    void Finish() { before_=std::move(now_); now_.clear(); }
+    Stats Resolve() {
+        Stats stats;
+        for (auto& [key,list]:now_) {
+            // Resolve is repeatable; never average an already blended output.
+            for (auto& entry:list) if (entry.vertices) {
+                *entry.vertices=entry.pose.vc;
+#define RESTORE_MATRIX(x) std::memcpy(entry.output->x,entry.pose.x,sizeof entry.pose.x)
+                RESTORE_MATRIX(wvp); RESTORE_MATRIX(wv); RESTORE_MATRIX(wvn);
+                RESTORE_MATRIX(wvb); RESTORE_MATRIX(wvbn); RESTORE_MATRIX(pv);
+#undef RESTORE_MATRIX
+                entry.output->motion[0]=0;
+            }
+            auto it=before_.find(key);
+            if (it==before_.end()) { stats.missing+=list.size(); continue; }
+            auto& old=it->second;
+            // VF3 bounds large matching groups too. Do not let repeated
+            // particles turn pose matching into an unbounded quadratic sort.
+            if (old.size()>32 || list.size()>32) {
+                stats.missing+=list.size(); stats.bounded++; continue;
+            }
+            std::vector<std::tuple<double,size_t,size_t>> candidates;
+            for (size_t j=0;j<list.size();j++) for (size_t i=0;i<old.size();i++) {
+                if(old.size()==1 && list.size()==1) { candidates.emplace_back(0,j,i); continue; }
+                double cost=0;
+                auto add=[&](float a,float b) {
+                    if (!std::isfinite(a) || !std::isfinite(b)) { cost=std::numeric_limits<double>::infinity(); return; }
+                    double d=(double(a)-b)/(1+std::abs(double(a))+std::abs(double(b)));
+                    cost+=d*d;
+                };
+                for (size_t r=0;r<192;r++) for(size_t k=0;k<4;k++) add(old[i].vc[r][k],list[j].pose.vc[r][k]);
+#define POSE_COST(x) for(size_t k=0;k<sizeof old[i].x/sizeof(float);k++) \
+    add(((const float*)old[i].x)[k],((const float*)list[j].pose.x)[k])
+                POSE_COST(wvp); POSE_COST(wv); POSE_COST(wvn);
+                POSE_COST(wvb); POSE_COST(wvbn); POSE_COST(pv);
+#undef POSE_COST
+                if (std::isfinite(cost)) candidates.emplace_back(cost,j,i);
+            }
+            // Plan the entire group before writing any outputs: a greedy draw
+            // can otherwise steal another object's much closer previous pose.
+            std::sort(candidates.begin(),candidates.end());
+            std::vector<bool> used(old.size()),paired(list.size());
+            for (auto [cost,j,i]:candidates) {
+                (void)cost;
+                if (used[i] || paired[j] || !list[j].vertices) continue;
+                if (!old[i].Midpoint(*list[j].vertices,*list[j].output)) continue;
+                used[i]=paired[j]=true;stats.matched++;stats.reordered+=(i!=j);
+                stats.changed+=std::memcmp(&old[i],&list[j].pose,sizeof(MotionPose))!=0;
+            }
+            stats.missing+=std::count(paired.begin(),paired.end(),false);
+        }
+        return stats;
+    }
+    void Finish() {
+        before_.clear();
+        for (auto& [key,list]:now_) {
+            auto& saved=before_[key];saved.reserve(list.size());
+            for(auto& p:list) saved.push_back(std::move(p.pose));
+        }
+        now_.clear();
+    }
     void Reset() { before_.clear(); now_.clear(); }
 };
 std::string MotionVertexHlsl(std::string source);

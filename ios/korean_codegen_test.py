@@ -89,7 +89,7 @@ class InstructionRanges(unittest.TestCase):
 from merge_korean_codegen import repair_korean_spacing
 
 class KoreanSpaces(unittest.TestCase):
-    def test_measurement_and_both_draw_paths_use_half_cell_only_for_korean_bank(self):
+    def test_measurement_and_both_draw_paths_match_compact_korean_spaces(self):
         def fixture():
             result={}
             for name,label,reg,index in [('measure','001E7462','ecx',0),('draw_a','001E8481','eax',1),('draw_b','001E8481','eax',2)]:
@@ -109,16 +109,16 @@ static uint32_t memory[128],esp,esi=0x100,edi=0x180,result[3];
  for(unsigned font=0;font<3;font++) for(unsigned i=0;i<6;i++) {
   MEM32(esi+0x38)=font;MEM16(esp+0x88)=widths[i];
   measure();draw_a();draw_b();
-  unsigned expected=font==1 ? (widths[i]+1)/2 : widths[i];
+  unsigned expected=font==1 ? (widths[i]+3)/4 : widths[i];
   if(result[0]!=expected || result[1]!=expected || result[2]!=expected) return 1;
  }
  MEM32(esi+0x38)=1; MEM16(esp+0x88)=16;
  edi=0x180; MEM8(edi)=0x81; MEM8(edi+1)=0x40;
- measure(); if(edi!=0x181 || result[0]!=8) return 2;
+ measure(); if(edi!=0x181 || result[0]!=4) return 2;
  edi=0x180; MEM32(esp+0x18)=edi; draw_a();
- if(MEM32(esp+0x18)!=0x181 || result[1]!=8) return 3;
+ if(MEM32(esp+0x18)!=0x181 || result[1]!=4) return 3;
  MEM32(esp+0x18)=edi; draw_b();
- if(MEM32(esp+0x18)!=0x181 || result[2]!=8) return 4;
+ if(MEM32(esp+0x18)!=0x181 || result[2]!=4) return 4;
  MEM32(esi+0x38)=0; edi=0x180; measure();
  if(edi!=0x180) return 5;
  return 0;
@@ -179,5 +179,63 @@ static float final_ink(float v) { float d=fabsf(v*256-.5f-15); return d<1 ? 1-d 
                 result=subprocess.run([str(exe)],capture_output=True)
                 self.assertEqual(result.returncode==0,success)
         with self.assertRaises(ValueError):repair_korean_vertical_uv({'sub_00E03430':'changed'})
+
+
+class KoreanSpriteCoverage(unittest.TestCase):
+    def test_last_ink_row_fades_inside_quad_for_every_font_page(self):
+        source=(Path(__file__).resolve().parents[1]/'src/pause_tab.c').read_text()
+        start=source.index('static void edge_inset(');a=source.index('{',start);end=a+1;depth=1
+        while depth:
+            depth+=(source[end]=='{')-(source[end]=='}');end+=1
+        body=source[start:end]
+        prefix=r'''
+#include <stdint.h>
+#include <stdlib.h>
+#include <math.h>
+static uint8_t mem[0x8e0000];
+#define MEM32(a) (*(uint32_t *)(mem+(a)))
+#define MEMF(a) (*(float *)(mem+(a)))
+static int scale,active;
+int ngb_pc_setting(int option) { (void)option;return scale; }
+int ngb_korean_active(void) { return active; }
+uint32_t sprite_def(uint32_t id) { (void)id;return 0x100; }
+'''
+        main=r'''
+// Last ink row centred on texel 15.5, next row transparent. A non-zero
+// limiting alpha at the quad edge is an abrupt cut, rather than a full fade.
+static float bottom_alpha(float lo,float hi) {
+ float edge=(hi-(hi-lo)*.5f/15.5f)*256;
+ float a=16.5f-edge;
+ return fmaxf(0,fminf(1,a));
+}
+int main(void) {
+ unsigned ids[]={0x56d,0x587,0x588,0x100};
+ MEM32(0x110)=1;MEM32(0x8DBB30)=0x200;
+ MEM32(0x20C)=(8u<<20)|(8u<<24);
+ for(active=0;active<=1;active++) for(scale=1;scale<=8;scale++)
+ for(unsigned i=0;i<4;i++) {
+  MEM32(0x300)=ids[i];
+  for(unsigned v=0;v<4;v++) {
+   MEMF(0x400+v*28+20)=(v&1 ? 15.5f : .5f)/256;
+   MEMF(0x400+v*28+24)=(v&2 ? 17.f : 1.5f)/256;
+  }
+  edge_inset(0x300,0x400);
+  float lo=MEMF(0x418),hi=MEMF(0x450);
+  if(active && i<3) {
+   if(lo!=1.5f/256 || hi!=17.f/256) return 1;
+   if(bottom_alpha(lo,hi)>.001f) return 2;
+  } else if(scale>1 && !(lo>1.5f/256 && hi<17.f/256)) return 3;
+  if(scale>1 && !(MEMF(0x414)>.5f/256)) return 4;
+ }
+ return 0;
+}
+'''
+        with tempfile.TemporaryDirectory() as folder:
+            root=Path(folder)
+            for name,define,success in [('fixed','-DNGB_IOS_KOREAN',True),('old','-UNGB_IOS_KOREAN',False)]:
+                p=root/(name+'.c');exe=root/name;p.write_text(prefix+body+main)
+                subprocess.run(['cc','-std=c11',define,str(p),'-lm','-o',str(exe)],check=True,capture_output=True)
+                r=subprocess.run([str(exe)])
+                self.assertEqual(r.returncode==0,success)
 
 if __name__=='__main__':unittest.main()
