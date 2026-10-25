@@ -85,6 +85,26 @@ the actual private helpers checked stack/register preservation, seven font-bank
 ranges and the three dedicated Korean banks; removing register publication failed
 the negative control. These checks do not establish correct on-device glyph output.
 
-On iOS Korean boots only, the extra pause-menu Settings tab uses the system
-Hangul font to display 설정. Japanese and English retain Settings. The rest of
-the recomp settings are not translated.
+Build 2.41 used the iOS system font for the extra 설정 pause tab. The
+private-lettering implementation below replaces it. Japanese and English retain
+Settings; the rest of the recomp settings are not translated.
+
+## Direct-call routing and pause lettering
+
+The 2.41 device session still showed corrupted text. The previous merge selected
+variants through `recomp_lookup_manual`, but ordinary generated
+`RECOMP_ABI_CALL` sites call their C symbol directly. Unchanged original callers
+could therefore run original font/resource initialization against Korean data.
+The merger now gates every selected entry that has an original generated body
+(107 in the pinned input). Korean boots select its translated body; other boots
+retain the original body. Existing handwritten font/language hooks stay in place.
+Native C tests exercise actual direct and indirect calls with Korean on/off,
+plus compilation without the Korean feature. Generation still excludes private
+functions and all game assets from public commits.
+
+The extra pause tab no longer uses a system font. A private build step extracts
+the two 설정 glyphs from the pinned patch's own Options texture, matches the
+neighboring tab's 27-pixel lettering height and italic slant, and bundles only
+that mask inside the encrypted game IPA. Existing plate shading and selected
+glow use this mask. No extracted glyph pixels are committed. Device appearance
+and text rendering still need verification with the new IPA.
