@@ -357,7 +357,11 @@ static void preempt_signal(int sig)
     (void)sig;
 #ifdef __APPLE__
     (void)si;
+#if defined(__x86_64__)
+    uintptr_t pc = ((ucontext_t *)opaque)->uc_mcontext->__ss.__rip;
+#else
     uintptr_t pc = ((ucontext_t *)opaque)->uc_mcontext->__ss.__pc;
+#endif
     /* Darwin libc uses locks even in getenv. Yielding while it holds one
      * can strand the next guest thread in that same lock. Retry next quantum
      * when the interrupted PC is back in the executable. */

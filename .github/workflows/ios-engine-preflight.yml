@@ -86,7 +86,7 @@ concurrency:
 
 jobs:
   production-platform:
-    runs-on: macos-15
+    runs-on: macos-15-intel
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
@@ -130,11 +130,11 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          xcrun --sdk macosx clang -arch arm64 -std=c11 -O2 -dynamiclib \
+          xcrun --sdk macosx clang -arch "$(uname -m)" -std=c11 -O2 -dynamiclib \
             -Ixboxrecomp/src -Ixboxrecomp/src/platform \
             ios/vcpu_image_test.c xboxrecomp/src/platform/win32_compat.c \
             xboxrecomp/src/platform/vcpu.c -o build/ios-platform/vcpu-image.dylib
-          xcrun --sdk macosx clang -arch arm64 -std=c11 -O2 -DNGB_VCPU_IMAGE_HOST \
+          xcrun --sdk macosx clang -arch "$(uname -m)" -std=c11 -O2 -DNGB_VCPU_IMAGE_HOST \
             ios/vcpu_image_test.c -o build/ios-platform/vcpu-image-host
           build/ios-platform/vcpu-image-host "$PWD/build/ios-platform/vcpu-image.dylib"
           # Reproduce the original image-zero bug and ensure this test detects it.
@@ -146,7 +146,7 @@ jobs:
           Path('build/ios-platform/vcpu-old-image.c').write_text(source.replace(
               old, 'header = (const struct mach_header_64 *)_dyld_get_image_header(0);'))
           PY
-          xcrun --sdk macosx clang -arch arm64 -std=c11 -O2 -dynamiclib \
+          xcrun --sdk macosx clang -arch "$(uname -m)" -std=c11 -O2 -dynamiclib \
             -Ixboxrecomp/src -Ixboxrecomp/src/platform \
             ios/vcpu_image_test.c xboxrecomp/src/platform/win32_compat.c \
             build/ios-platform/vcpu-old-image.c -o build/ios-platform/vcpu-old-image.dylib
@@ -175,7 +175,7 @@ jobs:
         run: |
           set -euo pipefail
           for test in vcpu_posix thread_suspend_posix; do
-            xcrun --sdk macosx clang -arch arm64 -std=c11 -O2 \
+            xcrun --sdk macosx clang -arch "$(uname -m)" -std=c11 -O2 \
               -Ixboxrecomp/src -Ixboxrecomp/src/platform \
               xboxrecomp/src/platform/win32_compat.c xboxrecomp/src/platform/vcpu.c \
               "xboxrecomp/tests/$test/test_main.c" -o "build/ios-platform/$test"
@@ -187,17 +187,17 @@ jobs:
         run: |
           set -euo pipefail
           if ! brew list sdl2 >/dev/null 2>&1; then brew install sdl2; fi
-          xcrun --sdk macosx clang -arch arm64 -std=c11 -O2 -Ixboxrecomp/src \
+          xcrun --sdk macosx clang -arch "$(uname -m)" -std=c11 -O2 -Ixboxrecomp/src \
             $(pkg-config --cflags sdl2) ios/audio_pause_test.c \
             xboxrecomp/src/apu/apu_sdl_out.c $(pkg-config --libs sdl2) \
             -o build/ios-platform/audio-pause
           SDL_AUDIODRIVER=dummy build/ios-platform/audio-pause
-          xcrun --sdk macosx clang -arch arm64 -std=c11 -O2 -DNGB_IOS_APP=1 -DNGB_IOS_KOREAN=1 \
+          xcrun --sdk macosx clang -arch "$(uname -m)" -std=c11 -O2 -DNGB_IOS_APP=1 -DNGB_IOS_KOREAN=1 \
             -Isrc -Ixboxrecomp/src $(pkg-config --cflags sdl2) \
             ios/native_settings_test.c src/launcher.c $(pkg-config --libs sdl2) \
             -o build/ios-platform/native-settings
           build/ios-platform/native-settings
-          xcrun --sdk macosx clang -arch arm64 -fobjc-arc -std=gnu11 \
+          xcrun --sdk macosx clang -arch "$(uname -m)" -fobjc-arc -std=gnu11 \
             -framework Foundation ios/korean_archive_test.m -o build/ios-platform/korean-archive
           build/ios-platform/korean-archive
 
@@ -224,11 +224,11 @@ jobs:
           set -euo pipefail
           if ! command -v glslangValidator >/dev/null; then brew install glslang; fi
           mkdir -p build/ios-platform/motion
-          xcrun --sdk macosx clang++ -arch arm64 -std=c++20 -O2 -DNGB_SMOOTH_MOTION=1 \
+          xcrun --sdk macosx clang++ -arch "$(uname -m)" -std=c++20 -O2 -DNGB_SMOOTH_MOTION=1 \
             -ffp-contract=off -Isrc/d3d ios/motion_test.cpp src/d3d/gpu/shaders.cpp \
             src/d3d/gpu/scene_motion.cpp third_party/vf3_scene/interpolate.cpp -o build/ios-platform/motion-test
           python3 tests/check_vf3_reference.py
-          xcrun --sdk macosx clang++ -arch arm64 -std=c++20 -O2 tests/vf3_scene_test.cpp \
+          xcrun --sdk macosx clang++ -arch "$(uname -m)" -std=c++20 -O2 tests/vf3_scene_test.cpp \
             third_party/vf3_scene/interpolate.cpp -o build/ios-platform/vf3-scene-test
           build/ios-platform/vf3-scene-test
           build/ios-platform/motion-test build/ios-platform/motion
@@ -240,7 +240,7 @@ jobs:
 
   private-recompilation:
     # Standard GitHub-hosted runner: never the owner's PC or a paid larger runner.
-    runs-on: macos-15
+    runs-on: macos-15-intel
     timeout-minutes: 90
     steps:
       - uses: actions/checkout@v4
