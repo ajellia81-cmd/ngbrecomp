@@ -157,6 +157,16 @@ Do not remove protection to conceal missing midpoints if the game itself falls
 below 60 Hz. Reduce measured CPU/GPU overhead first. Doubling scene rendering
 still adds GPU work; sustained 120 FPS is not guaranteed on every scene/device.
 
+## Shipping diagnostics policy
+
+The shipping iOS Release app intentionally creates no `log.txt`, `build-info.txt`
+or F7 draw captures. Adapter performance timers and periodic presenter reports
+are disabled in that configuration. Use standalone native fixtures or a
+purpose-built diagnostic configuration for measurements; do not treat missing
+release logs as an interpolation failure. Build provenance remains in the
+bundle metadata and executable. Functional caches, Korean data and license
+notices remain required runtime material.
+
 ## Regression checklist for the next agent
 
 - Compare imported/projected positions to the original vertex calculation.
