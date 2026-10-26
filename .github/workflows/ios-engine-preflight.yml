@@ -57,6 +57,9 @@ on:
       - 'src/pc_menu.c'
       - 'src/pause_tab.c'
       - 'src/ingame_menu.c'
+      - 'src/d3d/hle.cpp'
+      - 'third_party/vf3_scene/**'
+      - 'tests/*vf3*'
       - 'src/d3d/vk/**'
       - 'src/d3d/gpu/**'
       - 'packaging/appimage/ngb.png'
@@ -206,14 +209,19 @@ jobs:
           python3 ios/rumble_warmup_test.py
           xcrun --sdk iphoneos clang -arch arm64 -miphoneos-version-min=15.0 -fobjc-arc \
             -c ios/haptics.m -o build/ios-platform/haptics.o
-      - name: Compile actual Smooth Motion shaders and retained-pose tests
+      - name: Compile actual VF3 scene bridge and Smooth Motion shaders
         shell: bash
         run: |
           set -euo pipefail
           if ! command -v glslangValidator >/dev/null; then brew install glslang; fi
           mkdir -p build/ios-platform/motion
           xcrun --sdk macosx clang++ -arch arm64 -std=c++20 -O2 -DNGB_SMOOTH_MOTION=1 \
-            -Isrc/d3d ios/motion_test.cpp src/d3d/gpu/shaders.cpp -o build/ios-platform/motion-test
+            -ffp-contract=off -Isrc/d3d ios/motion_test.cpp src/d3d/gpu/shaders.cpp \
+            src/d3d/gpu/scene_motion.cpp third_party/vf3_scene/interpolate.cpp -o build/ios-platform/motion-test
+          python3 tests/check_vf3_reference.py
+          xcrun --sdk macosx clang++ -arch arm64 -std=c++20 -O2 tests/vf3_scene_test.cpp \
+            third_party/vf3_scene/interpolate.cpp -o build/ios-platform/vf3-scene-test
+          build/ios-platform/vf3-scene-test
           build/ios-platform/motion-test build/ios-platform/motion
           for shader in build/ios-platform/motion/*.vert.hlsl; do
             glslangValidator -D -V --target-env vulkan1.1 --auto-map-locations \

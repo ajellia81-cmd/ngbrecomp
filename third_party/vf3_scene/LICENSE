@@ -1,0 +1,37 @@
+MIT License
+
+Copyright (c) 2026 mr-finster
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+---
+This licence covers the code in this repository written for this project. It does not cover:
+
+- the game: Virtua Fighter 3 is not included, and its names belong to SEGA;
+- code from or ported from MAME, which stays under MAME's BSD-3-Clause licence with its copyright
+  holders: third_party/mame/ and the files in src/ whose headers say they come from or are ported
+  from MAME (third_party/mame/README.md lists them);
+- the rest of third_party/ (SLJIT, BSD-2-Clause; RmlUi, MIT, with the MIT libraries it bundles) and
+  assets/fonts/ (Barlow Condensed, SIL Open Font License 1.1): each under its own licence, in its folder
+  or at the top of its files;
+- tools/ref/supermodel-cov.patch: a patch to Supermodel (GPL-3.0, as Supermodel), used only to build
+  the reference the port was checked against; nothing of it is in the game;
+- the app icon (assets/icon/: icon.png, VF3.icns, VF3.ico, and what tools/release/make_icon.py draws),
+  by Mr Finster under the Creative Commons Attribution 4.0 International licence (CC BY 4.0,
+  https://creativecommons.org/licenses/by/4.0/): share and adapt it, crediting "Mr Finster".

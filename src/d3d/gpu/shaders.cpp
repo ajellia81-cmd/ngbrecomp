@@ -1,5 +1,5 @@
 #include "gpu/shaders.h"
-#include "gpu/motion.h"
+#include "gpu/scene_motion.h"
 #include <regex>
 #include "gpu/vertex.h"
 
@@ -76,11 +76,7 @@ const ShaderHooks& Hooks() {
 std::string Common() {
     std::string s=kCommonHead + Hooks().Constants() + kCommonTail;
 #ifdef NGB_SMOOTH_MOTION
-    s += R"(float4 motion_vc[192];
-    float4x4 motion_wvp, motion_wv, motion_wvn;
-    float4x4 motion_wvb[4], motion_wvbn[4], motion_pv;
-    float4 motion;
-)";
+    s += "    float4 motion;\n";
 #endif
     return s+"};\n";
 }
@@ -1126,14 +1122,19 @@ std::string QuadHlsl(std::string s) {
 #ifdef NGB_SMOOTH_MOTION
 namespace gpu {
 std::string MotionVertexHlsl(std::string s) {
-    const std::string entry="VOut main(VIn i)";
-    size_t start=s.find(entry);
-    if (start==std::string::npos) return {}; // never silently advertise an unwrapped shader
-    // Retained inputs are interpolated by MotionPose::Midpoint. Keep the
-    // authoritative position program, varying generation and depth epilogue.
-    // Blending final clip positions independently in each material shader can
-    // disagree at EQUAL-depth boundaries even with precise interpolation.
-    return s;
+    // An extra read-only vertex buffer supplies the VF3 scene result. The
+    // original program still computes its colours, UVs and other varyings.
+    const std::string entry="VOut main(";
+    size_t start=s.find(entry), end=s.find(") {",start);
+    if(start==std::string::npos || end==std::string::npos) return {};
+    s.insert(end,", uint scene_vertex : SV_VertexID");
+    const std::string program="    precise float4 p = oPos;";
+    const std::string fixed="    o.pos = cp;";
+    size_t at=s.find(program);
+    if(at!=std::string::npos) s.insert(at,"    if (motion.x > 0) oPos = scene_positions[scene_vertex];\n");
+    else if((at=s.find(fixed))!=std::string::npos) s.insert(at,"    if (motion.x > 0) cp = scene_positions[scene_vertex];\n");
+    else return {};
+    return "[[vk::binding(10, 0)]] StructuredBuffer<float4> scene_positions;\n"+s;
 }
 }
 #endif

@@ -1,14 +1,20 @@
-"""Validate original depth arithmetic after retained-input interpolation."""
+"""Check that the production shader wrapper consumes VF3 geometry only on replay."""
 from pathlib import Path
-import struct
 import sys
 
 def main():
-    folder=Path(sys.argv[1])
-    for name in ['motion-fixed.vert.hlsl','motion-program.vert.hlsl']:
-        source=(folder/name).read_text()
-        assert 'MotionClipPosition' not in source
-        assert 'motion_previous' not in source
-        assert 'VOut main(VIn i)' in source
-    print('Motion shaders retain the original vertex program; intermediate input and finite/reset cases are checked by the native history test. No GPU execution implied.')
-if __name__=='__main__': main()
+    folder = Path(sys.argv[1])
+    for name in ["motion-fixed.vert.hlsl", "motion-program.vert.hlsl", "motion-decoded.vert.hlsl"]:
+        source = (folder / name).read_text()
+        assert "[[vk::binding(10, 0)]] StructuredBuffer<float4> scene_positions" in source
+        assert "uint scene_vertex : SV_VertexID" in source
+        assert "if (motion.x > 0)" in source
+        assert "scene_positions[scene_vertex]" in source
+        assert "motion_vc" not in source
+        assert "motion_previous" not in source
+    root = Path(__file__).resolve().parents[1]
+    assert not (root / "src/d3d/gpu/motion.h").exists()
+    print("Original endpoints stay guarded; replay consumes VF3 scene positions; legacy constant-bank interpolation removed. GPU execution is not implied.")
+
+if __name__ == "__main__":
+    main()

@@ -55,3 +55,11 @@ repository does include C translations of some of the game's functions, taken fr
 and modified for this port (the menus, the mouse, the cheats: `src/main_menu.c`, `src/pause_tab.c`,
 `src/menu_mouse.c` and others, listed in `src/manual_functions.json`), and the Direct3D functions of
 the Xbox SDK the game was built with (`src/d3d/d3d_orig.c`), behind the renderer's hooks.
+
+## VF3 scene interpolation
+
+`third_party/vf3_scene` contains the unchanged scene header/reference and the
+extracted interpolation implementation from `ajellia81-cmd/vf3-recomp`, commit
+`a8473a99091e6bb207c85d6d247eece8c4866b39`. Copyright (c) 2026 mr-finster,
+MIT; the full notice is in `third_party/vf3_scene/LICENSE` and is copied into
+the iOS bundle. No Model3 game data or hardware reader is linked.

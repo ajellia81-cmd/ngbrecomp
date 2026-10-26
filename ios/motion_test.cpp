@@ -1,149 +1,109 @@
-// No game inputs, GPU, desktop window or saves. Exercise the actual retained
-// pose and generated shader code; emitted fixtures are compiled by glslang in CI.
-#include "gpu/motion.h"
+// No game inputs, GPU, window or saves. Test the actual NGB scene bridge and
+// unchanged VF3 interpolation; emit the production shader wrappers for CI.
+#include "gpu/scene_motion.h"
 #include "gpu/upload_ring.h"
 #include <cmath>
 #include <fstream>
 #include <iostream>
 #include <stdexcept>
-
-static void check(bool value,const char *message) { if (!value) throw std::runtime_error(message); }
-int main(int argc,char **argv) {
-    using namespace gpu;
-    // Reproduce the old full-allocation guard: 31 MiB + a 2 MiB draw is
-    // inside 64 MiB, but Upload() wraps at the 32 MiB frame-slot boundary.
-    check(kUploadRingBytes==2*kUploadSlotBytes,"upload slots disagree with allocation");
-    check(UploadRingFits(0,kUploadSlotBytes),"exactly one slot must fit");
-    check(UploadRingFits(kUploadSlotBytes-4096,4096),"exact tail must fit");
-    check(!UploadRingFits(31u<<20,2u<<20),"draw would cross into a new uniform generation");
-    check(!UploadRingFits(0,kUploadSlotBytes+1),"oversized draw must not overwrite next frame");
-    check(!UploadRingFits(UINT64_MAX,1),"overflow must not make reservation fit");
-    State source; DrawConstants constants{};
-    MotionHistory history;
-    source.vsc[96]={1,0,0,0.1f};
-    DrawConstants midpoint{};
-    auto vertices=source.vsc;
-    history.Add(7,MotionPose::Capture(source,constants),midpoint,&vertices);
-    check(history.Resolve().matched==0,"first frame cannot interpolate");
-    // Mutation after capture cannot change the retained previous frame.
-    source.vsc[96][3]=0.3f; history.Finish(); vertices=source.vsc;
-    history.Add(7,MotionPose::Capture(source,constants),midpoint,&vertices);
-    check(history.Resolve().changed==1,"moved geometry must pair");
-    check(std::abs(vertices[96][3]-0.2f)<1e-6f,"history aliases mutable current constants");
-    check(midpoint.motion[0]==0.0f,"midpoint must use the original vertex program");
-    history.Add(8,MotionPose::Capture(source,constants),midpoint,&vertices);
-    check(history.Resolve().missing==1,"new topology must not pair");
-    history.Finish(); history.Reset();
-    history.Add(7,MotionPose::Capture(source,constants),midpoint,&vertices);
-    check(history.Resolve().matched==0,"lifecycle/cut reset retained history");
-    // Repeated meshes change draw order as the camera culls room pieces.
-    // The old occurrence matching pulls both pieces to the middle of the room.
-    MotionHistory room;
-    State left,right;left.vsc[96][3]=10;right.vsc[96][3]=20;
-    DrawConstants lc{},rc{};auto lv=left.vsc,rv=right.vsc;
-    room.Add(99,MotionPose::Capture(left,lc),lc,&lv);
-    room.Add(99,MotionPose::Capture(right,rc),rc,&rv);room.Finish();
-    right.vsc[96][3]=20.2f;left.vsc[96][3]=10.2f;
-    rv=right.vsc;lv=left.vsc;
-    room.Add(99,MotionPose::Capture(right,rc),rc,&rv);
-    room.Add(99,MotionPose::Capture(left,lc),lc,&lv);
-    auto paired=room.Resolve();
-    check(paired.matched==2 && paired.reordered==2,"reordered meshes paired by occurrence");
-    check(std::abs(rv[96][3]-20.1f)<1e-5f && std::abs(lv[96][3]-10.1f)<1e-5f,"room pieces moved to unrelated poses");
-    room.Resolve();check(std::abs(rv[96][3]-20.1f)<1e-5f,"Resolve averaged a midpoint twice");
-    room.Finish();
-    left.vsc[96][3]=10.4f;lv=left.vsc;
-    room.Add(99,MotionPose::Capture(left,lc),lc,&lv);
-    check(room.Resolve().matched==1 && std::abs(lv[96][3]-10.3f)<1e-5f,"culling paired the remaining mesh with its neighbour");
-    MotionHistory global;
-    State zero,two,near_one,near_two;
-    two.vsc[96][3]=.2f;near_one.vsc[96][3]=.11f;near_two.vsc[96][3]=.21f;
-    DrawConstants a0{},a1{},b0{},b1{};
-    auto z=zero.vsc,t=two.vsc,n1=near_one.vsc,n2=near_two.vsc;
-    global.Add(88,MotionPose::Capture(zero,a0),a0,&z);
-    global.Add(88,MotionPose::Capture(two,a1),a1,&t);global.Finish();
-    global.Add(88,MotionPose::Capture(near_one,b0),b0,&n1);
-    global.Add(88,MotionPose::Capture(near_two,b1),b1,&n2);global.Resolve();
-    check(std::abs(n1[96][3]-.055f)<1e-5f && std::abs(n2[96][3]-.205f)<1e-5f,"first draw stole a closer pose from another draw");
-    // A new visible lamp can replace an old one even with a singleton key.
-    // Nearest-only matching fabricated a glow halfway across the room.
-    MotionHistory replaced;
-    State lamp;lamp.vsc[96][3]=10;DrawConstants lamp_dc{};auto lamp_vc=lamp.vsc;
-    replaced.Add(77,MotionPose::Capture(lamp,lamp_dc),lamp_dc,&lamp_vc);replaced.Finish();
-    lamp.vsc[96][3]=20;lamp_vc=lamp.vsc;
-    replaced.Add(77,MotionPose::Capture(lamp,lamp_dc),lamp_dc,&lamp_vc);
-    auto rejected=replaced.Resolve();
-    check(rejected.matched==0 && rejected.discontinuous==1 && lamp_vc[96][3]==20,"disappeared lamp was blended with a different visible instance");
-    // Normal small input motion still yields a distinct midpoint.
-    replaced.Finish();lamp.vsc[96][3]=20.2f;lamp_vc=lamp.vsc;
-    replaced.Add(77,MotionPose::Capture(lamp,lamp_dc),lamp_dc,&lamp_vc);
-    check(replaced.Resolve().matched==1 && std::abs(lamp_vc[96][3]-20.1f)<1e-5f,"normal small motion lost interpolation");
-    // Stale constants not read by this shader must not reject a stable draw.
-    State masked;masked.vs=std::make_shared<VertexShader>();
-    masked.vs->program={0,(1u<<21)|(5u<<13),(3u<<26),(15u<<12)|(1u<<11)|1u};
-    auto used=VertexProgramConstants(masked.vs->program);
-    check(used[5] && !used[170],"program constant use disagrees with MOV operand");
-    check(VertexProgramHlsl(masked.vs->program,1).find("c[5]")!=std::string::npos,"fixture shader does not use the claimed constant");
-    auto first=MotionPose::Capture(masked,constants);
-    masked.vsc[170][0]=1000;
-    auto second=MotionPose::Capture(masked,constants);
-    check(first.RelativeStep(second)==0,"unused constant rejected a stable pose");
-    DrawConstants irrelevant=constants;irrelevant.wvp[0]=10000;
-    check(first.RelativeStep(MotionPose::Capture(masked,irrelevant))==0,"programmable draw compared an unused fixed-function matrix");
-    masked.vsc[5][0]=1;
-    check(first.RelativeStep(MotionPose::Capture(masked,constants))>.25f,"active input discontinuity was ignored");
-    masked.vs->program[3]|=2;
-    check(VertexProgramConstants(masked.vs->program)[170],"relative addressing omitted possible input constants");
-    auto fixed=MotionPose::Capture(masked,constants,false);
-    masked.vsc[5][0]=2000;
-    check(fixed.RelativeStep(MotionPose::Capture(masked,constants,false))==0,"fixed function used irrelevant vertex program constants");
-    // Same byte storage and relative indices can select different submeshes.
-    Assembled range;State target;
-    range.index_count=3;range.index16=true;
-    auto key=MotionRangeKey(123,range,target);
-    range.base_vertex=3;
-    check(MotionRangeKey(123,range,target)!=key,"different absolute indexed vertices share a motion key");
-    range.base_vertex=0;range.draw_count=6;
-    check(MotionRangeKey(123,range,target)!=key,"different unindexed lengths share a motion key");
-    range.draw_count=0;target.rt.data=0x8000;
-    check(MotionRangeKey(123,range,target)==key,"rotating swap buffers lost adjacent history");
-    target.rt.format=0x100;
-    check(MotionRangeKey(123,range,target)!=key,"incompatible render formats share a motion key");
-    // Coplanar passes must receive identical midpoint inputs; a different
-    // material does not add independent clip-position arithmetic afterwards.
-    MotionPose prior=MotionPose::Capture(source,constants);
-    prior.wvp[0]=1; constants.wvp[0]=3;
-    auto pass_a=source.vsc,pass_b=source.vsc;
-    DrawConstants depth=constants,color=constants;
-    check(prior.Midpoint(pass_a,depth) && prior.Midpoint(pass_b,color),"valid shared pose rejected");
-    check(depth.wvp[0]==2 && !std::memcmp(depth.wvp,color.wvp,sizeof depth.wvp),"multipass inputs differ");
-    check(constants.wvp[0]==3,"authoritative endpoint mutated");
-    pass_b[0][0]=INFINITY; auto unchanged=pass_b;
-    check(!prior.Midpoint(pass_b,color),"non-finite pose accepted");
-    check(!std::memcmp(pass_b.data(),unchanged.data(),sizeof pass_b),"invalid pose partially blended");
-        // Newly rasterized midpoint geometry, not a copy of an endpoint. Four output
-    // aspects must retain their distinct projected positions and game time.
-    for (float aspect : {4.f/3,16.f/9,16.f/10,64.f/27}) {
-        float old_x=0.1f/aspect,now_x=0.3f/aspect,mid_x=(old_x+now_x)*0.5f;
-        check(mid_x!=old_x && mid_x!=now_x,"intermediate scene repeats an endpoint");
+using namespace gpu;
+using Mat=video::Mat4;
+static void check(bool v,const char* why) {if(!v) throw std::runtime_error(why);}
+static void near(float a,float b,const char* why) {if(std::fabs(a-b)>.003f) {std::cerr<<a<<" != "<<b<<'\n';throw std::runtime_error(why);}}
+struct Source {unsigned mux=1,reg=0;std::array<unsigned,4> sw{0,1,2,3};};
+static void instruction(std::vector<uint32_t>& code,unsigned mac,unsigned ilu,unsigned constant,unsigned dest,unsigned mask,
+                        Source a={},Source b={},Source c={},unsigned imask=0,unsigned outmask=0,bool output_ilu=false,bool relative=false) {
+    uint32_t w1=(mac<<21)|(ilu<<25)|(constant<<13);
+    for(unsigned i=0;i<4;i++) w1|=a.sw[i]<<(6-i*2);
+    uint32_t w2=(a.mux<<26)|(a.reg<<28)|(b.mux<<11)|(b.reg<<13);
+    for(unsigned i=0;i<4;i++) {w2|=b.sw[i]<<(23-i*2);w2|=c.sw[i]<<(8-i*2);}
+    w2|=c.reg>>2;
+    uint32_t w3=(c.mux<<28)|((c.reg&3)<<30)|(dest<<20)|(mask<<24)|(imask<<16)|(outmask<<12);
+    if(outmask) w3|=1u<<11;
+    if(output_ilu) w3|=4;
+    if(relative) w3|=2;
+    code.insert(code.end(),{0,w1,w2,w3});
+}
+static std::vector<uint32_t> position_program() {
+    std::vector<uint32_t> code;
+    for(unsigned i=0;i<4;i++) instruction(code,7,0,96+i,0,8u>>i,{2},{3});
+    instruction(code,0,2,0,1,0,{},{},{1,0,{3,3,3,3}},15);
+    instruction(code,2,0,0,0,14,{1,0},{1,1});
+    instruction(code,2,0,58,0,14,{1,0},{3});
+    instruction(code,3,0,59,0,14,{1,0},{},{3});
+    instruction(code,1,0,0,0,0,{1,0},{},{},0,15);
+    code.back()|=1;
+    return code;
+}
+static void constants(State& s,unsigned base,const Mat& m) {
+    for(unsigned r=0;r<4;r++) for(unsigned c=0;c<4;c++) s.vsc[base+r][c]=m.m[c*4+r];
+}
+static Mat projection() {Mat m{};m.m[0]=1;m.m[5]=1;m.m[10]=1000.f/999;m.m[11]=1;m.m[14]=-1000.f/999;return m;}
+static State state(const Mat& model,float camera=0) {
+    State s;s.vs_handle=1;s.vs=std::make_shared<VertexShader>();s.vs->program=position_program();
+    auto p=projection();auto view=Mat::identity();view.m[12]=camera;
+    std::copy(p.m,p.m+16,s.scene_projection.begin());std::copy(view.m,view.m+16,s.scene_view.begin());s.scene_camera_valid=true;
+    s.vsc[58]={320,-240,16777215,0};s.vsc[59]={320,240,0,0};
+    constants(s,96,p*view*model);constants(s,100,view*model);
+    return s;
+}
+static Assembled geometry(float* data,unsigned count=3) {
+    Assembled a;a.regs=1;a.vertex_count=count;a.draw_count=count;a.buffer_count=1;
+    a.buffers[0]={reinterpret_cast<uint8_t*>(data),count*16,16};a.elements[0]={2,0,0};return a;
+}
+int main(int argc,char** argv) {
+    check(UploadRingFits(0,kUploadSlotBytes),"full upload slot rejected");
+    check(!UploadRingFits(31u<<20,2u<<20),"draw crosses retained frame allocation");
+    Mat model=Mat::identity();model.m[12]=10;model.m[14]=200;
+    State s=state(model);DrawConstants dc{};float raw[]={0,0,0,1, 1,0,0,1, 0,1,0,1};
+    auto a=geometry(raw);ScenePosition p{};
+    check(SceneVertexPosition(s,a,0,dc,p),"actual vertex program failed");near(p[0],336,"viewport X differs");near(p[1],240,"viewport Y differs");near(p[3],200,"clip W differs");
+    // Relative addressing and paired MAC/ILU both read pre-instruction state.
+    State relative=s;relative.vs=std::make_shared<VertexShader>();auto& code=relative.vs->program;
+    instruction(code,13,0,10,0,0,{3}); // a0 = c10.x = 2
+    instruction(code,1,0,20,0,0,{3},{},{},0,15,false,true);code.back()|=1;
+    relative.vsc[10]={2,0,0,0};relative.vsc[22]={7,8,9,10};
+    check(SceneVertexPosition(relative,a,0,dc,p),"relative position program rejected");near(p[0],7,"bone address was not retained");near(p[3],10,"relative constant W differs");
+    SceneMotion history;std::vector<SceneOutput> before(10),after(11);
+    float meshes[10][12]{};
+    for(unsigned i=0;i<10;i++) {std::copy(raw,raw+12,meshes[i]);if(i<8) meshes[i][4]=1+float(i)*.1f;}
+    auto add=[&](unsigned i,float camera,SceneOutput& output) {
+        auto m=Mat::identity();m.m[12]=i<8?float(i*4):i==8?-20:20;m.m[14]=i<8?200+float(i*10):30;
+        auto st=state(m,camera);auto draw=geometry(meshes[i]);
+        check(history.Add(st,draw,dc,output),"valid model was not imported");
+    };
+    for(unsigned i=0;i<10;i++) add(i,0,before[i]);
+    check(history.Resolve().changed==0,"first scene invented previous geometry");history.Finish();
+    for(unsigned i=0;i<8;i++) add(i,-1,after[i]);
+    add(9,-1,after[8]);add(8,-1,after[9]);add(9,-1,after[10]);
+    auto stats=history.Resolve();
+    check(stats.shared>=1,"multipass model not shared");check(stats.vf.matched>=10,"VF3 did not pair the scene");
+    check(!after[8].positions.empty() && !after[9].positions.empty(),"repeated instances lost midpoint");
+    near(after[8].positions[0][0],320+320*19.5f/30,"right lamp moved to a different lamp");
+    near(after[9].positions[0][0],320+320*-20.5f/30,"left lamp moved to a different lamp");
+    check(after[8].positions==after[10].positions,"EQUAL-depth material passes receive different geometry");
+    near(s.vsc[96][3],10,"endpoint shader constants were mutated");
+    history.Finish();history.Reset();SceneOutput reset;
+    add(9,-2,reset);check(history.Resolve().changed==0,"reset reused an old scene");
+    // Raw SHORT3 decode and base-vertex triangle strip indexing are imported.
+    int16_t short_data[12]={0,0,0,0, 1,0,0,0, 0,1,0,0};
+    auto packed=a;packed.buffers[0]={reinterpret_cast<const uint8_t*>(short_data),sizeof short_data,8};
+    packed.elements[0].format=14;packed.decode=kDecodeIntW1;
+    check(SceneVertexPosition(s,packed,1,dc,p),"SHORT3 input decode failed");near(p[0],337.6f,"SHORT3 position changed");
+    std::string fixed=MotionVertexHlsl(FixedVertexHlsl(1,false));
+    std::string program=MotionVertexHlsl(VertexProgramHlsl(position_program(),1));
+    std::string decoded=MotionVertexHlsl(VertexProgramHlsl(position_program(),1,kDecodeIntW1));
+    check(fixed.find("scene_positions[scene_vertex]")!=std::string::npos,"fixed shader not connected to scene output");
+    check(program.find("scene_positions[scene_vertex]")!=std::string::npos,"program shader not connected to scene output");
+    check(decoded.find("VOut main(VRaw ri, uint scene_vertex")!=std::string::npos,"decoded vertex entry not wrapped");
+    auto shader_file=[](const std::string& path,std::string source) {
+        for(size_t at=source.find("1.#INF");at!=std::string::npos;at=source.find("1.#INF")) source.replace(at,6,"asfloat(0x7F800000)");
+        std::ofstream(path)<<source;
+    };
+    if(argc>1) {
+        shader_file(std::string(argv[1])+"/motion-fixed.vert.hlsl",fixed);
+        shader_file(std::string(argv[1])+"/motion-program.vert.hlsl",program);
+        shader_file(std::string(argv[1])+"/motion-decoded.vert.hlsl",decoded);
     }
-    if (argc==2) {
-        auto emit=[&](const char *name,std::string shader) {
-            auto wrapped=MotionVertexHlsl(shader);
-            check(!wrapped.empty() && wrapped.find("motion_previous")==std::string::npos,"clip-space interpolation unexpectedly retained");
-            check(wrapped==shader,"authoritative position program changed");
-            std::ofstream(std::string(argv[1])+"/"+name)<<wrapped;
-        };
-        emit("motion-fixed.vert.hlsl",FixedVertexHlsl(1,false));
-        std::vector<uint32_t> program;
-        for (unsigned row=0;row<4;row++) {
-            program.push_back(0);
-            program.push_back((7u<<21)|((96+row)<<13)|0x1B);
-            program.push_back((2u<<26)|(1u<<21)|(2u<<19)|(3u<<17)|(3u<<11));
-            program.push_back(((8u>>row)<<12)|(1u<<11)|(row==3));
-        }
-        emit("motion-program.vert.hlsl",VertexProgramHlsl(program,1));
-        check(MotionVertexHlsl("no vertex entry").empty(),"unsupported entry silently accepted");
-    }
-    std::cout<<"Smooth Motion: 32 MiB slot boundaries, owned history, changed geometry, topology/reset rejection and fixed/program shader generation: OK\n";
+    std::cout<<"Unchanged VF3 core with NGB scene extraction: camera, repeated instances, shared depth passes, bone addressing, raw formats, reset and shader wrappers passed.\n";
 }

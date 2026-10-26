@@ -54,7 +54,8 @@ if(NGB_NV2A_VK)
         src/d3d/vk/spirv.cpp
         src/d3d/gpu/shaders.cpp
         src/d3d/gpu/vertex.cpp
-        src/d3d/gpu/texture.cpp)
+        src/d3d/gpu/texture.cpp
+        src/d3d/gpu/scene_motion.cpp)
     target_include_directories(ngb_d3d PRIVATE
         src
         src/d3d src/d3d/compat
@@ -69,6 +70,8 @@ if(NGB_NV2A_VK)
     target_compile_options(ngb_d3d PRIVATE -O2 -fno-strict-aliasing)
     if(CMAKE_SYSTEM_NAME STREQUAL "iOS")
         target_compile_definitions(ngb_d3d PRIVATE NGB_IOS_APP=1 NGB_SMOOTH_MOTION=1)
+        target_sources(ngb_d3d PRIVATE third_party/vf3_scene/interpolate.cpp)
+        set_source_files_properties(src/d3d/gpu/scene_motion.cpp PROPERTIES COMPILE_OPTIONS "-ffp-contract=off")
     endif()
 endif()
 

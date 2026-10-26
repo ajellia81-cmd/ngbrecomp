@@ -114,10 +114,7 @@ struct DrawConstants {
     float uvg[4][4];
     float qsnap[4];
 #ifdef NGB_SMOOTH_MOTION
-    float motion_vc[192][4];
-    float motion_wvp[16], motion_wv[16], motion_wvn[16];
-    float motion_wvb[4][16], motion_wvbn[4][16], motion_pv[16];
-    float motion[4]; // alpha; original draws use zero (no second evaluation)
+    float motion[4]; // x: use owned VF3 scene vertex positions (replay only)
 #endif
 };
 

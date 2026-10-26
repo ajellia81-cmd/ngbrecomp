@@ -74,12 +74,15 @@ void VulkanBackend::MotionFeedback(Target *target) {
 void VulkanBackend::MotionReplay(const MotionDraw& p) {
     // Upload can submit/reset the ring. All following bindings are rebuilt from
     // this owned packet, exactly as the original draw rebuilds its bindings.
-    uint64_t required=sizeof p.vc+sizeof p.dc+ringAlign_*2+16*16+4+p.indices.size();
+    uint64_t required=sizeof p.vc+sizeof p.dc+ringAlign_*3+16*16+4+p.indices.size()+p.scene.positions.size()*sizeof(ScenePosition);
     for (uint32_t i=0;i<p.buffers;i++) required+=p.vertices[i].size();
     if (required>kUploadSlotBytes) { motion_valid_=false; return; }
     if (!UploadRingFits(ring_pos_,required)) Submit();
     VkDeviceSize vc=Upload(p.vc.data(),sizeof p.vc,ringAlign_);
-    VkDeviceSize dc=Upload(&p.dc,sizeof p.dc,ringAlign_);
+    DrawConstants constants=p.dc;
+    constants.motion[0]=p.scene.positions.empty()?0.f:1.f;
+    VkDeviceSize dc=Upload(&constants,sizeof constants,ringAlign_);
+    VkDeviceSize positions=p.scene.positions.empty()?vc:Upload(p.scene.positions.data(),p.scene.positions.size()*sizeof(ScenePosition),ringAlign_);
     VkDeviceSize offsets[16]{}; VkBuffer buffers[16]{};
     for (uint32_t i=0;i<p.buffers;i++) {
         offsets[i]=Upload(p.vertices[i].data(),p.vertices[i].size(),16); buffers[i]=ring_;
@@ -94,15 +97,17 @@ void VulkanBackend::MotionReplay(const MotionDraw& p) {
     BeginRendering(MotionTargetFor(p.rt),MotionTargetFor(p.ds));
     d_.vkCmdBindPipeline(cmd_,VK_PIPELINE_BIND_POINT_GRAPHICS,p.pipeline);
     VkDescriptorBufferInfo uniform[2]={{ring_,vc,sizeof p.vc},{ring_,dc,sizeof p.dc}};
-    VkWriteDescriptorSet writes[10]{};
-    for (uint32_t i=0;i<10;i++) {
+    VkDescriptorBufferInfo scene_positions{ring_,positions,p.scene.positions.empty()?16:p.scene.positions.size()*sizeof(ScenePosition)};
+    VkWriteDescriptorSet writes[11]{};
+    for (uint32_t i=0;i<11;i++) {
         auto& w=writes[i]; w.sType=VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
         w.dstBinding=i; w.descriptorCount=1;
-        if (i<2) { w.descriptorType=VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER; w.pBufferInfo=&uniform[i]; }
+        if(i==10) {w.descriptorType=VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;w.pBufferInfo=&scene_positions;}
+        else if (i<2) { w.descriptorType=VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER; w.pBufferInfo=&uniform[i]; }
         else { w.descriptorType=i<6 ? VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE : VK_DESCRIPTOR_TYPE_SAMPLER;
             w.pImageInfo=i<6 ? &images[i-2] : &p.samplers[i-6]; }
     }
-    d_.vkCmdPushDescriptorSetKHR(cmd_,VK_PIPELINE_BIND_POINT_GRAPHICS,pipe_layout_,0,10,writes);
+    d_.vkCmdPushDescriptorSetKHR(cmd_,VK_PIPELINE_BIND_POINT_GRAPHICS,pipe_layout_,0,11,writes);
     d_.vkCmdSetViewport(cmd_,0,1,&p.viewport); d_.vkCmdSetScissor(cmd_,0,1,&p.scissor);
     d_.vkCmdSetBlendConstants(cmd_,p.blend);
     d_.vkCmdSetStencilReference(cmd_,VK_STENCIL_FACE_FRONT_AND_BACK,p.stencil);
@@ -126,12 +131,16 @@ void VulkanBackend::MotionPresent(const Surface& front,Image& endpoint,float bar
     if (!motion_capture_ || !motion_valid_ || !motion_3d_) return;
     motion_match_stats_=motion_history_.Resolve();
     motion_changed_=motion_match_stats_.changed;
-    motion_match_window_.matched+=motion_match_stats_.matched;
-    motion_match_window_.missing+=motion_match_stats_.missing;
-    motion_match_window_.reordered+=motion_match_stats_.reordered;
-    motion_match_window_.bounded+=motion_match_stats_.bounded;
-    motion_match_window_.discontinuous+=motion_match_stats_.discontinuous;
-    motion_match_window_.largest_step=std::max(motion_match_window_.largest_step,motion_match_stats_.largest_step);
+    motion_match_window_.draws+=motion_match_stats_.draws;
+    motion_match_window_.models+=motion_match_stats_.models;
+    motion_match_window_.shared+=motion_match_stats_.shared;
+    motion_match_window_.unsupported+=motion_match_stats_.unsupported;
+    motion_match_window_.fallback+=motion_match_stats_.fallback;
+    motion_match_window_.cuts+=motion_match_stats_.cuts;
+    motion_match_window_.vf.matched+=motion_match_stats_.vf.matched;
+    motion_match_window_.vf.total+=motion_match_stats_.vf.total;
+    motion_match_window_.vf.blended+=motion_match_stats_.vf.blended;
+    motion_match_window_.cpu_ms+=motion_match_stats_.cpu_ms;
     if (!motion_changed_ || ngb_quick_wanted() || !motion_last_ns_ || now-motion_last_ns_>50000000LL) return;
     Target *target=EnsureTarget(front,false);
     if (!target || !motion_valid_) return;
@@ -185,9 +194,10 @@ void VulkanBackend::MotionFinish() {
         std::fprintf(stderr,"[Smooth Motion eligibility] requested %d; shared queue %d; scene draws %u; 2D %d; movie %d; quick menu %d; cooldown %u frames; EQUAL-depth draws %u\n",
             ngb_pc_setting(26),int(shared_),threed_,ngb_2d_screen_frame(int(threed_)),ngb_movie_active(),ngb_quick_wanted(),motion_cooldown_,motion_equal_);
 #endif
-        std::fprintf(stderr,"[Smooth Motion matching/5s] matched %u; missing %u; reordered %u; bounded groups %u; discontinuous %u; largest relative input step %.3f\n",
-            motion_match_window_.matched,motion_match_window_.missing,motion_match_window_.reordered,motion_match_window_.bounded,
-            motion_match_window_.discontinuous,double(motion_match_window_.largest_step));
+        std::fprintf(stderr,"[Smooth Motion VF3 scene/5s] core a8473a99091e unchanged; draws %u; models %u; shared passes %u; unsupported %u; centered models %u; cuts %u; VF3 matched %zu/%zu; vertex blends %zu; extraction+interpolation %.1f ms total\n",
+            motion_match_window_.draws,motion_match_window_.models,motion_match_window_.shared,motion_match_window_.unsupported,
+            motion_match_window_.fallback,motion_match_window_.cuts,motion_match_window_.vf.matched,motion_match_window_.vf.total,
+            motion_match_window_.vf.blended,motion_match_window_.cpu_ms);
         motion_match_window_={};
         motion_log_ns_=now; motion_pictures_=0;
     }

@@ -38,7 +38,7 @@
 #include "gpu/shaders.h"
 #include "gpu/texture.h"
 #include "gpu/vertex.h"
-#include "gpu/motion.h"
+#include "gpu/scene_motion.h"
 #include "gpu/upload_ring.h"
 #include "kernel/kernel.h"
 #include "vk/spirv.h"
@@ -356,6 +356,7 @@ private:
         VkPipeline pipeline=VK_NULL_HANDLE;
         std::array<std::array<float,4>,192> vc{};
         DrawConstants dc{};
+        SceneOutput scene;
         std::array<std::vector<uint8_t>,16> vertices;
         std::array<uint32_t,16> strides{};
         std::vector<uint8_t> indices;
@@ -374,11 +375,11 @@ private:
     uint32_t motion_cooldown_=0,motion_late_=0;
     int64_t motion_swap_ns_=0;
     uint32_t motion_3d_=0,motion_changed_=0,motion_pictures_=0,motion_equal_=0;
-    MotionHistory::Stats motion_match_stats_{},motion_match_window_{};
+    SceneMotion::Stats motion_match_stats_{},motion_match_window_{};
     int64_t motion_last_ns_=0,motion_log_ns_=0;
     std::vector<std::function<void()>> motion_commands_;
     std::unordered_map<VkImage,MotionTarget> motion_targets_;
-    MotionHistory motion_history_;
+    SceneMotion motion_history_;
     Image *motion_ready_=nullptr;
     Image motion_display_[3];
     int motion_display_next_=0;
@@ -769,7 +770,7 @@ bool VulkanBackend::FinishDevice() {
     std::fprintf(stderr, "[D3D] depth: %s\n", ds_format_ == VK_FORMAT_D32_SFLOAT_S8_UINT ? "32-bit float" : "24-bit");
     VkPhysicalDeviceProperties pr;
     vkGetPhysicalDeviceProperties(phys_, &pr);
-    ringAlign_ = std::max<VkDeviceSize>(pr.limits.minUniformBufferOffsetAlignment, 16);
+    ringAlign_ = std::max<VkDeviceSize>(std::max(pr.limits.minUniformBufferOffsetAlignment,pr.limits.minStorageBufferOffsetAlignment), 16);
     VkPhysicalDeviceFeatures feat;
     vkGetPhysicalDeviceFeatures(phys_, &feat);   // both devices enable it when it is there
     anisotropy_ = feat.samplerAnisotropy == VK_TRUE;
@@ -872,7 +873,7 @@ bool VulkanBackend::Init(uint32_t, uint32_t) {
     VkBufferCreateInfo bci{VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
     bci.size = kRingSize;
     bci.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT |
-                VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
+                VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
     VmaAllocationCreateInfo aci{};
     aci.usage = VMA_MEMORY_USAGE_AUTO;
     aci.flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT;
@@ -881,8 +882,13 @@ bool VulkanBackend::Init(uint32_t, uint32_t) {
     ring_cpu_ = static_cast<uint8_t*>(info.pMappedData);
 
     // set 0: VC, DC, four textures, four samplers; pushed per draw
-    VkDescriptorSetLayoutBinding b[10] = {};
-    for (int i = 0; i < 10; i++) {
+#ifdef NGB_SMOOTH_MOTION
+    constexpr int descriptor_count=11;
+#else
+    constexpr int descriptor_count=10;
+#endif
+    VkDescriptorSetLayoutBinding b[descriptor_count] = {};
+    for (int i = 0; i < descriptor_count; i++) {
         b[i].binding = uint32_t(i);
         b[i].descriptorCount = 1;
         b[i].stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
@@ -891,7 +897,11 @@ bool VulkanBackend::Init(uint32_t, uint32_t) {
     }
     VkDescriptorSetLayoutCreateInfo lci{VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO};
     lci.flags = VK_DESCRIPTOR_SET_LAYOUT_CREATE_PUSH_DESCRIPTOR_BIT_KHR;
-    lci.bindingCount = 10;
+#ifdef NGB_SMOOTH_MOTION
+    b[10].descriptorType=VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+    b[10].stageFlags=VK_SHADER_STAGE_VERTEX_BIT;
+#endif
+    lci.bindingCount = descriptor_count;
     lci.pBindings = b;
     VKCHECK(d_.vkCreateDescriptorSetLayout(dev_, &lci, nullptr, &set_layout_));
     VkPipelineLayoutCreateInfo plci{VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO};
@@ -2524,7 +2534,7 @@ void VulkanBackend::Draw(const State& s, uint32_t prim, uint32_t start, uint32_t
     }
 #ifdef NGB_SMOOTH_MOTION
     const bool motion_shader=motion_capture_ && !a.pretransformed && !quad && !points;
-    if (motion_shader) vkey ^= 0x534D4F4F54483031ull;
+    if (motion_shader) vkey ^= 0x5646335343454E45ull;
 #endif
     async_now_ = async_;
     VkShaderModule vmod = Module(vkey, [&] {
@@ -3140,6 +3150,15 @@ void VulkanBackend::Draw(const State& s, uint32_t prim, uint32_t start, uint32_t
         }
     }
     d_.vkCmdPushDescriptorSetKHR(cmd_, VK_PIPELINE_BIND_POINT_GRAPHICS, pipe_layout_, 0, 10, w);
+#ifdef NGB_SMOOTH_MOTION
+    // The endpoint never enables the override, but Vulkan requires a valid
+    // descriptor for every binding a dynamically branched shader can read.
+    VkDescriptorBufferInfo scene_dummy{ring_,vc,16};
+    VkWriteDescriptorSet scene_write{VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET};
+    scene_write.dstBinding=10;scene_write.descriptorCount=1;
+    scene_write.descriptorType=VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;scene_write.pBufferInfo=&scene_dummy;
+    d_.vkCmdPushDescriptorSetKHR(cmd_,VK_PIPELINE_BIND_POINT_GRAPHICS,pipe_layout_,0,1,&scene_write);
+#endif
 
     // the viewport covers the target (the title's viewport is in the shader), upside down for
     // Direct3D's clip space; the scissor clips to the title's viewport and scissor
@@ -3238,21 +3257,18 @@ void VulkanBackend::Draw(const State& s, uint32_t prim, uint32_t start, uint32_t
         packet->index16=a.index16; packet->base_vertex=a.base_vertex; packet->draw_count=a.draw_count;
         packet->lines=Lines(k); packet->line=wide_lines_ ? std::clamp(Bits(s.rs[kRsLineWidth])*sx,1.0f,line_max_) : 1.0f;
         packet->stencil=SimpleState(s,kMStencilRef)&0xFF; std::memcpy(packet->blend,bf,sizeof bf);
-        uint64_t identity=MotionRangeKey(Hash(&k,sizeof k),a,s);
-        identity=Hash(&s.viewport,sizeof s.viewport,identity);
-        identity=Hash(a.elements.data(),sizeof a.elements,identity);
+
         size_t bytes=sizeof(MotionDraw);
         for (uint32_t b=0;b<a.buffer_count;b++) {
             const auto& buffer=a.buffers[b];
             packet->vertices[b].assign(buffer.src,buffer.src+buffer.bytes);
             packet->strides[b]=buffer.stride; bytes+=buffer.bytes;
-            identity=Hash(buffer.src,buffer.bytes,identity);
-            identity=Hash(&buffer.stride,sizeof buffer.stride,identity);
+
         }
         if (ibytes) {
             auto *data=static_cast<const uint8_t*>(a.index_src);
             packet->indices.assign(data,data+ibytes); bytes+=ibytes;
-            identity=Hash(data,ibytes,identity);
+
         }
         for (int stage=0;stage<4;stage++) {
             packet->images[stage]=img[stage]; packet->samplers[stage]=smp[stage];
@@ -3263,11 +3279,13 @@ void VulkanBackend::Draw(const State& s, uint32_t prim, uint32_t start, uint32_t
                 if (target.fb.view==img[stage].imageView) packet->target_images[stage]=&target.fb;
             }
             if (from_target[stage] && !packet->target_images[stage]) motion_valid_=false;
-            identity=Hash(&s.textures[stage],sizeof(uint32_t),identity);
+
         }
         if (motion_shader) {
             motion_3d_++;
-            motion_history_.Add(identity,MotionPose::Capture(s,c,prog),packet->dc,&packet->vc);
+            // Scene extraction owns its vertices/matrices. No interpolation of
+            // the arbitrary constant bank or material state remains here.
+            motion_history_.Add(s,a,c,packet->scene);
         }
         motion_cpu_bytes_+=bytes;
         if (motion_cpu_bytes_>96u*1024u*1024u || motion_commands_.size()>16384) motion_valid_=false;

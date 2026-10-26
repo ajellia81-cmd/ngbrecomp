@@ -149,6 +149,13 @@ void Draw(uint32_t prim, uint32_t start, uint32_t count, const uint8_t* indices)
                      g_state.rs[gpu::kRsFogTableMode], st, en, de, g_state.rs[gpu::kRsFogColor],
                      g_state.rs[gpu::kRsRangeFogEnable]);
     }
+#ifdef NGB_SMOOTH_MOTION
+    // The title builds its programmable WVP from world * [view] * [projection]
+    // at these two camera matrices (the fixed-function device copy can be stale).
+    std::memcpy(g_state.scene_view.data(),HostPtr(0x977CE0),64);
+    std::memcpy(g_state.scene_projection.data(),HostPtr(0x977D20),64);
+    g_state.scene_camera_valid=true;
+#endif
     UpdateViewportConstants();
     if (g_backend) g_backend->Draw(g_state, prim, start, count, indices);
 }
