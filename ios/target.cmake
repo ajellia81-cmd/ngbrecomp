@@ -30,6 +30,8 @@ if(NGB_IOS_MOVIE_DIAGNOSTICS)
     # Wrap the existing entry points without editing their original bodies.
     set_property(SOURCE "${CMAKE_CURRENT_SOURCE_DIR}/src/menu_mouse.c" APPEND PROPERTY COMPILE_DEFINITIONS
         sub_001E6D30=ngb_movie_base_text_draw ngb_menu_glyph=ngb_movie_base_glyph)
+    set_property(SOURCE "${CMAKE_CURRENT_SOURCE_DIR}/src/pause_tab.c" APPEND PROPERTY COMPILE_DEFINITIONS
+        sub_002216B0=ngb_movie_base_sprite_submit)
 endif()
 if(NGB_IOS_KOREAN)
     if(NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/src/recomp/gen/recomp_korean.c")

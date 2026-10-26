@@ -6,8 +6,10 @@
 #include "launcher.h"
 #include "language_policy.h"
 #include "movie_diagnostics.h"
+#include "movie_subtitle_policy.h"
 extern void ngb_base_001E6AE0(void);
 extern void ngb_base_0017E8A0(void);
+extern void ngb_base_00232D40(void);
 extern int ngb_pc_setting(int);
 extern int ngb_ios_text_override(void);
 extern void ngb_pc_set_setting(int,int);
@@ -17,6 +19,32 @@ extern void ngb_pc_set_setting(int,int);
 unsigned ngb_ios_game_text_language(unsigned saved) {
     int selected=ngb_ios_text_override();
     return selected>=0 ? (unsigned)selected : saved;
+}
+void sub_00232D40(void) {
+    static NgbMovieSubtitlePolicy policy;
+    uint32_t cue=eax,slot=0x8FA960;
+    int changed=ngb_movie_subtitle_switch(&policy,
+        ngb_korean_active() && MEM32(0x9C2738),MEM32(0x9C2588),MEM32(0x9C25FC),cue);
+    // The movie owns caption slot zero in mode six. Its old frame-counted
+    // fade can outlast the next timed packet under load. Use the game's own
+    // close routine so a new cue does not wait behind or lose to that fade.
+    if (changed && MEM16(slot+0x5C)==1 && MEM16(slot+0x62)==6) {
+        uint32_t regs[]={eax,ecx,edx,ebx,esi,edi,esp,g_ebp,g_seh_ebp};
+        RecompXmm simd[]={xmm0,xmm1,xmm2,xmm3,xmm4,xmm5,xmm6,xmm7};
+        double fp[8];memcpy(fp,g_fp_stack,sizeof fp);
+        int top=g_fp_top,cmp=g_fp_cmp;uint16_t cw=g_fp_control_word,cc=g_fp_cc;
+        uint32_t caller=MEM32(esp);
+        eax=0;PUSH32(esp,caller);sub_00231EB0();
+        eax=regs[0];ecx=regs[1];edx=regs[2];ebx=regs[3];esi=regs[4];edi=regs[5];
+        esp=regs[6];g_ebp=regs[7];g_seh_ebp=regs[8];
+        xmm0=simd[0];xmm1=simd[1];xmm2=simd[2];xmm3=simd[3];
+        xmm4=simd[4];xmm5=simd[5];xmm6=simd[6];xmm7=simd[7];
+        memcpy(g_fp_stack,fp,sizeof fp);g_fp_top=top;g_fp_cmp=cmp;g_fp_control_word=cw;g_fp_cc=cc;
+#ifdef NGB_IOS_MOVIE_DIAGNOSTICS
+        ngb_movie_diag_emit("replace",cue,MEM16(slot+0x5C),MEM32(0x9C25FC),0);
+#endif
+    }
+    ngb_base_00232D40();
 }
 void sub_001E6AE0(void) {
 #ifdef NGB_IOS_MOVIE_DIAGNOSTICS
@@ -67,6 +95,24 @@ void ngb_korean_font_metrics(unsigned font,unsigned width,unsigned height,float 
 #ifdef NGB_IOS_MOVIE_DIAGNOSTICS
 extern void ngb_movie_base_text_draw(void);
 extern void ngb_movie_base_glyph(float,float,float,float,float,uint32_t);
+extern void ngb_movie_base_sprite_submit(void);
+extern uint32_t ngb_sprite_def(uint32_t);
+void sub_002216B0(void) {
+    uint32_t packet=eax,verts=esi;
+    ngb_movie_base_sprite_submit();
+    if (!eax) return;
+    uint32_t id=MEM32(packet)&0xFFFF;
+    if (id>=2048 || MEMF(verts+28)-MEMF(verts)<48 || MEMF(verts+60)-MEMF(verts+4)<8) return;
+    static uint32_t last[2048];static unsigned char seen[2048];
+    uint32_t frame=MEM32(0xD21734);
+    if (seen[id] && frame-last[id]<60) return;
+    uint32_t def=ngb_sprite_def(id);if (!def) return;
+    seen[id]=1;last[id]=frame;
+    ngb_movie_diag_emit("ui-sprite",id,MEM32(def+0x10),MEM32(def+0x14),MEM32(packet));
+    ngb_movie_diag_emit("ui-rect",MEM32(verts),MEM32(verts+4),MEM32(verts+28),MEM32(verts+60));
+    ngb_movie_diag_emit("ui-uv",MEM32(verts+20),MEM32(verts+24),MEM32(verts+48),MEM32(verts+80));
+    ngb_movie_diag_emit("ui-window",MEM32(def),MEM32(def+4),MEM32(def+8),MEM32(def+12));
+}
 void sub_001E6D30(void) {
     ngb_ios_movie_draw(MEM32(esp+4),MEM32(esp));
     ngb_movie_base_text_draw();
@@ -101,7 +147,7 @@ void ngb_ios_movie_probe(unsigned stage) {
 }
 void ngb_ios_movie_draw(unsigned state,unsigned caller) {
     if (!MEM32(0x9C2738)) return;
-    ngb_movie_diag_emit("draw",MEM32(state+0x10),MEM32(state+0x38),caller,MEM32(state+0x14));
+    ngb_movie_diag_emit("draw",MEM32(state+0x10),MEM32(state+0x38),caller,MEM32(state+0x20));
     ngb_movie_diag_emit("position",MEM32(state+0x3C),MEM32(state+0x40),MEM32(state+0x44),MEM32(state+0x48));
 }
 #endif

@@ -14,6 +14,7 @@ int main(int argc,char **argv) {
  ngb_movie_diag_open(argv[1],"test-version","test-source");
  ngb_movie_diag_glyph();
  for(unsigned i=0;i<41000;i++) ngb_movie_diag_emit("cue",i,2,3,4);
+ for(unsigned i=0;i<13000;i++) ngb_movie_diag_emit("ui-rect",i,2,3,4);
  return 0;
 }''')
     exe=folder/'recorder'
@@ -24,6 +25,9 @@ int main(int argc,char **argv) {
     lines=(folder/'movie-subtitles.log').read_text().splitlines()
     assert len(lines)==40002 and 'test-version' in lines[0]
     assert lines[-1].endswith(',00000002,00000003,00000004,1')
+    layout=(folder/'ui-layout.log').read_text().splitlines()
+    assert len(layout)==12002 and 'UI layout diagnostics' in layout[0]
+    assert 'ui-rect' in layout[-1] and not any(',ui-' in line for line in lines)
     # Disabled builds have no calls, data writes or recorder references.
     body='void run(void) {\n'+ '\n'.join(MOVIE_PROBES) +'\n}'
     body=body.replace('RECOMP_ENTRY(0x0019A7D0u);','/* marker */\nRECOMP_ENTRY(0x0019A7D0u);')

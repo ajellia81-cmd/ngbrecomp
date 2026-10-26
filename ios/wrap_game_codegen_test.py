@@ -13,13 +13,14 @@ class HooksTest(unittest.TestCase):
             source+='MEM32(0xDB9890)=1;\nx=MEM32(0xDB9894);\n}\n'
             source+='void movie_tick(void) { RECOMP_ENTRY(0x0019A7D0u); }\n'
             source+='void movie_cue(void) { loc_0019A9CD: ; }\n'
-            source+='void movie_enqueue(void) { RECOMP_ENTRY(0x00232D40u); }\n'
+            source+='void sub_00232D40(void) { RECOMP_ENTRY(0x00232D40u); }\n'
             source+='void movie_userdata(void) { loc_0031E1C5: ; }\n'
             (root/'recomp_0000.c').write_text(source)
             (root/'recomp_funcs.h').write_text('')
             wrap(root)
             result=(root/'recomp_0000.c').read_text()
             self.assertIn('void ngb_base_001E6AE0(void)',result)
+            self.assertIn('void ngb_base_00232D40(void)',result)
             self.assertIn('sub_001E6AE0();',result)
             self.assertEqual(result.count('ngb_ios_game_text_language(MEM32(0xDB9890))'),11)
             self.assertIn('MEM32(0xDB9890)=1;',result)

@@ -4,10 +4,11 @@
 #include <pthread.h>
 #include <time.h>
 #include <stdatomic.h>
+#include <string.h>
 
 static pthread_mutex_t lock=PTHREAD_MUTEX_INITIALIZER;
-static FILE *output;
-static unsigned lines;
+static FILE *output,*layout;
+static unsigned lines,layoutLines;
 static uint64_t started,flushed;
 static _Atomic unsigned glyphs;
 static uint64_t micros(void) {
@@ -25,18 +26,33 @@ void ngb_movie_diag_open(const char *directory,const char *version,const char *s
             fprintf(output,"Movie subtitle diagnostics v1; build=%s source=%s\n",version,source);
             fprintf(output,"us,event,a,b,c,d,glyphs (numeric fields hexadecimal; glyphs cumulative)\n");
             fflush(output);
+            if (snprintf(path,sizeof path,"%s/ui-layout.log",directory)<(int)sizeof path) {
+                layout=fopen(path,"w");
+                if (layout) {
+                    fprintf(layout,"UI layout diagnostics v1; build=%s source=%s\n",version,source);
+                    fprintf(layout,"us,event,a,b,c,d,glyphs (numeric fields hexadecimal)\n");
+                    fflush(layout);
+                }
+            }
         }
     }
     pthread_mutex_unlock(&lock);
 }
 void ngb_movie_diag_emit(const char *event,uint32_t a,uint32_t b,uint32_t c,uint32_t d) {
     pthread_mutex_lock(&lock);
-    if (output && lines<40000) {
+    int ui=!strncmp(event,"ui-",3);
+    FILE *file=ui ? layout : output;
+    unsigned *count=ui ? &layoutLines : &lines,limit=ui ? 12000 : 40000;
+    if (file && *count<limit) {
         uint64_t now=micros();
-        fprintf(output,"%llu,%s,%08x,%08x,%08x,%08x,%x\n",
+        fprintf(file,"%llu,%s,%08x,%08x,%08x,%08x,%x\n",
             (unsigned long long)(now-started),event,a,b,c,d,atomic_load_explicit(&glyphs,memory_order_relaxed));
-        lines++;
-        if (now-flushed>=500000 || lines==40000) { fflush(output);flushed=now; }
+        ++*count;
+        if (now-flushed>=500000 || *count==limit) {
+            if (output) fflush(output);
+            if (layout) fflush(layout);
+            flushed=now;
+        }
     }
     pthread_mutex_unlock(&lock);
 }

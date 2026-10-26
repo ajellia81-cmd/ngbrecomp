@@ -5,7 +5,7 @@ import argparse
 import re
 import tempfile
 
-WRAPPERS=('001E6AE0','0017E8A0')
+WRAPPERS=('001E6AE0','0017E8A0','00232D40')
 
 MOVIE_PROBES={
     'RECOMP_ENTRY(0x0019A7D0u);':1,

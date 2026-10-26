@@ -18,6 +18,7 @@ on:
       - 'ios/motion_test.cpp'
       - 'ios/game_hooks.c'
       - 'ios/movie_diagnostics.*'
+      - 'ios/movie_subtitle*'
       - 'ios/language_policy.h'
       - 'ios/runtime_ui_test.c'
       - 'ios/presenter_descriptor_test.py'
@@ -209,6 +210,7 @@ jobs:
           build/ios-platform/runtime-ui
           python3 ios/wrap_game_codegen_test.py
           python3 ios/movie_diagnostics_test.py
+          python3 ios/movie_subtitle_test.py
           python3 ios/korean_codegen_test.py
           python3 ios/dsp_mailbox_test.py
           python3 ios/tab_lettering_preview.py
