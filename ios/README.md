@@ -6,24 +6,29 @@ after restarting following the first load. Long-term reliability, performance an
 background resume still require testing. The older NGBBringup diagnostic app is
 a separate target.
 
-- App version: **0.2.0 (2.61)**; compiled revision and active log path are recorded in `Documents/build-info.txt`.
-- Build source: `56b3a88af07d3f0e9b66b1dfb083403dff9e64cb`, branch `ios-port`.
-- [Successful Actions run](https://github.com/ajellia81-cmd/ngbrecomp/actions/runs/40262850366).
-- [Encrypted IPA artifact](https://github.com/ajellia81-cmd/ngbrecomp/actions/runs/40262850366/artifacts/12625448486).
-- Unsigned IPA: **47,310,901 bytes**, containing **11,740 linked lifted game functions**,
+- App version: **0.2.0 (2.62)**; compiled revision and active log path are recorded in `Documents/build-info.txt`.
+- Build source: `ff806ed5afa4cfd32658e8b549e8e9bb2866b767`, branch `ios-port`.
+- [Successful Actions run](https://github.com/ajellia81-cmd/ngbrecomp/actions/runs/40268701451).
+- [Encrypted IPA artifact](https://github.com/ajellia81-cmd/ngbrecomp/actions/runs/40268701451/artifacts/12627971465).
+- Unsigned IPA: **47,313,011 bytes**, containing **11,740 linked lifted game functions**,
   55 additional Korean variants, the real engine/runtime, SDL UIKit entry point,
   MoltenVK framework and private translation capsule.
-- IPA SHA-256: `2b23f43a6c899535babb2cbe0b84b4a9491d2896dc98478aae87302bb2295486`.
-- GitHub artifact ZIP SHA-256: `af19a55cef04dd1eb15445304f626c7d138f790af6d9ee54e5e65e9fa9191490`.
+- IPA SHA-256: `32ce2ea5fa58636cccd7655040ac296596f1b78572d10c332862286d61514323`.
+- GitHub artifact ZIP SHA-256: `82c8d5e1ba986afbb57054e48556ba43e70368258a6e9efc805f0f3effd4b978`.
 
 The owner confirmed gameplay, Korean text and 120 FPS output in earlier builds.
-Build 2.61 replaces the previous constant-bank matcher with the unchanged VF3
-scene interpolation implementation pinned at `a8473a99091e6bb207c85d6d247eece8c4866b39`.
-NGB now supplies owned geometry, model-to-view matrices and viewports; the VF3
-result drives a replay-only vertex buffer shared across material/depth passes.
-Rigid transforms are proved algebraically and unchanged meshes are retained.
-The original evaluator handles nonlinear/skinned position programs. The full
-NGB renderer and all of VF3's material animation behavior are not identical.
+Build 2.62 retains the unchanged VF3 scene interpolation implementation pinned
+at `a8473a99091e6bb207c85d6d247eece8c4866b39`. It extends immutable geometry reuse
+to NGB's fixed-function terrain, which previously passed through per-vertex
+conversion and was rebuilt as deforming geometry each frame. Bone matrices and
+fixed-function state are now prepared once per draw. The position and explicit
+weight-sum behavior are checked against the original vertex calculation.
+
+Programmable rigid transforms retain their algebraic proof; nonlinear programs
+keep their evaluator. Material/depth passes share the replay-only geometry
+result. NGB's renderer and all of VF3's material animation behavior are not
+identical. Separate CPU telemetry reports extraction, unchanged VF3 interpolation
+and final projection costs.
 
 The pinned-code identity check, native scene/ownership tests, SPIR-V shader
 compilation, iPhoneOS full engine link and encrypted IPA packaging pass. Physical
