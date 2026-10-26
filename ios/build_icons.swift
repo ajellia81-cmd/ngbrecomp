@@ -1,11 +1,22 @@
-// Reuse the upstream app icon; only rasterize it to Apple's packaging sizes.
+// Crop the supplied cover without stretching, then rasterize Apple icon sizes.
 import AppKit
 import Foundation
+import ImageIO
 
 guard CommandLine.arguments.count == 4,
-      let source = NSImage(contentsOfFile: CommandLine.arguments[1]) else {
-    fatalError("Expected upstream icon, app bundle and scratch directory")
+      let input = CGImageSourceCreateWithURL(URL(fileURLWithPath: CommandLine.arguments[1]) as CFURL, nil),
+      let original = CGImageSourceCreateImageAtIndex(input, 0, nil) else {
+    fatalError("Expected cover artwork, app bundle and scratch directory")
 }
+// The supplied portrait has empty black space above the title. Keep the full
+// logo and Ryu's face in the square, removing the lower body rather than
+// squeezing the complete portrait into an icon.
+let side = min(original.width, original.height)
+let top = min(original.height - side, Int((Double(original.height) * 75.0 / 1280.0).rounded()))
+let rect = CGRect(x: CGFloat((original.width - side) / 2), y: CGFloat(top), width: CGFloat(side), height: CGFloat(side))
+guard let square = original.cropping(to: rect) else { fatalError("Cannot crop cover artwork") }
+let source = NSImage(cgImage: square, size: NSSize(width: CGFloat(side), height: CGFloat(side)))
+print("App icon square crop: \(original.width)x\(original.height), x=\(Int(rect.minX)), y=\(top), side=\(side)")
 let bundle = URL(fileURLWithPath: CommandLine.arguments[2])
 let scratch = URL(fileURLWithPath: CommandLine.arguments[3])
 let catalog = scratch.appendingPathComponent("Icons.xcassets")
@@ -58,4 +69,4 @@ var metadata = try PropertyListSerialization.propertyList(from: Data(contentsOf:
 let extra = try PropertyListSerialization.propertyList(from: Data(contentsOf: partial), format: nil) as! [String: Any]
 metadata.merge(extra) { _, iconValue in iconValue }
 try PropertyListSerialization.data(fromPropertyList: metadata, format: .xml, options: 0).write(to: plist)
-print("Upstream NGB icon packaged in iPhone asset catalog")
+print("Ninja Gaiden Black cover icon packaged in iPhone asset catalog")

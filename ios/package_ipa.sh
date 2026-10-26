@@ -22,9 +22,14 @@ binary = Path(sys.argv[1]).with_name('NinjaGaidenBlack').read_bytes()
 if revision.encode() not in binary or version.encode() not in binary:
     raise SystemExit('App metadata does not match the linked runtime build identifiers')
 print('Packaged runtime build:', version, revision)
+if metadata.get('NGBBuildConfiguration') != 'Release':
+    raise SystemExit('Only a verified Release configuration may be delivered')
+if metadata.get('CFBundleDisplayName') != 'Ninja Gaiden Black' or metadata.get('CFBundleName') != 'Ninja Gaiden Black':
+    raise SystemExit('The release app must be named Ninja Gaiden Black')
+print('Packaged configuration: Release; app name: Ninja Gaiden Black')
 if icons.get('CFBundleIconName') != 'AppIcon' or not icons.get('CFBundleIconFiles'):
-    raise SystemExit('The original NGB iPhone icon catalog must be packaged')
-print('Original NGB app icon metadata: OK')
+    raise SystemExit('The Ninja Gaiden Black iPhone icon catalog must be packaged')
+print('Ninja Gaiden Black app icon metadata: OK')
 PY
 xcrun --sdk iphoneos vtool -show-build "$app/NinjaGaidenBlack" > "$app/../platform-private.log"
 grep -Eq 'platform[[:space:]]+IOS([[:space:]]|$)' "$app/../platform-private.log"

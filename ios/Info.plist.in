@@ -2,12 +2,13 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0"><dict>
   <key>CFBundleIdentifier</key><string>com.ngbrecomp.game</string>
-  <key>CFBundleName</key><string>NGB Recomp</string>
-  <key>CFBundleDisplayName</key><string>NGB Recomp</string>
+  <key>CFBundleName</key><string>Ninja Gaiden Black</string>
+  <key>CFBundleDisplayName</key><string>Ninja Gaiden Black</string>
   <key>CFBundleExecutable</key><string>NinjaGaidenBlack</string>
   <key>CFBundlePackageType</key><string>APPL</string>
   <key>CFBundleShortVersionString</key><string>0.2.0</string>
   <key>CFBundleVersion</key><string>@NGB_IOS_BUILD_VERSION@</string>
+  <key>NGBBuildConfiguration</key><string>@CMAKE_BUILD_TYPE@</string>
   <key>NGBSourceCommit</key><string>@NGB_IOS_BUILD_COMMIT@</string>
   <key>MinimumOSVersion</key><string>15.0</string>
   <key>LSRequiresIPhoneOS</key><true/>

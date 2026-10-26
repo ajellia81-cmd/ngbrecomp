@@ -37,6 +37,7 @@ on:
       - 'ios/haptics.h'
       - 'ios/haptics_policy.h'
       - 'ios/assets/settings-ko.png'
+      - 'ios/assets/app-icon-source.jpg'
       - 'xboxrecomp/src/input/xinput_device.c'
       - 'ios/presenter_pair_test.py'
       - 'xboxrecomp/src/kernel/kernel_hal.c'

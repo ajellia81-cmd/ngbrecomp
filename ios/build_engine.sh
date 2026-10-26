@@ -25,6 +25,12 @@ if ! cmake -S "$root" -B "$build" -G Ninja \
     python3 "$root/ios/report_build_errors.py" "$build/configure-private.log"
     exit 1
 fi
+# Do not label an unoptimized configuration as a release IPA.
+if ! grep -Eq '^CMAKE_BUILD_TYPE:STRING=Release$' "$build/CMakeCache.txt"; then
+    echo 'Release configuration is required for the delivery build.' >&2
+    exit 1
+fi
+echo 'Verified CMake configuration: Release'
 if ! cmake --build "$build" --target ninja_gaiden_black --parallel 2 \
     > "$build/compile-private.log" 2>&1; then
     python3 "$root/ios/report_build_errors.py" "$build/compile-private.log"

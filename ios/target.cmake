@@ -47,10 +47,10 @@ set_target_properties(${PROJECT_NAME} PROPERTIES
     XCODE_ATTRIBUTE_CODE_SIGNING_REQUIRED NO)
 set_property(TARGET ${PROJECT_NAME} APPEND PROPERTY LINK_DEPENDS
     "${CMAKE_CURRENT_SOURCE_DIR}/ios/build_icons.swift"
-    "${CMAKE_CURRENT_SOURCE_DIR}/packaging/appimage/ngb.png")
+    "${CMAKE_CURRENT_SOURCE_DIR}/ios/assets/app-icon-source.jpg")
 add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
     COMMAND xcrun --sdk macosx swift "${CMAKE_CURRENT_SOURCE_DIR}/ios/build_icons.swift"
-        "${CMAKE_CURRENT_SOURCE_DIR}/packaging/appimage/ngb.png"
+        "${CMAKE_CURRENT_SOURCE_DIR}/ios/assets/app-icon-source.jpg"
         "$<TARGET_BUNDLE_DIR:${PROJECT_NAME}>" "${CMAKE_CURRENT_BINARY_DIR}/ios-icons"
     COMMAND ${CMAKE_COMMAND} -E make_directory "$<TARGET_BUNDLE_DIR:${PROJECT_NAME}>/Frameworks"
     COMMAND ${CMAKE_COMMAND} -E copy_directory "${NGB_MOLTENVK_FRAMEWORK}"
