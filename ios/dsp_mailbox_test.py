@@ -19,6 +19,7 @@ PREFIX=r'''
 #include <stddef.h>
 #include <stdlib.h>
 #include <stdio.h>
+#include "platform/ios_port_diagnostics.h"
 #include <string.h>
 #include <assert.h>
 #define XBOX_CONTIG_BASE 0x80000000u
@@ -68,12 +69,14 @@ def main():
         for name,body,success in [('fixed',spin,True),('old',spin.replace(
                 'if (g_spin_service && g_spin_service(loop_va)) return;',''),False)]:
             source=root/(name+'.c');exe=root/name;source.write_text(PREFIX+setter+observer+body+MAIN)
-            subprocess.run(['cc','-std=c11',str(source),'-o',str(exe)],check=True,capture_output=True)
+            subprocess.run(['cc','-std=c11','-I'+str(ROOT/'xboxrecomp/src'),
+                            '-DNGB_IOS_PORT_RELEASE=1',str(source),'-o',str(exe)],check=True,capture_output=True)
             result=subprocess.run([str(exe)],capture_output=True)
             assert (result.returncode==0)==success
         source=root/'no-hook.c';exe=root/'no-hook'
         source.write_text(PREFIX+setter+spin+'\nint main(void) { recomp_spin_pause(1); return yields!=1; }')
-        subprocess.run(['cc','-std=c11',str(source),'-o',str(exe)],check=True,capture_output=True)
+        subprocess.run(['cc','-std=c11','-I'+str(ROOT/'xboxrecomp/src'),
+                        '-DNGB_IOS_PORT_RELEASE=1',str(source),'-o',str(exe)],check=True,capture_output=True)
         subprocess.run([str(exe)],check=True)
     print('DSP: original/moved mailbox, unrelated word preservation, command/PC/address guards, explicit-off/manual policy and absent hook PASS; old spin rejected')
 if __name__=='__main__':
