@@ -39,6 +39,7 @@
 #include "gpu/texture.h"
 #include "gpu/vertex.h"
 #include "gpu/scene_motion.h"
+#include "gpu/motion_budget.h"
 #include "gpu/upload_ring.h"
 #include "kernel/kernel.h"
 #include "vk/spirv.h"
@@ -369,10 +370,10 @@ private:
         bool index16=false,lines=false;
     };
     struct MotionTarget { Target *source=nullptr; Target replay; uint32_t seen=0; };
-    bool motion_capture_=false,motion_valid_=false,motion_endpoint_=false;
+    bool motion_capture_=false,motion_valid_=false,motion_endpoint_=false,motion_recovering_=false;
     uint64_t motion_cpu_bytes_=0,motion_gpu_bytes_=0;
     unsigned motion_epoch_=0;
-    uint32_t motion_cooldown_=0,motion_late_=0;
+    MotionBudget motion_budget_;
     int64_t motion_swap_ns_=0;
     uint32_t motion_3d_=0,motion_changed_=0,motion_pictures_=0,motion_equal_=0;
     SceneMotion::Stats motion_match_stats_{},motion_match_window_{};
@@ -3768,11 +3769,9 @@ void VulkanBackend::Present(const Surface& front) {
 #ifdef NGB_SMOOTH_MOTION
     int64_t swap_ns=std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now().time_since_epoch()).count();
     int64_t interval=swap_ns-motion_swap_ns_;
-    if (motion_endpoint_ && motion_swap_ns_ && interval>25000000LL && interval<100000000LL) motion_late_++;
-    else motion_late_=0;
-    if (motion_late_>=2) {
-        motion_cooldown_=120; motion_valid_=false;
-        std::fprintf(stderr,"[Smooth Motion] guest swaps exceeded 25 ms twice; skipping replay for 120 guest frames to preserve game speed\n");
+    if (motion_budget_.Observe(interval,motion_endpoint_ && motion_swap_ns_)) {
+        motion_valid_=false;
+        std::fprintf(stderr,"[Smooth Motion] guest swaps exceeded 25 ms four times; skipping replay for 12 guest frames to preserve game speed\n");
     }
     motion_swap_ns_=swap_ns; motion_endpoint_=false; motion_ready_=nullptr;
 #endif

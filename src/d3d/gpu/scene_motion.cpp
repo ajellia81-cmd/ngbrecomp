@@ -9,6 +9,7 @@
 #include <limits>
 #include <map>
 #include <tuple>
+#include <string_view>
 
 namespace gpu {
 namespace {
@@ -373,6 +374,32 @@ std::vector<uint32_t> triangles(const Assembled& a) {
 uint64_t digest(const void* data,size_t size,uint64_t h=1469598103934665603ull) {
     auto p=static_cast<const uint8_t*>(data);for(size_t i=0;i<size;i++) {h^=p[i];h*=1099511628211ull;}return h;
 }
+// Owned bytes, not stream addresses, determine whether fixed terrain is
+// unchanged. Include declarations, decoding, topology and index data too.
+std::vector<uint8_t> fixed_input(const Assembled& a) {
+    std::vector<uint8_t> bytes;
+    auto append=[&](const void* data,size_t n) {
+        auto p=static_cast<const uint8_t*>(data);if(n) bytes.insert(bytes.end(),p,p+n);
+    };
+    auto value=[&](auto x) {append(&x,sizeof x);};
+    value(a.vertex_count);value(a.draw_count);value(a.index_count);value(a.base_vertex);
+    value(a.index16);value(a.strip);value(a.decode);value(uint16_t(a.regs&0x201));
+    for(unsigned reg:{0u,9u}) if(a.regs&(1u<<reg)) {
+        const auto& e=a.elements[reg];if(e.buffer>=a.buffer_count) return {};
+        const auto& b=a.buffers[e.buffer];
+        if(!b.src || b.bytes>2u*1024u*1024u) return {};
+        value(e.format);value(e.offset);value(b.stride);value(b.bytes);append(b.src,b.bytes);
+    }
+    size_t n=size_t(a.index_count)*(a.index16?2:4);
+    if(n>2u*1024u*1024u || (n && !a.index_src)) return {};
+    append(a.index_src,n);return bytes;
+}
+struct FixedGeometry {
+    std::vector<uint8_t> input;
+    video::Meshes meshes;
+    std::shared_ptr<std::vector<uint32_t>> indices;
+    uint64_t resource=0,positions=0;
+};
 struct ViewKey {
     uint32_t format,size,x,y,w,h;
     bool operator<(const ViewKey& b) const {return std::tie(format,size,x,y,w,h)<std::tie(b.format,b.size,b.x,b.y,b.w,b.h);}
@@ -399,6 +426,8 @@ struct SceneMotion::Impl {
     uint32_t next_resource=1;
     std::unordered_map<uint64_t,video::Meshes> rigid_meshes;
     size_t cached_bytes=0;
+    std::unordered_map<size_t,FixedGeometry> fixed_geometry;
+    size_t fixed_bytes=0;
     double elapsed=0;
     size_t geometry_bytes=0;
 };
@@ -475,7 +504,18 @@ bool SceneMotion::Add(const State& s,const Assembled& a,const DrawConstants& dc,
     // Its posed bounding box supplies an actual spatial origin, so two uses
     // of that resource are not both presented to VF3 at an identity origin.
     if(program && !raw_model) use_center=true;
-    auto ix=std::make_shared<std::vector<uint32_t>>(triangles(a));if(ix->empty()) return done(false);
+    std::vector<uint8_t> input;
+    size_t input_hash=0;const FixedGeometry* retained=nullptr;
+    if(!program && raw_model) {
+        input=fixed_input(a);
+        if(!input.empty()) {
+            input_hash=std::hash<std::string_view>{}({reinterpret_cast<const char*>(input.data()),input.size()});
+            auto it=p.fixed_geometry.find(input_hash);
+            if(it!=p.fixed_geometry.end() && it->second.input==input) retained=&it->second;
+        }
+    }
+    auto ix=retained?retained->indices:std::make_shared<std::vector<uint32_t>>(triangles(a));
+    if(ix->empty()) return done(false);
     size_t owned=ix->size()*(sizeof(video::Vertex)+sizeof(uint32_t))+size_t(a.vertex_count)*sizeof(V);
     if(owned>64u*1024u*1024u-p.geometry_bytes) return done(false);
     p.geometry_bytes+=owned;
@@ -483,76 +523,95 @@ bool SceneMotion::Add(const State& s,const Assembled& a,const DrawConstants& dc,
     if(program) {scale=s.vsc[58];offset=s.vsc[59];}
     else {scale={1,1,1,0};offset={0,0,0,0};}
     for(int i=0;i<3;i++) if(!std::isfinite(scale[i]) || std::fabs(scale[i])<1e-12f || !std::isfinite(offset[i])) return done(false);
-    auto meshes=std::make_shared<std::vector<video::Mesh>>(1);auto& mesh=(*meshes)[0];mesh.verts.resize(ix->size());
-    std::vector<V> local(a.vertex_count);std::vector<uint8_t> seen(a.vertex_count);
-    uint64_t resource=1469598103934665603ull,uv_digest=1469598103934665603ull;
-    for(size_t t=0;t<ix->size();t++) {
-        uint32_t id=(*ix)[t];
-        if(!seen[id]) {
-            V raw;if(!read_input(a,0,id,raw)) return done(false);
-            if(!program) raw[3]=1; // the original fixed vertex shader forces point W
-            p.stats.vertices++;
-            bool fast=rigid && raw[3]==1;
-            if(fast) for(float v:raw) fast&=std::isfinite(v);
-            if(fast) {
-                V clip=transform_point(clip_from_input,raw);
-                fast=std::fabs(clip[3])>=5.42101e-20f && std::fabs(clip[3])<=1.84467e19f;
-            }
-            if(fast) local[id]=raw_model?raw:transform_point(local_from_input,raw);
-            else if(!program && bone_count) {
-                // Decode weights and prepare bone matrices once, before the
-                // triangle loop. Keep explicit-weight sums (which need not
-                // equal one) separate from the homogeneous point coordinate.
-                V weights;if(!read_input(a,1,id,weights)) return done(false);
-                V posed{0,0,0,1};float remaining=1;
-                for(int bone=0;bone<bone_count;bone++) {
-                    float weight=implicit_weight && bone==bone_count-1?remaining:weights[bone];
-                    remaining-=weight;
-                    V point=transform_point(bone_view[bone],raw);
-                    for(int r=0;r<3;r++) posed[r]+=point[r]*weight;
+    auto meshes=retained?retained->meshes:std::make_shared<std::vector<video::Mesh>>(1);
+    uint64_t position_digest=0;
+    if(retained) {
+        p.stats.cached++;p.stats.input_cached++;
+        position_digest=retained->positions;
+    }
+    auto& mesh=(*meshes)[0];
+    uint64_t resource=retained?retained->resource:1469598103934665603ull,uv_digest=1469598103934665603ull;
+    if(!retained) {
+        mesh.verts.resize(ix->size());
+        std::vector<V> local(a.vertex_count);std::vector<uint8_t> seen(a.vertex_count);
+        for(size_t t=0;t<ix->size();t++) {
+            uint32_t id=(*ix)[t];
+            if(!seen[id]) {
+                V raw;if(!read_input(a,0,id,raw)) return done(false);
+                if(!program) raw[3]=1; // the original fixed vertex shader forces point W
+                p.stats.vertices++;
+                bool fast=rigid && raw[3]==1;
+                if(fast) for(float v:raw) fast&=std::isfinite(v);
+                if(fast) {
+                    V clip=transform_point(clip_from_input,raw);
+                    fast=std::fabs(clip[3])>=5.42101e-20f && std::fabs(clip[3])<=1.84467e19f;
                 }
-                local[id]=transform_point(inv_model,posed);
-            } else {
-                p.stats.evaluated_vertices++;
-                V screen{};if(!(program?execute(*vp,s,a,id,screen):fixed_position(s,a,id,dc,screen))) return done(false);
-                float w=clamp_magnitude(screen[3]);V clip{};
-                for(int i=0;i<3;i++) clip[i]=(screen[i]-offset[i])/scale[i]*w;
-                clip[3]=w;
-                local[id]=transform_point(local_from_clip,clip);
+                if(fast) local[id]=raw_model?raw:transform_point(local_from_input,raw);
+                else if(!program && bone_count) {
+                    // Decode weights and prepare bone matrices once, before the
+                    // triangle loop. Keep explicit-weight sums (which need not
+                    // equal one) separate from the homogeneous point coordinate.
+                    V weights;if(!read_input(a,1,id,weights)) return done(false);
+                    V posed{0,0,0,1};float remaining=1;
+                    for(int bone=0;bone<bone_count;bone++) {
+                        float weight=implicit_weight && bone==bone_count-1?remaining:weights[bone];
+                        remaining-=weight;
+                        V point=transform_point(bone_view[bone],raw);
+                        for(int r=0;r<3;r++) posed[r]+=point[r]*weight;
+                    }
+                    local[id]=transform_point(inv_model,posed);
+                } else {
+                    p.stats.evaluated_vertices++;
+                    V screen{};if(!(program?execute(*vp,s,a,id,screen):fixed_position(s,a,id,dc,screen))) return done(false);
+                    float w=clamp_magnitude(screen[3]);V clip{};
+                    for(int i=0;i<3;i++) clip[i]=(screen[i]-offset[i])/scale[i]*w;
+                    clip[3]=w;
+                    local[id]=transform_point(local_from_clip,clip);
+                }
+                if(!std::isfinite(local[id][3]) || std::fabs(local[id][3])<1e-10f) return done(false);
+                for(int i=0;i<3;i++) {local[id][i]/=local[id][3];if(!std::isfinite(local[id][i])) return done(false);}
+                local[id][3]=1;seen[id]=1;
+                resource=digest(raw.data(),sizeof raw,resource);
             }
-            if(!std::isfinite(local[id][3]) || std::fabs(local[id][3])<1e-10f) return done(false);
-            for(int i=0;i<3;i++) {local[id][i]/=local[id][3];if(!std::isfinite(local[id][i])) return done(false);}
-            local[id][3]=1;seen[id]=1;
-            resource=digest(raw.data(),sizeof raw,resource);
+            auto& vertex=mesh.verts[t];std::memcpy(vertex.pos,local[id].data(),12);
+            V uv;if(!read_input(a,9,id,uv)) return done(false);vertex.uv[0]=uv[0];vertex.uv[1]=uv[1];
+            uv_digest=digest(vertex.uv,sizeof vertex.uv,uv_digest);
         }
-        auto& vertex=mesh.verts[t];std::memcpy(vertex.pos,local[id].data(),12);
-        V uv;if(!read_input(a,9,id,uv)) return done(false);vertex.uv[0]=uv[0];vertex.uv[1]=uv[1];
-        uv_digest=digest(vertex.uv,sizeof vertex.uv,uv_digest);
-    }
-    if(use_center) {
-        float lo[3]={INFINITY,INFINITY,INFINITY},hi[3]={-INFINITY,-INFINITY,-INFINITY};
-        for(const auto& vertex:mesh.verts) for(int r=0;r<3;r++) {lo[r]=std::min(lo[r],vertex.pos[r]);hi[r]=std::max(hi[r],vertex.pos[r]);}
-        M center=M::identity();
-        for(int r=0;r<3;r++) center.m[12+r]=(lo[r]+hi[r])*.5f;
-        for(auto& vertex:mesh.verts) for(int r=0;r<3;r++) vertex.pos[r]-=center.m[12+r];
-        model=model*center;
-    }
-    resource=digest(ix->data(),ix->size()*4,resource);
-    mesh.key=ix->size(); // topology compatibility; texture/UV output stays in the original shader
+        if(use_center) {
+            float lo[3]={INFINITY,INFINITY,INFINITY},hi[3]={-INFINITY,-INFINITY,-INFINITY};
+            for(const auto& vertex:mesh.verts) for(int r=0;r<3;r++) {lo[r]=std::min(lo[r],vertex.pos[r]);hi[r]=std::max(hi[r],vertex.pos[r]);}
+            M center=M::identity();
+            for(int r=0;r<3;r++) center.m[12+r]=(lo[r]+hi[r])*.5f;
+            for(auto& vertex:mesh.verts) for(int r=0;r<3;r++) vertex.pos[r]-=center.m[12+r];
+            model=model*center;
+        }
+        resource=digest(ix->data(),ix->size()*4,resource);
+        mesh.key=ix->size(); // topology compatibility; texture/UV output stays in the original shader
+        if(raw_model) {
+            uint64_t cache_key=digest(&uv_digest,sizeof uv_digest,resource);
+            auto cached=p.rigid_meshes.find(cache_key);
+            size_t bytes=mesh.verts.size()*sizeof(video::Vertex);
+            if(cached!=p.rigid_meshes.end() && cached->second->at(0).verts.size()==mesh.verts.size() &&
+               !std::memcmp(cached->second->at(0).verts.data(),mesh.verts.data(),bytes)) {
+                meshes=cached->second;p.stats.cached++;
+            } else {
+                if(p.cached_bytes+bytes>32u*1024u*1024u) {p.rigid_meshes.clear();p.cached_bytes=0;}
+                p.rigid_meshes[cache_key]=meshes;p.cached_bytes+=bytes;
+            }
+        }
+        position_digest=1469598103934665603ull;
+        for(const auto& vertex:meshes->at(0).verts) position_digest=digest(vertex.pos,sizeof vertex.pos,position_digest);
+        if(!input.empty()) {
+            size_t bytes=input.size()+ix->size()*sizeof(uint32_t)+meshes->at(0).verts.size()*sizeof(video::Vertex);
+            if(bytes<=32u*1024u*1024u) {
+                if(p.fixed_bytes+bytes>32u*1024u*1024u) {p.fixed_geometry.clear();p.fixed_bytes=0;}
+                p.fixed_geometry[input_hash]={std::move(input),meshes,ix,resource,position_digest};
+                p.fixed_bytes+=bytes;
+            }
+        }
+    } // unchanged fixed inputs skip all decoding, expansion and mesh hashing
     auto found=p.resources.find(resource);
     if(found==p.resources.end()) found=p.resources.emplace(resource,p.next_resource++).first;
-    if(raw_model) {
-        uint64_t cache_key=digest(&uv_digest,sizeof uv_digest,resource);
-        auto cached=p.rigid_meshes.find(cache_key);
-        size_t bytes=mesh.verts.size()*sizeof(video::Vertex);
-        if(cached!=p.rigid_meshes.end() && cached->second->at(0).verts.size()==mesh.verts.size() &&
-           !std::memcmp(cached->second->at(0).verts.data(),mesh.verts.data(),bytes)) {
-            meshes=cached->second;p.stats.cached++;
-        } else {
-            if(p.cached_bytes+bytes>64u*1024u*1024u) {p.rigid_meshes.clear();p.cached_bytes=0;}
-            p.rigid_meshes[cache_key]=meshes;p.cached_bytes+=bytes;
-        }
-    }
     const auto& selected=meshes->at(0);
     ViewKey key{s.rt.format,s.rt.size,s.viewport.x,s.viewport.y,s.viewport.w,s.viewport.h};
     auto [where,inserted]=p.viewports.emplace(key,p.now.viewports.size());
@@ -568,13 +627,12 @@ bool SceneMotion::Add(const State& s,const Assembled& a,const DrawConstants& dc,
     }
     size_t v=where->second;
     for(int col=0;col<4;col++) model.m[col*4+2]*=-1;
-    uint64_t same=digest(model.m,64,digest(&found->second,4));
-    for(const auto& vertex:selected.verts) same=digest(vertex.pos,sizeof vertex.pos,same);
+    uint64_t same=digest(&position_digest,sizeof position_digest,digest(model.m,64,digest(&found->second,4)));
     size_t index=p.now.viewports[v].models.size();bool reused=false;
     for(auto [u,j]:p.shared[same]) if(u==v) {
         const auto& previous=p.now.viewports[u].models[j];
         bool same_positions=previous.meshes->at(0).verts.size()==selected.verts.size();
-        if(same_positions) for(size_t i=0;i<selected.verts.size();i++)
+        if(same_positions && previous.meshes!=meshes) for(size_t i=0;i<selected.verts.size();i++)
             if(std::memcmp(previous.meshes->at(0).verts[i].pos,selected.verts[i].pos,sizeof selected.verts[i].pos)) {same_positions=false;break;}
         if(previous.addr==found->second && !std::memcmp(previous.matrix.m,model.m,64) && same_positions) {index=j;reused=true;break;}
     }

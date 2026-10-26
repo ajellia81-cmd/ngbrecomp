@@ -140,6 +140,7 @@ void VulkanBackend::MotionPresent(const Surface& front,Image& endpoint,float bar
     motion_match_window_.cached+=motion_match_stats_.cached;
     motion_match_window_.fixed_rigid+=motion_match_stats_.fixed_rigid;
     motion_match_window_.fixed_skin+=motion_match_stats_.fixed_skin;
+    motion_match_window_.input_cached+=motion_match_stats_.input_cached;
     motion_match_window_.vertices+=motion_match_stats_.vertices;
     motion_match_window_.evaluated_vertices+=motion_match_stats_.evaluated_vertices;
     motion_match_window_.extract_ms+=motion_match_stats_.extract_ms;
@@ -201,14 +202,14 @@ void VulkanBackend::MotionFinish() {
             (unsigned long long)mids,(unsigned long long)ends,(unsigned long long)replaced);
 #ifdef NGB_IOS_APP
         std::fprintf(stderr,"[Smooth Motion eligibility] requested %d; shared queue %d; scene draws %u; 2D %d; movie %d; quick menu %d; cooldown %u frames; EQUAL-depth draws %u\n",
-            ngb_pc_setting(26),int(shared_),threed_,ngb_2d_screen_frame(int(threed_)),ngb_movie_active(),ngb_quick_wanted(),motion_cooldown_,motion_equal_);
+            ngb_pc_setting(26),int(shared_),threed_,ngb_2d_screen_frame(int(threed_)),ngb_movie_active(),ngb_quick_wanted(),motion_budget_.cooldown,motion_equal_);
 #endif
         std::fprintf(stderr,"[Smooth Motion VF3 scene/5s] core a8473a99091e unchanged; draws %u; models %u; shared passes %u; unsupported %u; centered models %u; rigid draws %u; cached meshes %u; cuts %u; VF3 matched %zu/%zu; vertex blends %zu; extraction+interpolation %.1f ms total\n",
             motion_match_window_.draws,motion_match_window_.models,motion_match_window_.shared,motion_match_window_.unsupported,
             motion_match_window_.fallback,motion_match_window_.rigid,motion_match_window_.cached,motion_match_window_.cuts,motion_match_window_.vf.matched,motion_match_window_.vf.total,
             motion_match_window_.vf.blended,motion_match_window_.cpu_ms);
-        std::fprintf(stderr,"[Smooth Motion CPU/5s] fixed rigid draws %u; fixed skinned draws %u; vertices %u; interpreted vertices %u; extraction %.1f ms; VF3 interpolation %.1f ms; projection %.1f ms\n",
-            motion_match_window_.fixed_rigid,motion_match_window_.fixed_skin,motion_match_window_.vertices,motion_match_window_.evaluated_vertices,
+        std::fprintf(stderr,"[Smooth Motion CPU/5s] fixed rigid draws %u; fixed skinned draws %u; vertices %u; interpreted vertices %u; unchanged input draws %u; extraction %.1f ms; VF3 interpolation %.1f ms; projection %.1f ms\n",
+            motion_match_window_.fixed_rigid,motion_match_window_.fixed_skin,motion_match_window_.vertices,motion_match_window_.evaluated_vertices,motion_match_window_.input_cached,
             motion_match_window_.extract_ms,motion_match_window_.interpolate_ms,motion_match_window_.project_ms);
         motion_match_window_={};
         motion_log_ns_=now; motion_pictures_=0;
@@ -221,7 +222,8 @@ void VulkanBackend::MotionFinish() {
 #endif
     // Custom glow/MSAA paths need their own replay recipes. Keep their original
     // rendering intact rather than interpolate an incomplete graph.
-    if (motion_cooldown_) { motion_cooldown_--; wanted=false; }
+    bool throttled=motion_budget_.cooldown && wanted;
+    if (motion_budget_.Tick()) wanted=false;
     wanted=wanted && !ContinuousGlowEnabled() && GlowSoftenMode()==0 && msaa_==1 && threed_>=30 && !ngb_movie_active() &&
         !ngb_2d_screen_frame(int(threed_)) && !ngb_quick_wanted();
     bool reset=!motion_valid_ || !wanted || (motion_last_ns_ && now-motion_last_ns_>50000000LL);
@@ -230,9 +232,14 @@ void VulkanBackend::MotionFinish() {
 #endif
     if (reset) { motion_history_.Reset(); nv2a_present_cancel_pairs(); }
     else motion_history_.Finish();
-    bool prune=reset;
+    // Keep isolated targets through a short overload pause and its warm-up
+    // frame. Touch refreshes their contents before replay; cold allocations
+    // must not create another stall immediately after recovery.
+    bool keep_targets=throttled || (motion_recovering_ && wanted);
+    motion_recovering_=throttled;
+    bool prune=reset && !keep_targets;
     for (auto& [key,saved]:motion_targets_) if (frame_-saved.seen>2) prune=true;
-    if (prune && !motion_targets_.empty()) {
+    if (prune && !keep_targets && !motion_targets_.empty()) {
         Submit();
         for (auto it=motion_targets_.begin();it!=motion_targets_.end();) {
             if (reset || frame_-it->second.seen>2) {

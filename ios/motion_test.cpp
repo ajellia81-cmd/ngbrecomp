@@ -2,6 +2,7 @@
 // unchanged VF3 interpolation; emit the production shader wrappers for CI.
 #include "gpu/scene_motion.h"
 #include "gpu/upload_ring.h"
+#include "gpu/motion_budget.h"
 #include <cmath>
 #include <fstream>
 #include <iostream>
@@ -53,6 +54,38 @@ static Assembled geometry(float* data,unsigned count=3) {
 }
 static void draw_matrix(float* out,const Mat& m) {
     for(unsigned row=0;row<4;row++) for(unsigned col=0;col<4;col++) out[row*4+col]=m.m[col*4+row];
+}
+static void budget_and_input_cache_tests() {
+    MotionBudget budget;
+    check(!budget.Observe(30000000,true) && !budget.Observe(30000000,true),"brief stall disabled motion");
+    check(!budget.Observe(16666667,true) && budget.late==0,"normal frame did not clear overload");
+    for(int i=0;i<3;i++) check(!budget.Observe(30000000,true),"overload recovery started early");
+    check(budget.Observe(30000000,true),"sustained overload not protected");
+    for(int i=0;i<12;i++) check(budget.Tick(),"recovery ended early");
+    check(!budget.Tick(),"recovery exceeds twelve frames");
+    check(!budget.Observe(200000000,true) && !budget.Observe(30000000,false),"pause or original-only frame counted as replay load");
+    float positions[]={0,0,0,1, 1,0,0,1, 0,1,0,1};
+    float uv[]={0,0, 1,0, 0,1};uint16_t indices[]={0,1,2};
+    auto a=geometry(positions);a.regs|=1<<9;a.buffer_count=2;
+    a.elements[9]={16,1,0};a.buffers[1]={reinterpret_cast<const uint8_t*>(uv),sizeof uv,8};
+    a.index_src=indices;a.index16=true;a.index_count=3;
+    auto model=Mat::identity();model.m[14]=50;
+    auto s=state(model);s.vs_handle=0;s.vs.reset();s.rs[kRsLighting]=1;
+    DrawConstants dc{};draw_matrix(dc.wv,model);draw_matrix(dc.wvp,projection()*model);
+    SceneMotion history;SceneOutput output;
+    auto add=[&](unsigned hits) {
+        check(history.Add(s,a,dc,output),"cache fixture rejected");
+        check(history.Resolve().input_cached==hits,"input cache reused changed bytes or missed identical bytes");
+        history.Reset();
+    };
+    add(0);add(1);
+    float relocated[12];std::copy(positions,positions+12,relocated);
+    a.buffers[0].src=reinterpret_cast<const uint8_t*>(relocated);add(1);
+    relocated[4]=2;add(0);add(1); // same address, changed geometry
+    uv[0]=.5f;add(0);add(1); // material coordinates are part of VF3 matching
+    std::swap(indices[0],indices[1]);add(0);add(1);
+    a.decode=kDecodeW1;add(0);add(1);
+    dc.wv[3]=10;add(1); // transforms do not invalidate immutable local geometry
 }
 static void fixed_scene_tests() {
     DrawConstants dc{};
@@ -184,6 +217,7 @@ int main(int argc,char** argv) {
     packed.elements[0].format=14;packed.decode=kDecodeIntW1;
     check(SceneVertexPosition(s,packed,1,dc,p),"SHORT3 input decode failed");near(p[0],337.6f,"SHORT3 position changed");
     fixed_scene_tests();
+    budget_and_input_cache_tests();
     std::string fixed=MotionVertexHlsl(FixedVertexHlsl(1,false));
     std::string program=MotionVertexHlsl(VertexProgramHlsl(position_program(),1));
     std::string decoded=MotionVertexHlsl(VertexProgramHlsl(position_program(),1,kDecodeIntW1));

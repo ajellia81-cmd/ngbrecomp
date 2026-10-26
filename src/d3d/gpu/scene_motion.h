@@ -15,7 +15,7 @@ class SceneMotion {
 public:
     struct Stats {
         uint32_t draws=0,models=0,shared=0,unsupported=0,fallback=0,rigid=0,cached=0,changed=0,cuts=0;
-        uint32_t fixed_rigid=0,fixed_skin=0,vertices=0,evaluated_vertices=0;
+        uint32_t fixed_rigid=0,fixed_skin=0,vertices=0,evaluated_vertices=0,input_cached=0;
         video::InterpStats vf{};
         double cpu_ms=0,extract_ms=0,interpolate_ms=0,project_ms=0;
     };
