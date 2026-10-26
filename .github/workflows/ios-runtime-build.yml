@@ -68,6 +68,7 @@ jobs:
           VCPKG="$RUNNER_TEMP/ngb-ios-tools/vcpkg"
           xcrun --sdk iphoneos clang -target arm64-apple-ios15.0 -isysroot "$SDK" \
             -fobjc-arc -std=gnu11 -Wall -Wextra -Werror=implicit-function-declaration \
+            '-DNGB_IOS_BUILD_VERSION="check-only"' '-DNGB_IOS_BUILD_COMMIT="check-only"' \
             -Werror=objc-method-access -Ixboxrecomp/src \
             -I"$VCPKG/installed/arm64-ios/include/SDL2" \
             -Ixboxrecomp/third_party/volk -Ixboxrecomp/third_party/Vulkan-Headers/include \
