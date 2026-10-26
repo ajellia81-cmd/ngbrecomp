@@ -6,32 +6,29 @@ after restarting following the first load. Long-term reliability, performance an
 background resume still require testing. The older NGBBringup diagnostic app is
 a separate target.
 
-- App version: **0.2.0 (2.59)**; compiled revision and active log path are recorded in `Documents/build-info.txt`.
-- Build source: `bd290afebabfaffdcc3d283e784e2d4c043e9a0e`, branch `ios-port`.
-- [Successful Actions run](https://github.com/ajellia81-cmd/ngbrecomp/actions/runs/40250377734).
-- [Encrypted IPA artifact](https://github.com/ajellia81-cmd/ngbrecomp/actions/runs/40250377734/artifacts/12620751067).
-- Unsigned IPA: **47,263,460 bytes**, containing **11,740 linked lifted game functions**,
+- App version: **0.2.0 (2.61)**; compiled revision and active log path are recorded in `Documents/build-info.txt`.
+- Build source: `56b3a88af07d3f0e9b66b1dfb083403dff9e64cb`, branch `ios-port`.
+- [Successful Actions run](https://github.com/ajellia81-cmd/ngbrecomp/actions/runs/40262850366).
+- [Encrypted IPA artifact](https://github.com/ajellia81-cmd/ngbrecomp/actions/runs/40262850366/artifacts/12625448486).
+- Unsigned IPA: **47,310,901 bytes**, containing **11,740 linked lifted game functions**,
   55 additional Korean variants, the real engine/runtime, SDL UIKit entry point,
   MoltenVK framework and private translation capsule.
-- IPA SHA-256: `542703ce630dda67776a732c9df4206bb06a559ffef2e5cf503386eec2310af5`.
-- GitHub artifact ZIP SHA-256: `965be6b85b322f668a5dda054371e85a9544aa3ef6a796bf605d4cf57037b510`.
+- IPA SHA-256: `2b23f43a6c899535babb2cbe0b84b4a9491d2896dc98478aae87302bb2295486`.
+- GitHub artifact ZIP SHA-256: `af19a55cef04dd1eb15445304f626c7d138f790af6d9ee54e5e65e9fa9191490`.
 
-The owner confirms gameplay, Korean text and 120 FPS output/counter operation.
-Build 2.59 retains 2.57's frame-wide repeated-mesh pairing and adds a
-whole-draw input-continuity check. Singleton candidate groups no longer bypass
-identity plausibility: the old source blended a previous lamp at 10 with a
-different visible lamp at 20 into a false middle glow at 15. A native negative
-control reproduces this; the new guard retains the current endpoint for the
-large discontinuity and still interpolates normal small motion. The guard uses
-a conservative 25% relative component limit, not VF3's world-space camera/model
-metric. It can also skip legitimate rapid motion and requires phone validation.
+The owner confirmed gameplay, Korean text and 120 FPS output in earlier builds.
+Build 2.61 replaces the previous constant-bank matcher with the unchanged VF3
+scene interpolation implementation pinned at `a8473a99091e6bb207c85d6d247eece8c4866b39`.
+NGB now supplies owned geometry, model-to-view matrices and viewports; the VF3
+result drives a replay-only vertex buffer shared across material/depth passes.
+Rigid transforms are proved algebraically and unchanged meshes are retained.
+The original evaluator handles nonlinear/skinned position programs. The full
+NGB renderer and all of VF3's material animation behavior are not identical.
 
-Only constants referenced by the active vertex program influence pose distance
-and continuity. Relative addressing conservatively marks the full bank; fixed
-function uses its matrices. Native direct/relative/unused-constant and normal-
-motion tests pass, and matching telemetry now accumulates over five seconds.
-The owner confirms 2.57 ran on the phone and that flicker decreased but persists.
-Physical rendering and performance of this new source remain a retest item.
+The pinned-code identity check, native scene/ownership tests, SPIR-V shader
+compilation, iPhoneOS full engine link and encrypted IPA packaging pass. Physical
+rendering, sustained performance and the reported flicker still require a phone
+retest. See [120FPS.md](120FPS.md) for the exact shared code and adapter limits.
 
 The owner has completed the Korean glyph-bottom task after pixel comparison
 against the original translation bitmap, and accepted the spacing and 설정 tab
@@ -107,10 +104,11 @@ pause state is preserved. This lifecycle path needs an owner-device retest.
 ## Public validation results
 
 The linked Actions run passed the platform checks and packaged the real-engine
-IPA. Native motion-history tests check reordered instances, singleton replacement,
-constant-use masks and normal-motion acceptance. These checks do not establish
-that the remaining iPhone rendering artifact is resolved. See [120FPS.md](120FPS.md)
-for the current interpolation limits and [INSTALL.md](INSTALL.md) for installation.
+IPA. Native tests exercise scene extraction, repeated instances, shared depth
+passes, relative bone addressing, rigid/nonlinear separation and history reset.
+The separate runtime compile is also green after supplying its standalone UIKit
+build metadata. These checks do not establish that the reported iPhone rendering
+artifact is resolved. See [120FPS.md](120FPS.md) and [INSTALL.md](INSTALL.md).
 
 ## Unverified and remaining work
 
