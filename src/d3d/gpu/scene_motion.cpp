@@ -1,6 +1,7 @@
 #include "gpu/scene_motion.h"
 #ifdef NGB_SMOOTH_MOTION
 #include <algorithm>
+#include <atomic>
 #include <bit>
 #include <chrono>
 #include <cmath>
@@ -14,6 +15,7 @@ namespace {
 using V=ScenePosition;
 using M=video::Mat4;
 using Clock=std::chrono::steady_clock;
+std::atomic<uint64_t> scene_serial{0};
 struct Token {
     uint32_t t[4];
     unsigned f(int w,int b,int n) const { return (t[w]>>b)&((1u<<n)-1); }
@@ -387,7 +389,6 @@ struct Binding {
 } // namespace
 struct SceneMotion::Impl {
     video::Scene before,now;
-    uint64_t serial=0;
     bool resolved=false;
     Stats stats{};
     std::vector<Binding> bindings;
@@ -417,6 +418,7 @@ bool SceneMotion::Add(const State& s,const Assembled& a,const DrawConstants& dc,
     M projection{},view{};std::memcpy(projection.m,s.scene_projection.data(),64);std::memcpy(view.m,s.scene_view.data(),64);
     M inv_projection{},inv_model{};if(!inverse(projection,inv_projection) || !affine(view)) return done(false);
     bool program=(s.vs_handle&1) && s.vs && !s.vs->program.empty();
+    const FixedKey fixed=program?FixedKey{}:MakeFixedKey(s);
     std::shared_ptr<Program> vp;
     if(program) {
         uint64_t h=digest(s.vs->program.data(),s.vs->program.size()*4);
@@ -428,13 +430,13 @@ bool SceneMotion::Add(const State& s,const Assembled& a,const DrawConstants& dc,
     if(program && vp->constants[96] && vp->constants[97] && vp->constants[98] && vp->constants[99]) {
         M candidate=inv_projection*constant_matrix(s.vsc[96].data());
         if(affine(candidate)) model=candidate;else {p.stats.fallback++;use_center=true;}
-    } else if(!program && !MakeFixedKey(s).blend) model=constant_matrix(dc.wv);
+    } else if(!program && !fixed.blend) model=constant_matrix(dc.wv);
     else {p.stats.fallback++;use_center=true;}
     if(!inverse(model,inv_model)) return done(false);
     if(!program) {
         // Fixed function already outputs Vulkan clip coordinates, with the
         // viewport/depth mapping and half-pixel correction in this matrix.
-        projection=MakeFixedKey(s).blend?constant_matrix(dc.pv):constant_matrix(dc.wvp)*inv_model;
+        projection=fixed.blend?constant_matrix(dc.pv):constant_matrix(dc.wvp)*inv_model;
         if(!inverse(projection,inv_projection)) return done(false);
     }
     M local_from_clip=inv_model*inv_projection;
@@ -451,6 +453,23 @@ bool SceneMotion::Add(const State& s,const Assembled& a,const DrawConstants& dc,
             local_from_clip=inv_model*inv_projection;
         }
         local_from_input=local_from_clip*clip_from_input;p.stats.rigid++;
+    }
+    // NGB draws most terrain through fixed function, which already provides
+    // exact world/view/projection matrices. This is rigid geometry too: do not
+    // run it through the per-vertex shader evaluator and inverse projection.
+    if(!program && !fixed.blend && affine(model)) {
+        rigid=raw_model=true;
+        use_center=false;
+        clip_from_input=constant_matrix(dc.wvp);
+        p.stats.rigid++;p.stats.fixed_rigid++;
+    }
+    M bone_view[4]{};
+    int bone_count=0;bool implicit_weight=false;
+    if(!program && fixed.blend) {
+        implicit_weight=(fixed.blend&1)!=0;
+        bone_count=implicit_weight?int(fixed.blend+3)/2:int(fixed.blend/2+1);
+        for(int i=0;i<bone_count;i++) bone_view[i]=constant_matrix(dc.wvb[i]);
+        p.stats.fixed_skin++;
     }
     // A deformed mesh can already contain view/world-space bone positions.
     // Its posed bounding box supplies an actual spatial origin, so two uses
@@ -471,6 +490,8 @@ bool SceneMotion::Add(const State& s,const Assembled& a,const DrawConstants& dc,
         uint32_t id=(*ix)[t];
         if(!seen[id]) {
             V raw;if(!read_input(a,0,id,raw)) return done(false);
+            if(!program) raw[3]=1; // the original fixed vertex shader forces point W
+            p.stats.vertices++;
             bool fast=rigid && raw[3]==1;
             if(fast) for(float v:raw) fast&=std::isfinite(v);
             if(fast) {
@@ -478,7 +499,21 @@ bool SceneMotion::Add(const State& s,const Assembled& a,const DrawConstants& dc,
                 fast=std::fabs(clip[3])>=5.42101e-20f && std::fabs(clip[3])<=1.84467e19f;
             }
             if(fast) local[id]=raw_model?raw:transform_point(local_from_input,raw);
-            else {
+            else if(!program && bone_count) {
+                // Decode weights and prepare bone matrices once, before the
+                // triangle loop. Keep explicit-weight sums (which need not
+                // equal one) separate from the homogeneous point coordinate.
+                V weights;if(!read_input(a,1,id,weights)) return done(false);
+                V posed{0,0,0,1};float remaining=1;
+                for(int bone=0;bone<bone_count;bone++) {
+                    float weight=implicit_weight && bone==bone_count-1?remaining:weights[bone];
+                    remaining-=weight;
+                    V point=transform_point(bone_view[bone],raw);
+                    for(int r=0;r<3;r++) posed[r]+=point[r]*weight;
+                }
+                local[id]=transform_point(inv_model,posed);
+            } else {
+                p.stats.evaluated_vertices++;
                 V screen{};if(!(program?execute(*vp,s,a,id,screen):fixed_position(s,a,id,dc,screen))) return done(false);
                 float w=clamp_magnitude(screen[3]);V clip{};
                 for(int i=0;i<3;i++) clip[i]=(screen[i]-offset[i])/scale[i]*w;
@@ -550,7 +585,7 @@ bool SceneMotion::Add(const State& s,const Assembled& a,const DrawConstants& dc,
 }
 SceneMotion::Stats SceneMotion::Resolve() {
     auto& p=*impl_;if(p.resolved) return p.stats;p.resolved=true;
-    auto start=Clock::now();p.now.id=++p.serial;
+    auto start=Clock::now();p.now.id=scene_serial.fetch_add(1,std::memory_order_relaxed)+1;
     // Canonical viewport order is independent of this frame's draw order.
     std::vector<video::Viewport> ordered;ordered.reserve(p.now.viewports.size());
     std::vector<size_t> remap(p.now.viewports.size());
@@ -558,7 +593,11 @@ SceneMotion::Stats SceneMotion::Resolve() {
     p.now.viewports=std::move(ordered);
     for(auto& binding:p.bindings) binding.viewport=remap[binding.viewport];
     video::Scene output;
-    if(!p.before.id || !video::interpolate(p.before,p.now,.5f,output,&p.stats.vf)) {p.stats.cuts++;p.stats.cpu_ms=p.elapsed;return p.stats;}
+    p.stats.extract_ms=p.elapsed;
+    bool interpolated=p.before.id && video::interpolate(p.before,p.now,.5f,output,&p.stats.vf);
+    auto projected_start=Clock::now();
+    p.stats.interpolate_ms=std::chrono::duration<double,std::milli>(projected_start-start).count();
+    if(!interpolated) {p.stats.cuts++;p.stats.cpu_ms=p.elapsed+p.stats.interpolate_ms;return p.stats;}
     for(const Binding& b:p.bindings) {
         const auto& m=output.viewports[b.viewport].models[b.model];
         const auto& original=p.now.viewports[b.viewport].models[b.model];
@@ -577,7 +616,8 @@ SceneMotion::Stats SceneMotion::Resolve() {
         }
         b.output->positions=std::move(screen);p.stats.changed++;
     }
-    p.stats.cpu_ms=p.elapsed+std::chrono::duration<double,std::milli>(Clock::now()-start).count();return p.stats;
+    p.stats.project_ms=std::chrono::duration<double,std::milli>(Clock::now()-projected_start).count();
+    p.stats.cpu_ms=p.elapsed+p.stats.interpolate_ms+p.stats.project_ms;return p.stats;
 }
 void SceneMotion::Finish() {
     auto& p=*impl_;if(!p.resolved) Resolve();p.before=std::move(p.now);p.now={};p.bindings.clear();p.viewports.clear();p.shared.clear();p.stats={};p.elapsed=0;p.geometry_bytes=0;p.resolved=false;

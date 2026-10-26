@@ -138,6 +138,13 @@ void VulkanBackend::MotionPresent(const Surface& front,Image& endpoint,float bar
     motion_match_window_.fallback+=motion_match_stats_.fallback;
     motion_match_window_.rigid+=motion_match_stats_.rigid;
     motion_match_window_.cached+=motion_match_stats_.cached;
+    motion_match_window_.fixed_rigid+=motion_match_stats_.fixed_rigid;
+    motion_match_window_.fixed_skin+=motion_match_stats_.fixed_skin;
+    motion_match_window_.vertices+=motion_match_stats_.vertices;
+    motion_match_window_.evaluated_vertices+=motion_match_stats_.evaluated_vertices;
+    motion_match_window_.extract_ms+=motion_match_stats_.extract_ms;
+    motion_match_window_.interpolate_ms+=motion_match_stats_.interpolate_ms;
+    motion_match_window_.project_ms+=motion_match_stats_.project_ms;
     motion_match_window_.cuts+=motion_match_stats_.cuts;
     motion_match_window_.vf.matched+=motion_match_stats_.vf.matched;
     motion_match_window_.vf.total+=motion_match_stats_.vf.total;
@@ -196,10 +203,13 @@ void VulkanBackend::MotionFinish() {
         std::fprintf(stderr,"[Smooth Motion eligibility] requested %d; shared queue %d; scene draws %u; 2D %d; movie %d; quick menu %d; cooldown %u frames; EQUAL-depth draws %u\n",
             ngb_pc_setting(26),int(shared_),threed_,ngb_2d_screen_frame(int(threed_)),ngb_movie_active(),ngb_quick_wanted(),motion_cooldown_,motion_equal_);
 #endif
-        std::fprintf(stderr,"[Smooth Motion VF3 scene/5s] core a8473a99091e unchanged; draws %u; models %u; shared passes %u; unsupported %u; centered models %u; proven affine programs %u; cached meshes %u; cuts %u; VF3 matched %zu/%zu; vertex blends %zu; extraction+interpolation %.1f ms total\n",
+        std::fprintf(stderr,"[Smooth Motion VF3 scene/5s] core a8473a99091e unchanged; draws %u; models %u; shared passes %u; unsupported %u; centered models %u; rigid draws %u; cached meshes %u; cuts %u; VF3 matched %zu/%zu; vertex blends %zu; extraction+interpolation %.1f ms total\n",
             motion_match_window_.draws,motion_match_window_.models,motion_match_window_.shared,motion_match_window_.unsupported,
             motion_match_window_.fallback,motion_match_window_.rigid,motion_match_window_.cached,motion_match_window_.cuts,motion_match_window_.vf.matched,motion_match_window_.vf.total,
             motion_match_window_.vf.blended,motion_match_window_.cpu_ms);
+        std::fprintf(stderr,"[Smooth Motion CPU/5s] fixed rigid draws %u; fixed skinned draws %u; vertices %u; interpreted vertices %u; extraction %.1f ms; VF3 interpolation %.1f ms; projection %.1f ms\n",
+            motion_match_window_.fixed_rigid,motion_match_window_.fixed_skin,motion_match_window_.vertices,motion_match_window_.evaluated_vertices,
+            motion_match_window_.extract_ms,motion_match_window_.interpolate_ms,motion_match_window_.project_ms);
         motion_match_window_={};
         motion_log_ns_=now; motion_pictures_=0;
     }

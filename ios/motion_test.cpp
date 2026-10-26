@@ -51,6 +51,80 @@ static Assembled geometry(float* data,unsigned count=3) {
     Assembled a;a.regs=1;a.vertex_count=count;a.draw_count=count;a.buffer_count=1;
     a.buffers[0]={reinterpret_cast<uint8_t*>(data),count*16,16};a.elements[0]={2,0,0};return a;
 }
+static void draw_matrix(float* out,const Mat& m) {
+    for(unsigned row=0;row<4;row++) for(unsigned col=0;col<4;col++) out[row*4+col]=m.m[col*4+row];
+}
+static void fixed_scene_tests() {
+    DrawConstants dc{};
+    auto fixed_state=[](const Mat& world,float camera,DrawConstants& constants) {
+        auto s=state(world,camera);s.vs_handle=0;s.vs.reset();s.rs[kRsLighting]=1;
+        auto view=Mat::identity();view.m[12]=camera;
+        draw_matrix(constants.wv,view*world);draw_matrix(constants.wvp,projection()*view*world);
+        return s;
+    };
+    float vertices[10][12]{};
+    for(unsigned i=0;i<10;i++) {
+        float mesh[]={0,0,0,7, 1,0,0,8, 0,1,0,9};
+        std::copy(mesh,mesh+12,vertices[i]);if(i<8) vertices[i][4]=1+float(i)*.1f;
+    }
+    SceneMotion history;std::vector<SceneOutput> first(10),second(11);
+    auto add=[&](unsigned i,float camera,SceneOutput& output) {
+        auto world=Mat::identity();world.m[12]=i<8?float(i*4):i==8?-20:20;world.m[14]=i<8?200+float(i*10):30;
+        auto s=fixed_state(world,camera,dc);auto a=geometry(vertices[i]);
+        check(history.Add(s,a,dc,output),"fixed terrain not imported");
+    };
+    for(unsigned i=0;i<10;i++) add(i,0,first[i]);
+    check(history.Resolve().fixed_rigid==10,"fixed terrain skipped rigid path");history.Finish();
+    for(unsigned i=0;i<8;i++) add(i,-1,second[i]);
+    add(9,-1,second[8]);add(8,-1,second[9]);add(9,-1,second[10]);
+    auto stats=history.Resolve();
+    check(stats.fixed_rigid==11 && stats.evaluated_vertices==0,"rigid terrain still interpreted per vertex");
+    check(stats.cached>=10 && stats.vf.blended==0,"static fixed terrain rebuilt/deformed");
+    check(stats.vf.matched==10,"fixed scene pairing differs");
+    check(!second[8].positions.empty(),"fixed midpoint missing");
+    near(second[8].positions[0][0],19.5f,"fixed lamp X differs");
+    near(second[8].positions[0][3],30,"fixed clip W differs");
+    near(second[9].positions[0][0],-20.5f,"fixed reordered lamp X differs");
+    check(second[8].positions==second[10].positions,"fixed depth/material passes diverged");
+    check(vertices[9][3]==7,"fixed point-W conversion modified source vertices");
+    // All six fixed-function blend modes, including explicit sums != 1.
+    // Expected projected positions are computed from endpoint vertex outputs,
+    // independently of the adapter's optimized model-space bone calculation.
+    for(unsigned mode=1;mode<=6;mode++) {
+        SceneMotion skin;std::vector<SceneOutput> outputs(9);
+        ScenePosition old_positions[3],new_positions[3];
+        float skinned[]={0,0,0,1, .2f,.3f,.1f,.5f,
+                         2.3f,0,0,1, .3f,.3f,.1f,.5f,
+                         0,1,0,1, .4f,.3f,.1f,.5f};
+        Assembled a;a.regs=3;a.vertex_count=3;a.draw_count=3;a.buffer_count=1;
+        a.buffers[0]={reinterpret_cast<uint8_t*>(skinned),sizeof skinned,32};
+        a.elements[0]={2,0,0};a.elements[1]={2,0,16};
+        for(unsigned frame=0;frame<2;frame++) {
+            for(unsigned i=0;i<8;i++) {
+                auto world=Mat::identity();world.m[12]=float(i*4);world.m[14]=300+float(i*10);
+                auto s=fixed_state(world,0,dc);auto g=geometry(vertices[i]);
+                check(skin.Add(s,g,dc,outputs[i]),"skin background not imported");
+            }
+            auto world=Mat::identity();auto s=fixed_state(world,0,dc);s.rs[kRsVertexBlend]=mode;
+            draw_matrix(dc.pv,projection());
+            for(unsigned bone=0;bone<4;bone++) {
+                auto matrix=Mat::identity();matrix.m[12]=float(bone*2)+float(frame)*(.25f+float(bone)*.1f);matrix.m[14]=200;
+                draw_matrix(dc.wvb[bone],matrix);
+            }
+            for(unsigned i=0;i<3;i++) check(SceneVertexPosition(s,a,i,dc,frame?new_positions[i]:old_positions[i]),"bone endpoint evaluation failed");
+            check(skin.Add(s,a,dc,outputs[8]),"fixed skinned mesh not imported");
+            auto result=skin.Resolve();
+            check(result.fixed_skin==1 && result.evaluated_vertices==0,"fixed bones still repeat general evaluator");
+            if(frame==0) skin.Finish();
+        }
+        check(outputs[8].positions.size()==3,"fixed skin midpoint missing");
+        for(unsigned i=0;i<3;i++) for(unsigned component=0;component<4;component++) {
+            float old=component==3?old_positions[i][3]:old_positions[i][component]*old_positions[i][3];
+            float now=component==3?new_positions[i][3]:new_positions[i][component]*new_positions[i][3];
+            near(outputs[8].positions[i][component],(old+now)*.5f,"optimized fixed skin midpoint differs from endpoints");
+        }
+    }
+}
 int main(int argc,char** argv) {
     check(UploadRingFits(0,kUploadSlotBytes),"full upload slot rejected");
     check(!UploadRingFits(31u<<20,2u<<20),"draw crosses retained frame allocation");
@@ -109,6 +183,7 @@ int main(int argc,char** argv) {
     auto packed=a;packed.buffers[0]={reinterpret_cast<const uint8_t*>(short_data),sizeof short_data,8};
     packed.elements[0].format=14;packed.decode=kDecodeIntW1;
     check(SceneVertexPosition(s,packed,1,dc,p),"SHORT3 input decode failed");near(p[0],337.6f,"SHORT3 position changed");
+    fixed_scene_tests();
     std::string fixed=MotionVertexHlsl(FixedVertexHlsl(1,false));
     std::string program=MotionVertexHlsl(VertexProgramHlsl(position_program(),1));
     std::string decoded=MotionVertexHlsl(VertexProgramHlsl(position_program(),1,kDecodeIntW1));
