@@ -17,7 +17,7 @@ using V=ScenePosition;
 using M=video::Mat4;
 using Clock=std::chrono::steady_clock;
 Clock::time_point diagnostic_clock() {
-#ifdef NGB_IOS_RELEASE
+#ifdef NGB_IOS_PORT_RELEASE
     return {};
 #else
     return Clock::now();

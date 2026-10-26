@@ -21,6 +21,7 @@ FILES = (
     'tests/check_vf3_reference.py', 'tests/vf3_scene_test.cpp',
     'src/d3d/gpu/scene_motion.h', 'src/d3d/gpu/scene_motion.cpp',
     'src/d3d/gpu/motion_budget.h', 'src/d3d/gpu/upload_ring.h',
+    'xboxrecomp/src/platform/ios_port_diagnostics.h',
     'src/d3d/vk/motion_replay.inc', 'src/d3d/vk/backend.cpp',
     'xboxrecomp/src/nv2a_vk/host/pair_mailbox.h',
     'xboxrecomp/src/nv2a_vk/host/nv2a_vk_share.h',

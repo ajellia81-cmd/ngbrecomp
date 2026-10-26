@@ -159,13 +159,14 @@ still adds GPU work; sustained 120 FPS is not guaranteed on every scene/device.
 
 ## Shipping diagnostics policy
 
-The shipping iOS Release app intentionally creates no `log.txt`, `build-info.txt`
-or F7 draw captures. Adapter performance timers and periodic presenter reports
-are disabled in that configuration. Use standalone native fixtures or a
-purpose-built diagnostic configuration for measurements; do not treat missing
-release logs as an interpolation failure. Build provenance remains in the
-bundle metadata and executable. Functional caches, Korean data and license
-notices remain required runtime material.
+The shipping iOS Release app disables only diagnostics introduced by this port:
+automatic build-info files, startup sampling, adapter performance timers and
+additional iOS/presenter reports. The original logger, profiler, error output
+and F7/env-triggered recorder are preserved on iOS and desktop builds. Do not
+silence standard streams globally or disable a baseline feature just because
+it is useful for debugging. Use native fixtures or an explicit diagnostic
+configuration when measuring port-only telemetry. Functional caches, Korean
+data, framework contents and license notices remain intact.
 
 ## Regression checklist for the next agent
 

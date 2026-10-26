@@ -39,6 +39,7 @@
 #include "platform/vcpu.h"
 #endif
 #include <stdio.h>
+#include "platform/ios_port_diagnostics.h"
 #ifdef __linux__
 #include <sys/prctl.h>
 #endif
@@ -427,23 +428,7 @@ static LONG CALLBACK veh_handler(PEXCEPTION_POINTERS ep)
  * hands the signal to forwards it to the guest thread. */
 static pthread_t s_guest_thread;
 static sem_t *s_sample_done;
-#ifdef NGB_IOS_APP
-/* A startup regression otherwise leaves only the host event-loop heartbeat.
- * Reuse the existing guest sampler, bounded to three snapshots before a flip. */
-static void *ios_startup_sample(void *unused)
-{
-    (void)unused;
-    extern volatile unsigned nv2a_pcrtc_start_writes;
-    for (int round=0;round<3;round++) {
-        struct timespec delay={round ? 5 : 20,0};
-        nanosleep(&delay,NULL);
-        if (__atomic_load_n(&nv2a_pcrtc_start_writes,__ATOMIC_ACQUIRE)) break;
-        fprintf(stderr,"[iOS startup] no guest flip; sampling boot thread (%d/3)\n",round+1);
-        pthread_kill(s_guest_thread,SIGUSR1);
-    }
-    return NULL;
-}
-#endif
+
 
 
 /* One external `kill -USR1` fans out to every guest thread (the boot thread
@@ -781,7 +766,7 @@ int ngb_ios_service_spin(uint32_t loop_va)
     unsigned bit=1u<<submitted;
     if (!(reported&bit)) {
         reported|=bit;
-        fprintf(stderr,"[iOS DSP] command %u acknowledged at %08X (observed mailbox)\n",submitted,address);
+        NGB_IOS_PORT_DIAG("[iOS DSP] command %u acknowledged at %08X (observed mailbox)\n",submitted,address);
     }
     return 1;
 }
@@ -797,7 +782,7 @@ static void bringup_defaults(void)
 #ifdef NGB_IOS_APP
     xbox_SetSpinService(ngb_ios_service_spin);
     set_default("RECOMP_DSP_ACK", "auto");   /* observe the actual effects-image wait */
-    fprintf(stderr,"[iOS DSP] mailbox policy: %s\n",getenv("RECOMP_DSP_ACK"));
+    NGB_IOS_PORT_DIAG("[iOS DSP] mailbox policy: %s\n",getenv("RECOMP_DSP_ACK"));
 #else
     set_default("RECOMP_DSP_ACK", "0x86BF8810");   /* contiguous memory starts at 64 MB */
 #endif
@@ -831,10 +816,6 @@ static void *guest_main(void *unused)
     (void)unused;
 #if !defined(_WIN32)
     s_guest_thread = pthread_self();
-#ifdef NGB_IOS_APP
-    { pthread_t watcher;
-      if (!pthread_create(&watcher,NULL,ios_startup_sample,NULL)) pthread_detach(watcher); }
-#endif
 #endif
 #if XBOX_HAS_VCPU
     /* The boot thread runs the title's main thread inline: it is a guest
@@ -1110,20 +1091,9 @@ int main(int argc, char **argv)
     /* No terminal and no file of the player's own (the Mac's Finder, Steam on Linux -- a Steam Deck in Game
      * Mode): the output to log.txt in the save folder, as on Windows, or a start that fails there leaves
      * nothing to look at (#11). Sent to a file already (`> log 2>&1`), it stays there. */
-#ifdef NGB_IOS_APP
-    // LiveContainer may already redirect stdout to a regular host log. Still
-    // replace our own current-session log so an old saves/log.txt is not mistaken
-    // for the just-installed executable's output.
-#ifdef NGB_IOS_RELEASE
-    bool capture_log = false;
-#else
-    bool capture_log = true;
-#endif
-#else
     struct stat out_st;
     bool to_file = fstat(STDOUT_FILENO, &out_st) == 0 && S_ISREG(out_st.st_mode);
     bool capture_log = !isatty(STDOUT_FILENO) && !to_file;
-#endif
     if (!getenv("NGB_TEST_HIDDEN") && capture_log) {
         char log[4200];
         save_dir_path(log, sizeof log - 16);
@@ -1214,7 +1184,7 @@ int main(int argc, char **argv)
     SymInitialize(GetCurrentProcess(), NULL, TRUE);
 #endif
     AddVectoredExceptionHandler(1, veh_handler);
-#if !defined(_WIN32) && !defined(NGB_IOS_RELEASE)
+#if !defined(_WIN32)
     {
         struct sigaction sa;
         memset(&sa, 0, sizeof(sa));
@@ -1223,7 +1193,7 @@ int main(int argc, char **argv)
         sigaction(SIGUSR1, &sa, NULL);
     }
 #endif
-#if !defined(_WIN32) && !defined(NGB_IOS_RELEASE)
+#if !defined(_WIN32)
     if (getenv("NGB_PROFILE")) {
         prof_start();
         signal(SIGINT, prof_exit_on_signal);

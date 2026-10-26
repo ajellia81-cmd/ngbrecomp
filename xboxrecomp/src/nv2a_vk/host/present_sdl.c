@@ -24,6 +24,7 @@ extern void ngb_ios_safe_area(float *,float *,float *,float *) __attribute__((we
 #include "nv2a_vk_share.h"
 #include "native_viewport.h"
 #include "pair_mailbox.h"
+#include "platform/ios_port_diagnostics.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -1349,14 +1350,14 @@ static void *pair_worker(void *unused) {
         // The last copy fence orders both midpoint and endpoint. Wait once,
         // including when endpoint acquisition failed after a midpoint copy.
         pthread_mutex_lock(&s_present_mu);
-#ifndef NGB_IOS_RELEASE
+#ifndef NGB_IOS_PORT_RELEASE
         int64_t copy_wait_started=g_get_monotonic_time();
 #endif
         if (s_pair_copy_fence) {
             vkWaitForFences(s_pair_copy_device,1,&s_pair_copy_fence,VK_TRUE,UINT64_MAX);
             s_pair_copy_fence=VK_NULL_HANDLE;
         }
-#ifndef NGB_IOS_RELEASE
+#ifndef NGB_IOS_PORT_RELEASE
         int64_t completed=g_get_monotonic_time();
         wait_us+=(uint64_t)(completed-copy_wait_started);
         pair_us+=(uint64_t)(completed-started);pair_n++;
@@ -1623,7 +1624,7 @@ static void present_locked(PGRAPHState *pg, bool on_pfifo)
         static unsigned fit_logs;
         if (fit_logs<4 || nv2a_host_presents%300==0) {
             fit_logs++;
-            fprintf(stderr,"[iOS Fit] source %dx%d; drawable %dx%d; destination %d,%d %dx%d; aspect %.6f; external %d\n",
+            NGB_IOS_PORT_DIAG("[iOS Fit] source %dx%d; drawable %dx%d; destination %d,%d %dx%d; aspect %.6f; external %d\n",
                 pw,ph,ww,wh,x0,y0,dw,dh,s_aspect,(int)ext);
         }
 #endif

@@ -39,6 +39,7 @@
 #include "gpu/texture.h"
 #include "gpu/vertex.h"
 #include "gpu/scene_motion.h"
+#include "platform/ios_port_diagnostics.h"
 #include "gpu/motion_budget.h"
 #include "gpu/upload_ring.h"
 #include "kernel/kernel.h"
@@ -3214,7 +3215,7 @@ void VulkanBackend::Draw(const State& s, uint32_t prim, uint32_t start, uint32_t
     static unsigned view_logs;
     if (gw>=640 && gh>=448 && view_logs<12) {
         ++view_logs;
-        std::fprintf(stderr,"[iOS View] frame %u; guest %ux%u; target %ux%u; viewport %u,%u %ux%u; scissor %d,%d %ux%u; pre %d; program %d\n",
+        NGB_IOS_PORT_DIAG("[iOS View] frame %u; guest %ux%u; target %ux%u; viewport %u,%u %ux%u; scissor %d,%d %ux%u; pre %d; program %d\n",
             presents_,gw,gh,any.w,any.h,s.viewport.x,s.viewport.y,s.viewport.w,s.viewport.h,
             sc.offset.x,sc.offset.y,sc.extent.width,sc.extent.height,int(a.pretransformed),int(prog));
     }
@@ -3771,14 +3772,14 @@ void VulkanBackend::Present(const Surface& front) {
     int64_t interval=swap_ns-motion_swap_ns_;
     if (motion_budget_.Observe(interval,motion_endpoint_ && motion_swap_ns_)) {
         motion_valid_=false;
-#ifndef NGB_IOS_RELEASE
+#ifndef NGB_IOS_PORT_RELEASE
         std::fprintf(stderr,"[Smooth Motion] guest swaps exceeded 25 ms four times; skipping replay for 12 guest frames to preserve game speed\n");
 #endif
     }
     motion_swap_ns_=swap_ns; motion_endpoint_=false; motion_ready_=nullptr;
 #endif
     presents_++;
-#if defined(NGB_IOS_APP) && !defined(NGB_IOS_RELEASE)
+#if defined(NGB_IOS_APP) && !defined(NGB_IOS_PORT_RELEASE)
     // Count actual guest Swap calls, not the presenter's repeated scanouts or
     // display-link callbacks. Virtual time excludes background suspension.
     static int64_t rate_start;
@@ -3791,7 +3792,6 @@ void VulkanBackend::Present(const Surface& front) {
         rate_start=rate_now; rate_frame=presents_;
     }
 #endif
-#ifndef NGB_IOS_RELEASE
     {   // NGB_TRACE_FILE=<file>: its appearing starts a recording too (headless tests)
         static const char* tf = std::getenv("NGB_TRACE_FILE");
         if (tf && access(tf, F_OK) == 0) {
@@ -3809,9 +3809,6 @@ void VulkanBackend::Present(const Surface& front) {
         trace_left_ = std::getenv("NGB_TRACE_FRAMES") ? std::atoi(std::getenv("NGB_TRACE_FRAMES")) : 300;
         std::fprintf(stderr, "[TRACE] recording %d frames to %s\n", trace_left_, trace_dir_.c_str());
     }
-#else
-    ngb_trace_request=0;
-#endif
     static bool hitchlog = std::getenv("NGB_D3D_HITCHLOG") != nullptr;   // debugging: frames held up by compiling
     if (hitchlog && skipped_)
         std::fprintf(stderr, "[HITCH] frame %u: %u draws left out while their shaders are made\n", presents_,

@@ -1,16 +1,15 @@
 #!/usr/bin/env python3
-"""Remove development-only bundle material; preserve executable runtime assets."""
+"""Remove only known diagnostic files introduced by this iOS port."""
 from pathlib import Path
 import argparse
 import shutil
 
-DIRECTORIES = {'Headers', 'PrivateHeaders', 'Modules', '__pycache__', '__MACOSX', '_CodeSignature'}
-SUFFIXES = {'.log', '.dSYM', '.bcsymbolmap', '.o', '.a', '.pyc'}
-NAMES = {'.DS_Store', 'build-info.txt', 'compile_commands.json', 'CMakeCache.txt'}
+NAMES = {'build-info.txt', 'compile-private.log', 'configure-private.log',
+         'platform-private.log', 'symbols-private.log'}
 
 
 def unwanted(path):
-    return path.name in DIRECTORIES | NAMES or path.suffix in SUFFIXES
+    return path.name in NAMES
 
 
 def clean_bundle(bundle):
@@ -27,7 +26,7 @@ def clean_bundle(bundle):
                 path.unlink()
             removed += 1
     if any(unwanted(p) for p in bundle.rglob('*')):
-        raise ValueError('Development-only material remains in the staged bundle')
+        raise ValueError('iOS-port diagnostic material remains in the staged bundle')
     return removed
 
 
@@ -35,4 +34,4 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('bundle', type=Path)
     args = parser.parse_args()
-    print('Release bundle development-only entries removed:', clean_bundle(args.bundle))
+    print('Release bundle iOS-port diagnostic entries removed:', clean_bundle(args.bundle))

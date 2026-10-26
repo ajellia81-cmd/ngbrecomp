@@ -53,7 +53,7 @@ on:
       - 'ios/package_ipa.sh'
       - 'ios/clean_bundle.py'
       - 'ios/release_package_test.py'
-      - 'ios/release_stdio.h'
+      - 'xboxrecomp/src/platform/ios_port_diagnostics.h'
       - 'src/launch.c'
       - 'xboxrecomp/src/kernel/kernel_bridge.c'
       - 'src/main.c'
@@ -118,10 +118,10 @@ jobs:
           start=source.index('@interface NGBLandscapeController')
           end=source.index('static int safeMillion',start)
           Path('build/ios-platform/orientation.m').write_text(
-              '#import <UIKit/UIKit.h>\n#include <stdio.h>\n'+source[start:end])
+              '#import <UIKit/UIKit.h>\n#include <stdio.h>\n#include "platform/ios_port_diagnostics.h"\n'+source[start:end])
           PY
           xcrun --sdk iphoneos clang -target arm64-apple-ios15.0 -isysroot "$SDK" \
-            -fobjc-arc -Wno-deprecated-declarations -c build/ios-platform/orientation.m \
+            -fobjc-arc -Ixboxrecomp/src -Wno-deprecated-declarations -c build/ios-platform/orientation.m \
             -o build/ios-platform/orientation.o
           file build/ios-platform/*.o
 

@@ -26,9 +26,9 @@ if metadata.get('NGBBuildConfiguration') != 'Release':
     raise SystemExit('Only a verified Release configuration may be delivered')
 if metadata.get('CFBundleDisplayName') != 'Ninja Gaiden Black' or metadata.get('CFBundleName') != 'Ninja Gaiden Black':
     raise SystemExit('The release app must be named Ninja Gaiden Black')
-if metadata.get('NGBDiagnosticsEnabled') is not False:
-    raise SystemExit('Release delivery must disable developer diagnostics')
-print('Packaged configuration: Release; app name: Ninja Gaiden Black; diagnostics: disabled')
+if metadata.get('NGBIOSPortDiagnosticsEnabled') is not False:
+    raise SystemExit('Release delivery must disable the added iOS-port diagnostics')
+print('Packaged configuration: Release; app name: Ninja Gaiden Black; iOS-port diagnostics: disabled; original diagnostics: preserved')
 if icons.get('CFBundleIconName') != 'AppIcon' or not icons.get('CFBundleIconFiles'):
     raise SystemExit('The Ninja Gaiden Black iPhone icon catalog must be packaged')
 print('Ninja Gaiden Black app icon metadata: OK')
@@ -64,8 +64,6 @@ for notice in "$tools"/vcpkg/installed/arm64-ios/share/*/copyright; do
     fi
 done
 python3 "$(dirname "$0")/clean_bundle.py" "$bundle"
-# Remove debug symbols only, preserving exports and dynamic runtime metadata.
-xcrun --sdk iphoneos strip -S "$bundle/NinjaGaidenBlack"
 (cd "$out" && zip -qry NinjaGaidenBlack-ios-arm64-unsigned.ipa Payload)
 python3 - "$out/NinjaGaidenBlack-ios-arm64-unsigned.ipa" <<'PY'
 from pathlib import Path
@@ -73,17 +71,14 @@ import hashlib, sys, zipfile
 path = Path(sys.argv[1])
 with zipfile.ZipFile(path) as archive:
     assert archive.testzip() is None
-    for name in archive.namelist():
-        parts=Path(name).parts
-        assert not any(p in {'Headers','PrivateHeaders','Modules','__pycache__','__MACOSX'} or p.endswith('.dSYM') for p in parts)
-        assert Path(name).suffix not in {'.log','.bcsymbolmap','.o','.a','.pyc'}
-        assert Path(name).name not in {'build-info.txt','compile_commands.json','CMakeCache.txt'}
+    port_files={'build-info.txt','compile-private.log','configure-private.log','platform-private.log','symbols-private.log'}
+    assert not any(Path(name).name in port_files for name in archive.namelist())
     import plistlib
     metadata=plistlib.loads(archive.read('Payload/NinjaGaidenBlack.app/Info.plist'))
     executable=archive.read('Payload/NinjaGaidenBlack.app/NinjaGaidenBlack')
-    assert metadata['NGBDiagnosticsEnabled'] is False
+    assert metadata['NGBIOSPortDiagnosticsEnabled'] is False
     assert metadata['NGBSourceCommit'].encode() in executable and metadata['CFBundleVersion'].encode() in executable
-    print('Final IPA development-file audit: passed; runtime diagnostics disabled')
+    print('Final IPA iOS-port diagnostic-file audit: passed; original diagnostics preserved')
 print('Unsigned game IPA bytes:', path.stat().st_size)
 print('Unsigned game IPA SHA-256:', hashlib.sha256(path.read_bytes()).hexdigest())
 print('No physical-device or LiveContainer startup is implied by packaging.')

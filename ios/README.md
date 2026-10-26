@@ -19,11 +19,13 @@ or a compatible configured host is required; no developer certificate is
 provided. Original game files and generated game C are excluded from source
 exports and raw-data IPA packaging checks.
 
-Release builds do not create developer console logs, build-info text files or
-F7 draw captures. Periodic kernel and Smooth Motion diagnostics are disabled.
-The staged IPA excludes development logs, headers, module maps, static/object
-archives and debug-symbol bundles; runtime assets and licenses are retained.
-The optional in-game FPS display remains a user setting.
+Release builds disable only diagnostics introduced by this iOS port: automatic
+build-info files, startup sampling and additional iOS/Smooth Motion telemetry.
+The original F7/env-triggered recorder, logger, profiler and error output remain
+available on iOS as well as desktop platforms. The port no longer forces its
+own per-session log when the original logger would use the host's output.
+Package cleanup targets only known iOS-port build/diagnostic files; it does not
+strip the original executable's debug symbols or remove generic framework data.
 
 ## Features and limits
 

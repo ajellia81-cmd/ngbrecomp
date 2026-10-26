@@ -22,9 +22,9 @@ if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
 endif()
 
 add_compile_definitions(WIN32_LEAN_AND_MEAN NOMINMAX)
-# The delivery app must not create developer logs or diagnostic captures.
+# Disable only diagnostics introduced by the iOS port in delivery builds.
 if(CMAKE_SYSTEM_NAME STREQUAL "iOS" AND CMAKE_BUILD_TYPE STREQUAL "Release")
-    add_compile_definitions(NGB_IOS_RELEASE=1)
+    add_compile_definitions(NGB_IOS_PORT_RELEASE=1)
 endif()
 
 # Bring-up build: record every indirect-branch target the title reaches, so

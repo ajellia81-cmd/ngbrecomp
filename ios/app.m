@@ -14,14 +14,14 @@
 #include <unistd.h>
 #include "../src/install.h"
 #include "haptics.h"
-#include "release_stdio.h"
+#include "../xboxrecomp/src/platform/ios_port_diagnostics.h"
 #include "platform/vcpu.h"
 // Keep provenance in the executable without writing a build-info file.
 static const char ngb_build_revision[] __attribute__((used)) = NGB_IOS_BUILD_COMMIT;
 static const char ngb_build_version[] __attribute__((used)) = NGB_IOS_BUILD_VERSION;
 void ngb_ios_log_build(void) {
-#ifndef NGB_IOS_RELEASE
-    fprintf(stderr,"[iOS Build] version %s; source %s\n",NGB_IOS_BUILD_VERSION,NGB_IOS_BUILD_COMMIT);
+#ifndef NGB_IOS_PORT_RELEASE
+    NGB_IOS_PORT_DIAG("[iOS Build] version %s; source %s\n",NGB_IOS_BUILD_VERSION,NGB_IOS_BUILD_COMMIT);
     NSString *documents=NSSearchPathForDirectoriesInDomains(NSDocumentDirectory,NSUserDomainMask,YES).firstObject;
     if (documents) {
         const char *saves=getenv("NGB_SAVE_DIR");
@@ -33,7 +33,7 @@ void ngb_ios_log_build(void) {
         extern int ngb_korean_active(void);
         if (ngb_korean_active()) {
             NSDictionary *state=[NSDictionary dictionaryWithContentsOfFile:[documents stringByAppendingPathComponent:@"korean-game.state.plist"]];
-            fprintf(stderr,"[Korean] active overlay layout: %s\n",[state[@"layout"] UTF8String] ?: "legacy");
+            NGB_IOS_PORT_DIAG("[Korean] active overlay layout: %s\n",[state[@"layout"] UTF8String] ?: "legacy");
         }
 #endif
     }
@@ -68,7 +68,7 @@ static void ngb_request_landscape(UIWindow *window) {
         UIWindowScene *scene=ngb_window_scene(window);
         if (scene) [scene requestGeometryUpdateWithPreferences:
             [[UIWindowSceneGeometryPreferencesIOS alloc] initWithInterfaceOrientations:UIInterfaceOrientationMaskLandscape]
-            errorHandler:^(NSError *error) { fprintf(stderr,"[iOS Orientation] landscape request: %s\n",error.localizedDescription.UTF8String); }];
+            errorHandler:^(NSError *error) { NGB_IOS_PORT_DIAG("[iOS Orientation] landscape request: %s\n",error.localizedDescription.UTF8String); }];
         else [UIViewController attemptRotationToDeviceOrientation];
     } else [UIViewController attemptRotationToDeviceOrientation];
 }
@@ -176,7 +176,7 @@ int ngb_korean_active(void) { return koreanActive; }
 
 void ngb_ios_language_changed(int language)
 {
-    fprintf(stderr,"[iOS] Options text language saved; relaunch for overlay changes\n");
+    NGB_IOS_PORT_DIAG("[iOS] Options text language saved; relaunch for overlay changes\n");
     (void)language;
     dispatch_async(dispatch_get_main_queue(),^{
         UIAlertController *alert=[UIAlertController alertControllerWithTitle:@"Restart required"
@@ -254,7 +254,7 @@ static NSString *prepare_language(NSString *documents, NSString *original)
     }
     setenv("NGB_SAVE_DIR",localizedSaves.fileSystemRepresentation,1);
     koreanActive=1; textOverride=0;
-    fprintf(stderr,"[Korean] verified text/font code and private archive overlay selected\n");
+    NGB_IOS_PORT_DIAG("[Korean] verified text/font code and private archive overlay selected\n");
     return destination;
 }
 #endif
@@ -295,7 +295,7 @@ static void game_set_active(BOOL active)
         int stopped = vcpu_set_paused(1);
         vcpu_game_clock_pause(1);
         nv2a_vk_set_background(true);
-        fprintf(stderr, "[iOS] inactive: audio paused, guest %s, clock frozen, GPU drained\n",
+        NGB_IOS_PORT_DIAG("[iOS] inactive: audio paused, guest %s, clock frozen, GPU drained\n",
                 stopped ? "parked" : "pause pending");
     } else {
         nv2a_vk_set_background(false);
@@ -303,7 +303,7 @@ static void game_set_active(BOOL active)
         [AVAudioSession.sharedInstance setActive:YES error:nil];
         apu_host_pause(previousAudioPause);
         vcpu_set_paused(0);
-        fprintf(stderr, "[iOS] active: GPU, clock, audio and guest resumed\n");
+        NGB_IOS_PORT_DIAG("[iOS] active: GPU, clock, audio and guest resumed\n");
     }
 }
 
@@ -583,7 +583,7 @@ static void import_progress(uint64_t done, uint64_t total, void *context)
     BOOL physical = GCController.controllers.count > 0;
     BOOL wasHidden=self.hidden;
     self.hidden = physical;
-    if (wasHidden!=physical) fprintf(stderr,"[iOS Touch] %s; connected game controllers %lu\n",
+    if (wasHidden!=physical) NGB_IOS_PORT_DIAG("[iOS Touch] %s; connected game controllers %lu\n",
         physical ? "hidden" : "visible",(unsigned long)GCController.controllers.count);
     if (physical && self.joystick) {
         [self disconnectJoystick];
@@ -609,7 +609,7 @@ static void attach_controls(UIWindow *window)
     touchControls = [[NGBTouch alloc] initWithFrame:window.rootViewController.view.bounds];
     [window.rootViewController.view addSubview:touchControls];
     [touchControls refresh];
-    fprintf(stderr,"[iOS Touch] overlay attached %.0fx%.0f; %s; virtual input %s\n",
+    NGB_IOS_PORT_DIAG("[iOS Touch] overlay attached %.0fx%.0f; %s; virtual input %s\n",
         touchControls.bounds.size.width,touchControls.bounds.size.height,
         touchControls.hidden ? "hidden" : "visible",touchControls.joystick ? "ready" : "off");
 }
@@ -619,7 +619,7 @@ static void ngb_sync_metal_layers(UIView *view) {
         CAMetalLayer *layer=(CAMetalLayer *)view.layer;
         CGSize size=CGSizeMake(floor(view.bounds.size.width*layer.contentsScale),floor(view.bounds.size.height*layer.contentsScale));
         if (size.width>0 && size.height>0 && !CGSizeEqualToSize(size,layer.drawableSize)) {
-            fprintf(stderr,"[iOS Drawable] repair layer %.0fx%.0f -> %.0fx%.0f; view %.0fx%.0f\n",
+            NGB_IOS_PORT_DIAG("[iOS Drawable] repair layer %.0fx%.0f -> %.0fx%.0f; view %.0fx%.0f\n",
                 layer.drawableSize.width,layer.drawableSize.height,size.width,size.height,view.bounds.size.width,view.bounds.size.height);
             layer.drawableSize=size;
         }
@@ -640,7 +640,7 @@ void ngb_ios_sync_drawable(SDL_Window *sdlWindow) {
     CFTimeInterval now=CACurrentMediaTime();
     if (root.bounds.size.width<root.bounds.size.height && now>=next_request) {
         next_request=now+2;
-        fprintf(stderr,"[iOS Orientation] request landscape; window %.0fx%.0f; root %.0fx%.0f; scene %ld\n",
+        NGB_IOS_PORT_DIAG("[iOS Orientation] request landscape; window %.0fx%.0f; root %.0fx%.0f; scene %ld\n",
             window.bounds.size.width,window.bounds.size.height,root.bounds.size.width,root.bounds.size.height,
             (long)window.windowScene.interfaceOrientation);
         ngb_request_landscape(window);
@@ -660,31 +660,22 @@ void ngb_ios_sync_drawable(SDL_Window *sdlWindow) {
 int ngb_ios_prepare(void)
 {
     @autoreleasepool {
-#ifdef NGB_IOS_RELEASE
-        if (!ngb_ios_quiet_stdio()) return 0;
-        setenv("RECOMP_KERNEL_LOG_BUDGET", "0", 1);
-        // Do not let a host's old debug environment enable capture/profiling.
-        const char *debugVariables[]={"NGB_PROFILE", "NGB_PROFILE_RAW", "NGB_TRACE_FILE",
-            "NGB_D3D_SHADERDUMP", "NGB_D3D_DUMP", "NGB_D3D_TEXDUMP", "NGB_HUD_LOG", "NGB_HUD_GROUP_TRACE",
-            "NV2A_CAPTURE", "NV2A_CAPTURE_EVERY", "NV2A_FPS_LOG", "NGB_MODE_LOG"};
-        for (unsigned i=0;i<sizeof debugVariables/sizeof *debugVariables;i++) unsetenv(debugVariables[i]);
-#endif
+
         // Keep Vulkan queue calls short: synchronous Metal encoding under the
         // shared queue lock stalls the game producer behind presentation.
         setenv("MVK_CONFIG_SYNCHRONOUS_QUEUE_SUBMITS","0",0);
-        fprintf(stderr,"[iOS GPU] synchronous queue submissions: %s\n",getenv("MVK_CONFIG_SYNCHRONOUS_QUEUE_SUBMITS"));
+        NGB_IOS_PORT_DIAG("[iOS GPU] synchronous queue submissions: %s\n",getenv("MVK_CONFIG_SYNCHRONOUS_QUEUE_SUBMITS"));
         SDL_SetHint(SDL_HINT_ORIENTATIONS, "LandscapeLeft LandscapeRight");
         request_display_cadence();
         CGSize pixels = UIScreen.mainScreen.nativeBounds.size;
         screenWidth = (int)MAX(pixels.width, pixels.height);
         screenHeight = (int)MIN(pixels.width, pixels.height);
-        fprintf(stderr, "[iOS] native landscape pixels: %d x %d\n", screenWidth, screenHeight);
+        NGB_IOS_PORT_DIAG("[iOS] native landscape pixels: %d x %d\n", screenWidth, screenHeight);
         NSString *documents = NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES).firstObject;
         if (!documents) return 0;
         NSFileManager *fm = NSFileManager.defaultManager;
-#ifdef NGB_IOS_RELEASE
-        for (NSString *oldLog in @[@"build-info.txt", @"saves/log.txt", @"saves-korean/log.txt"])
-            [fm removeItemAtPath:[documents stringByAppendingPathComponent:oldLog] error:nil];
+#ifdef NGB_IOS_PORT_RELEASE
+        [fm removeItemAtPath:[documents stringByAppendingPathComponent:@"build-info.txt"] error:nil];
 #endif
         NSString *game = [documents stringByAppendingPathComponent:@"game"];
         NSArray *names = @[@"saves", @"config", @"shaders"];

@@ -4,6 +4,7 @@
 #import <CoreHaptics/CoreHaptics.h>
 #include <time.h>
 #include "haptics.h"
+#include "../xboxrecomp/src/platform/ios_port_diagnostics.h"
 #include "haptics_policy.h"
 static uint64_t commands[4];
 static int foreground=1;
@@ -35,7 +36,7 @@ static uint32_t haptic_ms(void) {
     self.intensity=-1;
 }
 - (void)failed:(NSString *)reason now:(uint32_t)now {
-    fprintf(stderr,"[iOS Haptics] %s: %s; retry in 1s\n",self.controller.vendorName.UTF8String,reason.UTF8String);
+    NGB_IOS_PORT_DIAG("[iOS Haptics] %s: %s; retry in 1s\n",self.controller.vendorName.UTF8String,reason.UTF8String);
     [self stop];self.retryAt=now+1000;self.retryPending=YES;
 }
 - (BOOL)prepare:(uint32_t)now {
@@ -72,7 +73,7 @@ static uint32_t haptic_ms(void) {
         [self failed:error.localizedDescription ?: @"player unavailable" now:now];return NO;
     }
     self.player=player;self.intensity=0;self.retryPending=NO;
-    fprintf(stderr,"[iOS Haptics] %s / %s ready (silent prewarm)\n",self.controller.vendorName.UTF8String,self.locality.UTF8String);
+    NGB_IOS_PORT_DIAG("[iOS Haptics] %s / %s ready (silent prewarm)\n",self.controller.vendorName.UTF8String,self.locality.UTF8String);
     return YES;
 }
 - (void)update:(float)value now:(uint32_t)now {
