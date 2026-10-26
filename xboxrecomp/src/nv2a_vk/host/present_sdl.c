@@ -1349,11 +1349,14 @@ static void *pair_worker(void *unused) {
         // The last copy fence orders both midpoint and endpoint. Wait once,
         // including when endpoint acquisition failed after a midpoint copy.
         pthread_mutex_lock(&s_present_mu);
+#ifndef NGB_IOS_RELEASE
         int64_t copy_wait_started=g_get_monotonic_time();
+#endif
         if (s_pair_copy_fence) {
             vkWaitForFences(s_pair_copy_device,1,&s_pair_copy_fence,VK_TRUE,UINT64_MAX);
             s_pair_copy_fence=VK_NULL_HANDLE;
         }
+#ifndef NGB_IOS_RELEASE
         int64_t completed=g_get_monotonic_time();
         wait_us+=(uint64_t)(completed-copy_wait_started);
         pair_us+=(uint64_t)(completed-started);pair_n++;
@@ -1363,6 +1366,7 @@ static void *pair_worker(void *unused) {
                 (unsigned long long)pair_n,pair_us/1000.0/pair_n,s_pair_acquire_us/1000.0/pair_n,wait_us/1000.0/pair_n,s_pair_lock_us/1000.0/pair_n,s_pair_submit_us/1000.0/pair_n,s_pair_present_us/1000.0/pair_n);
             report_at=completed;pair_us=wait_us=pair_n=s_pair_acquire_us=s_pair_lock_us=s_pair_submit_us=s_pair_present_us=0;
         }
+#endif
         pthread_mutex_unlock(&s_present_mu);
         pthread_mutex_lock(&s_pair_mu);
         s_pair_mids+=mid; s_pair_ends+=end;

@@ -61,6 +61,10 @@ void ngb_default_save_dir(char *out, size_t n)
 
 void ngb_launch_log_to_file(const char *save_dir, const char *name)
 {
+#ifdef NGB_IOS_RELEASE
+    (void)save_dir; (void)name;
+    return;
+#else
     char log[4200];
     snprintf(log, sizeof log, "%s/%s", save_dir, name);
 #if defined(_WIN32)
@@ -87,6 +91,7 @@ void ngb_launch_log_to_file(const char *save_dir, const char *name)
         dup2(fileno(stdout), STDERR_FILENO);
         setvbuf(stdout, NULL, _IOLBF, 0);
     }
+#endif
 #endif
 }
 

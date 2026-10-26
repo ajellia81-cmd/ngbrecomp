@@ -14,8 +14,13 @@
 #include <unistd.h>
 #include "../src/install.h"
 #include "haptics.h"
+#include "release_stdio.h"
 #include "platform/vcpu.h"
+// Keep provenance in the executable without writing a build-info file.
+static const char ngb_build_revision[] __attribute__((used)) = NGB_IOS_BUILD_COMMIT;
+static const char ngb_build_version[] __attribute__((used)) = NGB_IOS_BUILD_VERSION;
 void ngb_ios_log_build(void) {
+#ifndef NGB_IOS_RELEASE
     fprintf(stderr,"[iOS Build] version %s; source %s\n",NGB_IOS_BUILD_VERSION,NGB_IOS_BUILD_COMMIT);
     NSString *documents=NSSearchPathForDirectoriesInDomains(NSDocumentDirectory,NSUserDomainMask,YES).firstObject;
     if (documents) {
@@ -32,6 +37,7 @@ void ngb_ios_log_build(void) {
         }
 #endif
     }
+#endif
 }
 // A preparation window must not return the LiveContainer scene to portrait
 // just before SDL creates its Metal surface.
@@ -654,6 +660,15 @@ void ngb_ios_sync_drawable(SDL_Window *sdlWindow) {
 int ngb_ios_prepare(void)
 {
     @autoreleasepool {
+#ifdef NGB_IOS_RELEASE
+        if (!ngb_ios_quiet_stdio()) return 0;
+        setenv("RECOMP_KERNEL_LOG_BUDGET", "0", 1);
+        // Do not let a host's old debug environment enable capture/profiling.
+        const char *debugVariables[]={"NGB_PROFILE", "NGB_PROFILE_RAW", "NGB_TRACE_FILE",
+            "NGB_D3D_SHADERDUMP", "NGB_D3D_DUMP", "NGB_D3D_TEXDUMP", "NGB_HUD_LOG", "NGB_HUD_GROUP_TRACE",
+            "NV2A_CAPTURE", "NV2A_CAPTURE_EVERY", "NV2A_FPS_LOG", "NGB_MODE_LOG"};
+        for (unsigned i=0;i<sizeof debugVariables/sizeof *debugVariables;i++) unsetenv(debugVariables[i]);
+#endif
         // Keep Vulkan queue calls short: synchronous Metal encoding under the
         // shared queue lock stalls the game producer behind presentation.
         setenv("MVK_CONFIG_SYNCHRONOUS_QUEUE_SUBMITS","0",0);
@@ -667,6 +682,10 @@ int ngb_ios_prepare(void)
         NSString *documents = NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES).firstObject;
         if (!documents) return 0;
         NSFileManager *fm = NSFileManager.defaultManager;
+#ifdef NGB_IOS_RELEASE
+        for (NSString *oldLog in @[@"build-info.txt", @"saves/log.txt", @"saves-korean/log.txt"])
+            [fm removeItemAtPath:[documents stringByAppendingPathComponent:oldLog] error:nil];
+#endif
         NSString *game = [documents stringByAppendingPathComponent:@"game"];
         NSArray *names = @[@"saves", @"config", @"shaders"];
         const char *variables[] = {"NGB_SAVE_DIR", "NGB_CONFIG_DIR", "NV2A_SHADER_CACHE"};

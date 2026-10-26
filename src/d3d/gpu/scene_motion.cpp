@@ -16,6 +16,13 @@ namespace {
 using V=ScenePosition;
 using M=video::Mat4;
 using Clock=std::chrono::steady_clock;
+Clock::time_point diagnostic_clock() {
+#ifdef NGB_IOS_RELEASE
+    return {};
+#else
+    return Clock::now();
+#endif
+}
 std::atomic<uint64_t> scene_serial{0};
 struct Token {
     uint32_t t[4];
@@ -438,8 +445,8 @@ bool SceneVertexPosition(const State& s,const Assembled& a,uint32_t v,const Draw
     return fixed_position(s,a,v,c,result);
 }
 bool SceneMotion::Add(const State& s,const Assembled& a,const DrawConstants& dc,SceneOutput& output) {
-    auto& p=*impl_;auto begin=Clock::now();p.stats.draws++;
-    auto done=[&](bool ok) {p.elapsed+=std::chrono::duration<double,std::milli>(Clock::now()-begin).count();if(!ok) p.stats.unsupported++;return ok;};
+    auto& p=*impl_;auto begin=diagnostic_clock();p.stats.draws++;
+    auto done=[&](bool ok) {p.elapsed+=std::chrono::duration<double,std::milli>(diagnostic_clock()-begin).count();if(!ok) p.stats.unsupported++;return ok;};
     if(a.pretransformed || a.topology!=Topology::Triangles || !a.vertex_count || a.vertex_count>262144 || !s.scene_camera_valid) return done(false);
     // This adapter currently consumes the main camera's scene; shadow maps and
     // offscreen effects keep their original recipe, rather than borrowing its camera.
@@ -643,7 +650,7 @@ bool SceneMotion::Add(const State& s,const Assembled& a,const DrawConstants& dc,
 }
 SceneMotion::Stats SceneMotion::Resolve() {
     auto& p=*impl_;if(p.resolved) return p.stats;p.resolved=true;
-    auto start=Clock::now();p.now.id=scene_serial.fetch_add(1,std::memory_order_relaxed)+1;
+    auto start=diagnostic_clock();p.now.id=scene_serial.fetch_add(1,std::memory_order_relaxed)+1;
     // Canonical viewport order is independent of this frame's draw order.
     std::vector<video::Viewport> ordered;ordered.reserve(p.now.viewports.size());
     std::vector<size_t> remap(p.now.viewports.size());
@@ -653,7 +660,7 @@ SceneMotion::Stats SceneMotion::Resolve() {
     video::Scene output;
     p.stats.extract_ms=p.elapsed;
     bool interpolated=p.before.id && video::interpolate(p.before,p.now,.5f,output,&p.stats.vf);
-    auto projected_start=Clock::now();
+    auto projected_start=diagnostic_clock();
     p.stats.interpolate_ms=std::chrono::duration<double,std::milli>(projected_start-start).count();
     if(!interpolated) {p.stats.cuts++;p.stats.cpu_ms=p.elapsed+p.stats.interpolate_ms;return p.stats;}
     for(const Binding& b:p.bindings) {
@@ -674,7 +681,7 @@ SceneMotion::Stats SceneMotion::Resolve() {
         }
         b.output->positions=std::move(screen);p.stats.changed++;
     }
-    p.stats.project_ms=std::chrono::duration<double,std::milli>(Clock::now()-projected_start).count();
+    p.stats.project_ms=std::chrono::duration<double,std::milli>(diagnostic_clock()-projected_start).count();
     p.stats.cpu_ms=p.elapsed+p.stats.interpolate_ms+p.stats.project_ms;return p.stats;
 }
 void SceneMotion::Finish() {

@@ -1114,7 +1114,11 @@ int main(int argc, char **argv)
     // LiveContainer may already redirect stdout to a regular host log. Still
     // replace our own current-session log so an old saves/log.txt is not mistaken
     // for the just-installed executable's output.
+#ifdef NGB_IOS_RELEASE
+    bool capture_log = false;
+#else
     bool capture_log = true;
+#endif
 #else
     struct stat out_st;
     bool to_file = fstat(STDOUT_FILENO, &out_st) == 0 && S_ISREG(out_st.st_mode);
@@ -1210,7 +1214,7 @@ int main(int argc, char **argv)
     SymInitialize(GetCurrentProcess(), NULL, TRUE);
 #endif
     AddVectoredExceptionHandler(1, veh_handler);
-#if !defined(_WIN32)
+#if !defined(_WIN32) && !defined(NGB_IOS_RELEASE)
     {
         struct sigaction sa;
         memset(&sa, 0, sizeof(sa));
@@ -1219,7 +1223,7 @@ int main(int argc, char **argv)
         sigaction(SIGUSR1, &sa, NULL);
     }
 #endif
-#if !defined(_WIN32)
+#if !defined(_WIN32) && !defined(NGB_IOS_RELEASE)
     if (getenv("NGB_PROFILE")) {
         prof_start();
         signal(SIGINT, prof_exit_on_signal);

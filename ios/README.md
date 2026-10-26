@@ -19,6 +19,12 @@ or a compatible configured host is required; no developer certificate is
 provided. Original game files and generated game C are excluded from source
 exports and raw-data IPA packaging checks.
 
+Release builds do not create developer console logs, build-info text files or
+F7 draw captures. Periodic kernel and Smooth Motion diagnostics are disabled.
+The staged IPA excludes development logs, headers, module maps, static/object
+archives and debug-symbol bundles; runtime assets and licenses are retained.
+The optional in-game FPS display remains a user setting.
+
 ## Features and limits
 
 - Original game engine with an iOS Vulkan/MoltenVK renderer.

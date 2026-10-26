@@ -8,6 +8,7 @@
   <key>CFBundlePackageType</key><string>APPL</string>
   <key>CFBundleShortVersionString</key><string>0.2.0</string>
   <key>CFBundleVersion</key><string>@NGB_IOS_BUILD_VERSION@</string>
+  <key>NGBDiagnosticsEnabled</key><false/>
   <key>NGBBuildConfiguration</key><string>@CMAKE_BUILD_TYPE@</string>
   <key>NGBSourceCommit</key><string>@NGB_IOS_BUILD_COMMIT@</string>
   <key>MinimumOSVersion</key><string>15.0</string>

@@ -131,6 +131,7 @@ void VulkanBackend::MotionPresent(const Surface& front,Image& endpoint,float bar
     if (!motion_capture_ || !motion_valid_ || !motion_3d_) return;
     motion_match_stats_=motion_history_.Resolve();
     motion_changed_=motion_match_stats_.changed;
+#ifndef NGB_IOS_RELEASE
     motion_match_window_.draws+=motion_match_stats_.draws;
     motion_match_window_.models+=motion_match_stats_.models;
     motion_match_window_.shared+=motion_match_stats_.shared;
@@ -151,6 +152,7 @@ void VulkanBackend::MotionPresent(const Surface& front,Image& endpoint,float bar
     motion_match_window_.vf.total+=motion_match_stats_.vf.total;
     motion_match_window_.vf.blended+=motion_match_stats_.vf.blended;
     motion_match_window_.cpu_ms+=motion_match_stats_.cpu_ms;
+#endif
     if (!motion_changed_ || ngb_quick_wanted() || !motion_last_ns_ || now-motion_last_ns_>50000000LL) return;
     Target *target=EnsureTarget(front,false);
     if (!target || !motion_valid_) return;
@@ -193,6 +195,7 @@ void VulkanBackend::MotionFinish() {
 #ifdef NGB_IOS_APP
     hz=ngb_ios_display_hz();
 #endif
+#ifndef NGB_IOS_RELEASE
     if (now-motion_log_ns_>=5000000000LL) {
         if (motion_log_ns_) std::fprintf(stderr,
             "[Smooth Motion] midpoint pairs queued %u/5s; eligible 3D draws %u, changed matches %u; packet %.1f MiB; snapshots %.1f MiB; valid %d, MSAA %u, custom glow %d, display %.1f Hz; guest clock 60 Hz\n",
@@ -214,6 +217,7 @@ void VulkanBackend::MotionFinish() {
         motion_match_window_={};
         motion_log_ns_=now; motion_pictures_=0;
     }
+#endif
     bool wanted=false;
 #ifdef NGB_IOS_APP
     wanted=shared_ && ngb_pc_setting(26) && ngb_ios_display_hz()>=100;

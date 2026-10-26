@@ -51,6 +51,11 @@ on:
       - 'ios/target.cmake'
       - 'ios/Info.plist.in'
       - 'ios/package_ipa.sh'
+      - 'ios/clean_bundle.py'
+      - 'ios/release_package_test.py'
+      - 'ios/release_stdio.h'
+      - 'src/launch.c'
+      - 'xboxrecomp/src/kernel/kernel_bridge.c'
       - 'src/main.c'
       - 'CMakeLists.txt'
       - 'src/launcher.c'
@@ -208,6 +213,7 @@ jobs:
           python3 ios/presenter_descriptor_test.py
           python3 ios/fps_counter_test.py
           python3 ios/rumble_warmup_test.py
+          CC=clang python3 ios/release_package_test.py
           xcrun --sdk iphoneos clang -arch arm64 -miphoneos-version-min=15.0 -fobjc-arc \
             -c ios/haptics.m -o build/ios-platform/haptics.o
       - name: Compile actual VF3 scene bridge and Smooth Motion shaders
