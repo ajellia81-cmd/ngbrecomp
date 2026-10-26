@@ -7,19 +7,19 @@ A successful compile/package is not a gameplay result.
 
 ## Download the actual IPA
 
-1. Open the [encrypted game artifact](https://github.com/ajellia81-cmd/ngbrecomp/actions/runs/40246051826/artifacts/12619102483)
-   while signed into GitHub. It is from [Actions run 40246051826](https://github.com/ajellia81-cmd/ngbrecomp/actions/runs/40246051826).
+1. Open the [encrypted game artifact](https://github.com/ajellia81-cmd/ngbrecomp/actions/runs/40250377734/artifacts/12620751067)
+   while signed into GitHub. It is from [Actions run 40250377734](https://github.com/ajellia81-cmd/ngbrecomp/actions/runs/40250377734).
 2. Extract GitHub's outer ZIP. It contains `NinjaGaidenBlack-ios-arm64-unsigned.ipa.7z`.
 3. Open the inner archive with a 7z-capable tool such as 7-Zip and enter the same
    password stored in `NGB_IPA_PASSWORD`. Do not upload the password to an issue or chat.
 4. Extract `NinjaGaidenBlack-ios-arm64-unsigned.ipa`. Import this file, not the ZIP/7z.
 
-The artifact is retained for seven days. The unsigned IPA is 47,261,464 bytes and
-has SHA-256 `b7a9828f02bf13bb7b40baba27c4c1dd4b3f70c384cb9dce7a4f3a37e065a523`.
-App version: **0.2.0 (2.57)**.
-Build source commit: `bc531c5b3c69dc1dc6ed979dd8af90a7461733aa`.
+The artifact is retained for seven days. The unsigned IPA is 47,263,460 bytes and
+has SHA-256 `542703ce630dda67776a732c9df4206bb06a559ffef2e5cf503386eec2310af5`.
+App version: **0.2.0 (2.59)**.
+Build source commit: `bd290afebabfaffdcc3d283e784e2d4c043e9a0e`.
 It contains the real engine, 11,740 original lifted game functions and 55 Korean
-variants. It is not NGBBringup. Korean glyph rendering/gameplay still require a device test.
+variants. It is not NGBBringup. Remaining Smooth Motion rendering requires a device retest.
 The Korean-enabled build contains the pinned translation capsule; the original
 game data must still be imported. No developer certificate/provisioning profile is included.
 
@@ -37,9 +37,8 @@ Use a normal foreground launch for the initial test.
 
 ## Game files and paths
 
-The supported build uses the retail USA `default.xbe`, size **4,571,136 bytes**,
-FNV-1a **0x3602ba6a6079c8cd**. The uploaded USA En/Ja executable matched this.
-A different disc revision has not been established as compatible.
+Use your own supported game data. Other disc revisions have not been established
+as compatible. Do not publish game executables or input fingerprints.
 
 On first launch the app offers:
 
@@ -66,10 +65,7 @@ Environment mapping: `NGB_GAME_DIR=Documents/game`, `NGB_SAVE_DIR=Documents/save
 as absolute paths at runtime). The host LiveContainer's own Documents folder is
 not automatically the guest's folder.
 
-Keep the original complete ISO/data until game import and device startup have
-been verified. The 4.57 MB Drive XBE is only a compilation input; retain it for
-future builds. The large Drive ISO is no longer required by the build once the
-small input is working, but retain at least one complete game-data copy elsewhere.
+Keep at least one complete game-data backup after verifying import and startup.
 
 ## Controls and first-run evidence
 
@@ -472,13 +468,9 @@ Invoke-WebRequest -UseBasicParsing 'https://raw.githubusercontent.com/ajellia81-
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File $script
 ```
 
-The default ISO path is the previously supplied Downloads/Ninja Gaiden Black
-(USA) (En,Ja).iso. Use -IsoPath to override it. Upload only the resulting font ZIP
-privately in chat, never to the public repository. Keep the original ISO backup.
-After upload, the PC need not remain running. The existing Drive ISO is 7.83 GB,
-above the connector's 256 MB raw-download limit; its sharing settings were not
-changed. Windows PowerShell is checked using synthetic XDVDFS fixtures, not the
-owner's ISO or desktop.
+Use -IsoPath to select your own disc image. Keep extracted fonts private and
+retain your original backup. The helper is checked with synthetic fixtures.
+
 
 
 ## Build 2.55: preserve Korean glyph bottom strokes
