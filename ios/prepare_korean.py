@@ -101,6 +101,27 @@ def settings_tab_mask(sprite):
     return b'NGBM'+struct.pack('<HH',width,height)+mask
 
 
+def center_menu_headings(sprite):
+    # These three sprites are centered headings, not shared background art.
+    # The translation centers ink in the texture, but the original definitions
+    # crop Main Menu and Missions to narrower, left-anchored UV intervals.
+    # Move the sampling window, preserving its extent and all texture pixels.
+    if sprite[:4] != b'XPR0' or struct.unpack_from('<I', sprite, 16)[0] != 120:
+        raise ValueError('Pinned Korean main-menu sprite layout changed')
+    output = bytearray(sprite)
+    for index, width, old_end, ink_center in [(0, 256, 230, 128),
+                                              (1, 512, 438, 219),
+                                              (2, 256, 202, 129.5)]:
+        at = 20 + index * 24
+        u0, v0, u1, v1, texture, size = struct.unpack_from('<4f2I', sprite, at)
+        if (u0, v0, u1, v1, texture) != (0, 0, old_end / width, 1, index):
+            raise ValueError('Pinned Korean heading bounds changed')
+        shift = (ink_center - old_end / 2) / width
+        struct.pack_into('<f', output, at, u0 + shift)
+        struct.pack_into('<f', output, at + 8, u1 + shift)
+    return bytes(output)
+
+
 def prepare(source_path, archive_path, output):
     archive = archive_path.read_bytes()
     if sha(archive) != PATCH_SHA256:
@@ -119,6 +140,9 @@ def prepare(source_path, archive_path, output):
                 data = package.read('ngb_native11/assets/members/' + str(relative))
                 if sha(data) != member['output_sha256']:
                     raise ValueError('Patch member fingerprint mismatch')
+                if str(relative) == 'demo.afs/main_menu.spr':
+                    data = center_menu_headings(data)
+                    member['output_sha256'] = sha(data)
                 target = assets / 'members' / str(relative)
                 target.parent.mkdir(parents=True, exist_ok=True)
                 target.write_bytes(data)

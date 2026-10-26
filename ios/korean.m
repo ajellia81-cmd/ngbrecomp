@@ -222,7 +222,8 @@ BOOL ngb_prepare_korean(NSString *original, NSString *destination, NSString *ass
     }
     NSString *marker=[destination stringByAppendingString:@".state.plist"];
     NSDictionary *previous=[NSDictionary dictionaryWithContentsOfFile:marker];
-    if ([previous[@"layout"] isEqual:AFSLayoutVersion] && [previous[@"patch"] isEqual:manifest[@"patch_zip_sha256"]] && [previous[@"sources"] isEqual:signatures] &&
+    NSString *capsuleHash=hash_data(json);
+    if ([previous[@"layout"] isEqual:AFSLayoutVersion] && [previous[@"capsule"] isEqual:capsuleHash] && [previous[@"patch"] isEqual:manifest[@"patch_zip_sha256"]] && [previous[@"sources"] isEqual:signatures] &&
         [fm fileExistsAtPath:[destination stringByAppendingPathComponent:@"default.xbe"]]) return YES;
     NSString *temporary=[destination stringByAppendingString:@".pending"];
     [fm removeItemAtPath:temporary error:nil];
@@ -258,7 +259,7 @@ BOOL ngb_prepare_korean(NSString *original, NSString *destination, NSString *ass
     }
     if (ok) ok=[fm moveItemAtPath:temporary toPath:destination error:error];
     if (ok) ok=reset_korean_cache(destination,error);
-    if (ok) ok=[@{@"layout":AFSLayoutVersion,@"patch":manifest[@"patch_zip_sha256"],@"sources":signatures} writeToFile:marker atomically:YES];
+    if (ok) ok=[@{@"layout":AFSLayoutVersion,@"capsule":capsuleHash,@"patch":manifest[@"patch_zip_sha256"],@"sources":signatures} writeToFile:marker atomically:YES];
     else [fm removeItemAtPath:temporary error:nil];
     return ok;
 }

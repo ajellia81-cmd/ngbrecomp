@@ -86,6 +86,29 @@ class InstructionRanges(unittest.TestCase):
             self.assertEqual(set(select_changed_functions({'f':'safe call'},{'f':'direct call'},old,new,original,patched)),{'f'})
 
 
+from prepare_korean import center_menu_headings
+
+class MenuHeadingBounds(unittest.TestCase):
+    def test_centered_sampling_preserves_geometry_and_pixels(self):
+        import struct
+        original=bytearray(256)
+        original[:4]=b'XPR0'
+        struct.pack_into('<I',original,16,120)
+        for i,w,end in [(0,256,230),(1,512,438),(2,256,202)]:
+            struct.pack_into('<4f2I',original,20+i*24,0,0,end/w,1,i,(32<<16)|w)
+        fixed=center_menu_headings(original)
+        for i,w,end,center in [(0,256,230,128),(1,512,438,219),(2,256,202,129.5)]:
+            u,v,z,t,texture,size=struct.unpack_from('<4f2I',fixed,20+i*24)
+            self.assertEqual((u+z)*w/2,center)
+            self.assertEqual((z-u)*w,end)
+            self.assertEqual((v,t,texture,size),(0,1,i,(32<<16)|w))
+        allowed={20+i*24+j for i in [0,2] for j in [*range(4),*range(8,12)]}
+        self.assertTrue(all(a==b or i in allowed for i,(a,b) in enumerate(zip(original,fixed))))
+        self.assertEqual(fixed[92:],original[92:])
+        original[16]=0
+        with self.assertRaises(ValueError): center_menu_headings(original)
+
+
 from merge_korean_codegen import repair_korean_spacing
 
 class KoreanSpaces(unittest.TestCase):
