@@ -88,6 +88,8 @@ int main(int argc,char **argv) {
     masked.vsc[170][0]=1000;
     auto second=MotionPose::Capture(masked,constants);
     check(first.RelativeStep(second)==0,"unused constant rejected a stable pose");
+    DrawConstants irrelevant=constants;irrelevant.wvp[0]=10000;
+    check(first.RelativeStep(MotionPose::Capture(masked,irrelevant))==0,"programmable draw compared an unused fixed-function matrix");
     masked.vsc[5][0]=1;
     check(first.RelativeStep(MotionPose::Capture(masked,constants))>.25f,"active input discontinuity was ignored");
     masked.vs->program[3]|=2;

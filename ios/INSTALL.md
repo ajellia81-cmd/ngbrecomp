@@ -595,7 +595,7 @@ make the next device log actionable. Existing 60 Hz simulation and 120 Hz pair
 presentation remain unchanged.
 
 
-## Build 2.58: reject discontinuous singleton motion pairs
+## Build 2.59: reject discontinuous singleton motion pairs
 
 The owner has closed the Korean glyph-bottom task after the source-bitmap pixel
 comparison; spacing and the Settings-tab image are also accepted. Those sources
@@ -618,7 +618,8 @@ remaining device cause. Rapid legitimate motion can also fall back for a draw.
 The referenced constant bank is decoded using the same vertex operand encoding
 as the shader generator. Unused stale constants are excluded from pairing cost
 and continuity tests. Relative constant addressing conservatively includes the
-entire bank; fixed-function draws compare their retained matrices. Native tests
+entire bank; fixed-function draws compare their retained matrices; programmable draws exclude
+those unused fixed-function matrices. Native tests
 check singleton replacement, normal small motion, active/unused constants,
 relative addressing and fixed-function isolation. All previous pairing tests
 remain. New matching telemetry accumulates candidate rejection and largest

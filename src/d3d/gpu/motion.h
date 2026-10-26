@@ -17,9 +17,10 @@ namespace gpu {
 struct MotionPose {
     std::array<std::array<float,4>,192> vc{};
     std::array<uint8_t,192> used{};
+    uint32_t programmable=1;
     float wvp[16]{}, wv[16]{}, wvn[16]{}, wvb[4][16]{}, wvbn[4][16]{}, pv[16]{};
     static MotionPose Capture(const State& s,const DrawConstants& c,bool programmable=true) {
-        MotionPose p; p.vc=s.vsc;
+        MotionPose p; p.vc=s.vsc; p.programmable=programmable;
         if(programmable) {
             if(s.vs && !s.vs->program.empty()) p.used=VertexProgramConstants(s.vs->program);
             else p.used.fill(1); // unknown program: do not assume constants are unused
@@ -34,6 +35,7 @@ struct MotionPose {
     // Reject a large relative input step for the whole draw, never per vertex.
     // This is an input-continuity guard, not a world-space camera-cut metric.
     float RelativeStep(const MotionPose& current) const {
+        if(programmable!=current.programmable) return std::numeric_limits<float>::infinity();
         double largest=0;
         auto add=[&](float a,float b) {
             if(!std::isfinite(a) || !std::isfinite(b)) { largest=std::numeric_limits<double>::infinity(); return; }
@@ -43,8 +45,10 @@ struct MotionPose {
         for(size_t r=0;r<192;r++) if(used[r] || current.used[r])
             for(size_t k=0;k<4;k++) add(vc[r][k],current.vc[r][k]);
 #define STEP_MATRIX(x) for(size_t k=0;k<sizeof x/sizeof(float);k++) add(((const float*)x)[k],((const float*)current.x)[k])
-        STEP_MATRIX(wvp); STEP_MATRIX(wv); STEP_MATRIX(wvn);
-        STEP_MATRIX(wvb); STEP_MATRIX(wvbn); STEP_MATRIX(pv);
+        if(!programmable) {
+            STEP_MATRIX(wvp); STEP_MATRIX(wv); STEP_MATRIX(wvn);
+            STEP_MATRIX(wvb); STEP_MATRIX(wvbn); STEP_MATRIX(pv);
+        }
 #undef STEP_MATRIX
         return float(largest);
     }
@@ -133,8 +137,10 @@ public:
                     for(size_t k=0;k<4;k++) add(old[i].vc[r][k],list[j].pose.vc[r][k]);
 #define POSE_COST(x) for(size_t k=0;k<sizeof old[i].x/sizeof(float);k++) \
     add(((const float*)old[i].x)[k],((const float*)list[j].pose.x)[k])
-                POSE_COST(wvp); POSE_COST(wv); POSE_COST(wvn);
-                POSE_COST(wvb); POSE_COST(wvbn); POSE_COST(pv);
+                if(!old[i].programmable || !list[j].pose.programmable) {
+                    POSE_COST(wvp); POSE_COST(wv); POSE_COST(wvn);
+                    POSE_COST(wvb); POSE_COST(wvbn); POSE_COST(pv);
+                }
 #undef POSE_COST
                 if (std::isfinite(cost)) candidates.emplace_back(cost,j,i);
             }
