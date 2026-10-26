@@ -6,38 +6,38 @@ after restarting following the first load. Long-term reliability, performance an
 background resume still require testing. The older NGBBringup diagnostic app is
 a separate target.
 
-- App version: **0.2.0 (2.57)**; compiled revision and active log path are recorded in `Documents/build-info.txt`.
-- Build source: `bc531c5b3c69dc1dc6ed979dd8af90a7461733aa`, branch `ios-port`.
-- [Successful Actions run](https://github.com/ajellia81-cmd/ngbrecomp/actions/runs/40246051826).
-- [Encrypted IPA artifact](https://github.com/ajellia81-cmd/ngbrecomp/actions/runs/40246051826/artifacts/12619102483).
-- Unsigned IPA: **47,261,464 bytes**, containing **11,740 linked lifted game functions**,
+- App version: **0.2.0 (2.59)**; compiled revision and active log path are recorded in `Documents/build-info.txt`.
+- Build source: `bd290afebabfaffdcc3d283e784e2d4c043e9a0e`, branch `ios-port`.
+- [Successful Actions run](https://github.com/ajellia81-cmd/ngbrecomp/actions/runs/40250377734).
+- [Encrypted IPA artifact](https://github.com/ajellia81-cmd/ngbrecomp/actions/runs/40250377734/artifacts/12620751067).
+- Unsigned IPA: **47,263,460 bytes**, containing **11,740 linked lifted game functions**,
   55 additional Korean variants, the real engine/runtime, SDL UIKit entry point,
   MoltenVK framework and private translation capsule.
-- IPA SHA-256: `b7a9828f02bf13bb7b40baba27c4c1dd4b3f70c384cb9dce7a4f3a37e065a523`.
-- GitHub artifact ZIP SHA-256: `4245e8c2db866133893571c8e606a87243fb893934148295a5fb1adf678e3619`.
+- IPA SHA-256: `542703ce630dda67776a732c9df4206bb06a559ffef2e5cf503386eec2310af5`.
+- GitHub artifact ZIP SHA-256: `965be6b85b322f668a5dda054371e85a9544aa3ef6a796bf605d4cf57037b510`.
 
 The owner confirms gameplay, Korean text and 120 FPS output/counter operation.
-Build 2.57 retains input-matrix interpolation and replaces occurrence-order
-pairing of repeated meshes with a frame-wide nearest-pose plan within each
-geometry/material group, following the VF3 reference's pairing boundary. Actual
-draw ranges, index type and render-surface formats/extents now distinguish keys;
-rotating display-buffer addresses do not break history. Reordered and culled
-instances, greedy-pair stealing, repeatable resolution, reset and range separation
-pass native tests. The old 2.56 occurrence matcher fails the reordered-room
-negative control. This is consistent with the owner's lamp geometry appearing
-between the lamps, but physical rendering is still a retest item.
+Build 2.59 retains 2.57's frame-wide repeated-mesh pairing and adds a
+whole-draw input-continuity check. Singleton candidate groups no longer bypass
+identity plausibility: the old source blended a previous lamp at 10 with a
+different visible lamp at 20 into a false middle glow at 15. A native negative
+control reproduces this; the new guard retains the current endpoint for the
+large discontinuity and still interpolates normal small motion. The guard uses
+a conservative 25% relative component limit, not VF3's world-space camera/model
+metric. It can also skip legitimate rapid motion and requires phone validation.
 
-The owner approved the revised Korean 설정 preview before building. Native macOS
-mask/plate code places its coverage at rows 8–37 of a 128x64 plate; area filtering
-replaces nearest source sampling. Korean spaces now take a quarter cell (4 pixels
-in the measured 16-pixel bank), using the baked Options labels as the reference.
-The sprite path no longer adds a vertical edge inset on the three Korean font
-pages. All 768 cells were inspected; 715 carry substantial last-row ink. Horizontal
-protection and the renderer's console-sample clamp remain. Native edge-fade tests
-pass; final glyph-bottom appearance still requires device confirmation.
+Only constants referenced by the active vertex program influence pose distance
+and continuity. Relative addressing conservatively marks the full bank; fixed
+function uses its matrices. Native direct/relative/unused-constant and normal-
+motion tests pass, and matching telemetry now accumulates over five seconds.
+The owner confirms 2.57 ran on the phone and that flicker decreased but persists.
+Physical rendering and performance of this new source remain a retest item.
 
-Controller haptics recovery also still needs device feedback. No original fonts,
-bitmaps or game code are committed. Imported data and shared saves are preserved.
+The owner has completed the Korean glyph-bottom task after pixel comparison
+against the original translation bitmap, and accepted the spacing and 설정 tab
+image. These font/UI sources are unchanged. Controller haptics recovery still
+needs device feedback. No original fonts, bitmaps or game code are committed.
+Imported data and shared saves are preserved.
 
 See [INSTALL.md](INSTALL.md) for download, LiveContainer import and game data.
 The download is an encrypted 7z inside GitHub's artifact ZIP. It expires seven
@@ -104,37 +104,13 @@ available for foreground notifications. On activation the gates reopen, virtual
 time resumes without the background interval, and audio reprimes. Menu audio
 pause state is preserved. This lifecycle path needs an owner-device retest.
 
-## Verified results
+## Public validation results
 
-| Check | Observed result |
-| --- | --- |
-| Owner input | Retail USA XBE size 4,571,136 and FNV-1a `0x3602ba6a6079c8cd` accepted |
-| Private input SHA-256 | `5fa3997b0d518a9db3867ca6ae2942c99e5349fd138f536ff56772e1a0202200` |
-| Generated game code | 48 real C translation units generated and compiled for ARM64 |
-| Whole engine | Original game target linked for iPhoneOS; no lifted-function stubs |
-| UIKit game app | Bundle linked with real engine, SDL UIKit entry and MoltenVK |
-| IPA | iPhoneOS platform and engine symbols checked; ZIP integrity passed |
-| Encrypted delivery | 7z password/integrity test and artifact upload passed |
-| Korean build | Pinned patch, all 17 section hashes, 137 variants, iPhoneOS ARM64 compilation/link and encrypted IPA packaging passed |
-| Smooth Motion build | Actual fixed/program HLSL compiled to SPIR-V; retained-pose tests and iPhoneOS ARM64 engine link/package passed; device scenes/performance unverified |
-| Korean archive/settings fixtures | Actual Foundation AFS/delta tests and Japanese/English/Korean settings persistence passed; not a real-disc/device test |
-| VM semantics | Allocation collision, protected writes, protection restoration and 64 MiB backing-file shared aliases passed on macOS and iPhone simulator |
-| Scheduler/thread regressions | Existing macOS and Linux regressions passed |
-| Lifecycle CPU/time | Loaded-image scheduler stops a noncooperative guest spin loop, freezes its clock and resumes; passed Linux and macOS |
-| Lifecycle audio | Actual SDL dummy device rejects queued data while paused and reprimes on resume; passed macOS |
-| Touch controller contract | SDL virtual pad button/stick/trigger mapping passed headless Linux checks; not an iPhone UI test |
-| Extraction helper | Cloud PowerShell 7.5.4 synthetic disc tests passed; real Windows execution not observed |
-| Owner device report | Import and startup work after shared-RAM and loaded-image scheduler fixes; owner reports New Game and working gameplay; background execution/audio and graphics corruption on return were also reported |
-
-[Simulator VM run](https://github.com/ajellia81-cmd/ngbrecomp/actions/runs/40109319653)
-and [runtime/renderer build](https://github.com/ajellia81-cmd/ngbrecomp/actions/runs/40099391364).
-The macOS runner used Xcode 16.4/iPhoneOS 18.5 SDK with a deployment target of iOS 15.
-A deployment target is not validation on iOS 27. Windows and desktop macOS full-game
-builds were not run here; their default build paths were retained.
-
-The baseline Linux VEH regression previously failed at test_main.c:87 and remains
-unresolved. Its post-protection read passes through its own MMIO handler, so that
-failure alone does not establish a production VM bug. Do not report all tests as passing.
+The linked Actions run passed the platform checks and packaged the real-engine
+IPA. Native motion-history tests check reordered instances, singleton replacement,
+constant-use masks and normal-motion acceptance. These checks do not establish
+that the remaining iPhone rendering artifact is resolved. See [120FPS.md](120FPS.md)
+for the current interpolation limits and [INSTALL.md](INSTALL.md) for installation.
 
 ## Unverified and remaining work
 
@@ -164,15 +140,8 @@ failure alone does not establish a production VM bug. Do not report all tests as
 The real-engine build and owner-reported basic gameplay milestones are reached;
 the reliability, lifecycle and performance work above remains open.
 
-## Private inputs and source history
+## Game data
 
-See [PRIVATE_BUILD.md](PRIVATE_BUILD.md) for Actions secrets, privacy and packaging,
-and [SMALL_INPUT.md](SMALL_INPUT.md) for the optional read-only PowerShell extractor.
-Only the executable is needed to generate code; the complete disc data is still
-needed on the phone. Keep generated C and game files out of git and public caches.
-
-The original audited head was `fd3b1e569b3c8da5f697f15f69e86f13a7df33b8`.
-At that head the branch only added the six bring-up files. The production Apple
-implementations were already present in base `5fc57d8` and were reused rather than
-rewritten. Subsequent commits in this branch implement the game app described above.
-Upstream was not modified. No user desktop was accessed by the agent.
+Use your own game data. Game executables, font files, generated game sources and
+input fingerprints are not provided in this guide. Preserve your imported data
+and saves when replacing the application.
