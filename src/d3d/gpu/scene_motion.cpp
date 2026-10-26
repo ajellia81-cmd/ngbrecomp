@@ -7,6 +7,7 @@
 #include <cstring>
 #include <limits>
 #include <map>
+#include <tuple>
 
 namespace gpu {
 namespace {
@@ -108,6 +109,123 @@ struct Program {
         if(ops.empty()) valid=false;
     }
 };
+// Prove a rigid position program algebraically once per draw. This avoids
+// interpreting it for every terrain vertex. Anything nonlinear (skinning,
+// procedural displacement, clamps, variable address arithmetic) uses the
+// original position evaluator instead; no vertex samples or motion tolerances.
+struct Polynomial {
+    std::array<double,5> c{};
+    bool operator==(const Polynomial&) const=default;
+};
+struct Rational {
+    Polynomial n,d;
+    bool valid=true;
+    static Rational constant(double x) {Rational r;r.n.c[4]=x;r.d.c[4]=1;return r;}
+    static Rational input(unsigned i) {auto r=constant(0);r.n.c[i]=1;return r;}
+    bool scalar(double& out) const {
+        if(!valid) return false;
+        for(int i=0;i<4;i++) if(n.c[i]!=0 || d.c[i]!=0) return false;
+        if(d.c[4]==0) return false;out=n.c[4]/d.c[4];return std::isfinite(out);
+    }
+    Rational normalized() const {
+        if(!valid) return *this;
+        auto r=*this;
+        bool denominator_zero=true;for(double v:r.d.c) denominator_zero&=v==0;
+        if(denominator_zero) return {{},{},false};
+        bool constant=true;for(int i=0;i<4;i++) constant&=r.d.c[i]==0;
+        if(constant && r.d.c[4]!=0) {double scale=r.d.c[4];for(double& v:r.n.c) v/=scale;r.d.c[4]=1;}
+        if(r.n==r.d) return Rational::constant(1);
+        bool zero=true;for(double v:r.n.c) zero&=v==0;
+        if(zero) return Rational::constant(0);
+        return r;
+    }
+};
+Rational scaled(Rational a,double s) {for(double& x:a.n.c) x*=s;return a.normalized();}
+Rational sum(Rational a,Rational b) {
+    a=a.normalized();b=b.normalized();if(!a.valid || !b.valid) return {{},{},false};
+    if(a.d==b.d) {for(int i=0;i<5;i++) a.n.c[i]+=b.n.c[i];return a.normalized();}
+    double k;
+    if(a.scalar(k)) {for(int i=0;i<5;i++) b.n.c[i]+=k*b.d.c[i];return b.normalized();}
+    if(b.scalar(k)) {for(int i=0;i<5;i++) a.n.c[i]+=k*a.d.c[i];return a.normalized();}
+    return {{},{},false};
+}
+Rational multiply(Rational a,Rational b) {
+    a=a.normalized();b=b.normalized();if(!a.valid || !b.valid) return {{},{},false};
+    double k;if(a.scalar(k)) return scaled(b,k);if(b.scalar(k)) return scaled(a,k);
+    if(a.n==b.d) return Rational{b.n,a.d}.normalized();
+    if(b.n==a.d) return Rational{a.n,b.d}.normalized();
+    return {{},{},false};
+}
+bool rigid_clip_matrix(const Program& program,const State& s,M& out) {
+    if(program.inputs!=1 || !program.valid) return false;
+    using RV=std::array<Rational,4>;
+    RV r[13];for(auto& v:r) for(auto& c:v) c=Rational::constant(0);
+    int address=0;
+    std::vector<Polynomial> reciprocal_domains;
+    auto source=[&](const Operand& o) {
+        RV base;
+        if(o.mux==1 && o.reg<=12) base=r[o.reg];
+        else if(o.mux==2 && o.reg==0) for(unsigned i=0;i<4;i++) base[i]=Rational::input(i);
+        else if(o.mux!=1 && o.mux!=2) {
+            int reg=o.relative?std::clamp(address+int(o.constant),0,191):int(o.constant);
+            if(reg>=192) for(auto& v:base) v={{},{},false};
+            else for(int i=0;i<4;i++) base[i]=Rational::constant(s.vsc[size_t(reg)][i]);
+        } else for(auto& v:base) v=Rational::constant(0);
+        RV value;for(int i=0;i<4;i++) value[i]=scaled(base[o.sw[i]],o.neg?-1:1);return value;
+    };
+    auto write=[](RV& to,const RV& from,unsigned mask) {for(unsigned i=0;i<4;i++) if(mask&(8u>>i)) to[i]=from[i];};
+    for(const auto& o:program.ops) {
+        RV a=source(o.a),b=source(o.b),c=source(o.c),mr,ir;
+        auto dot=Rational::constant(0);
+        if(o.mac>=5 && o.mac<=7) {
+            for(int i=0;i<(o.mac==7?4:3);i++) dot=sum(dot,multiply(a[i],b[i]));
+            if(o.mac==6) dot=sum(dot,b[3]);
+        }
+        for(int i=0;i<4;i++) switch(o.mac) {
+        case 1:case 13:mr[i]=a[i];break;
+        case 2:mr[i]=multiply(a[i],b[i]);break;
+        case 3:mr[i]=sum(a[i],c[i]);break;
+        case 4:mr[i]=sum(multiply(a[i],b[i]),c[i]);break;
+        case 5:case 6:case 7:mr[i]=dot;break;
+        case 8:mr[i]=i==0?Rational::constant(1):i==1?multiply(a[1],b[1]):i==2?a[2]:b[3];break;
+        default:mr[i]={{},{},false};break;
+        }
+        if(o.ilu==1) ir=c;
+        else if(o.ilu==2 || o.ilu==3) {
+            double scalar;
+            if(!c[0].scalar(scalar)) reciprocal_domains.push_back(c[0].normalized().n);
+            ir.fill(Rational{c[0].d,c[0].n}.normalized());
+        }
+        else if(o.ilu) {for(auto& v:ir) v={{},{},false};}
+        if(o.arl) {
+            double value;if(!mr[0].scalar(value) || std::fabs(value)>1000000) return false;
+            address=int(std::floor(value+1e-3));
+        }
+        if(o.mm) write(r[o.r],mr,o.mm);
+        if(o.im&15) write(r[o.im&0x100?1:o.r],ir,o.im&15);
+        if(o.om) write(r[12],o.output_ilu?ir:mr,o.om);
+    }
+    RV clip=r[12];
+    // Cancellation is valid only away from the original reciprocal's poles.
+    // The per-vertex clip-W check below covers the perspective reciprocal;
+    // any different variable reciprocal keeps the original evaluator.
+    for(const auto& domain:reciprocal_domains) if(!(domain==clip[3].normalized().n)) return false;
+    for(int i=0;i<3;i++) {
+        if(!std::isfinite(s.vsc[58][i]) || s.vsc[58][i]==0) return false;
+        clip[i]=multiply(scaled(sum(clip[i],Rational::constant(-s.vsc[59][i])),1.0/s.vsc[58][i]),clip[3]);
+    }
+    for(int row=0;row<4;row++) {
+        auto value=clip[row].normalized();double denominator;
+        Rational d=Rational::constant(0);d.n=value.d;
+        if(!value.valid || !d.scalar(denominator) || denominator==0) return false;
+        for(int col=0;col<4;col++) {
+            out.m[col*4+row]=float((value.n.c[col]+(col==3?value.n.c[4]:0))/denominator);
+            if(!std::isfinite(out.m[col*4+row])) return false;
+        }
+    }
+    return true;
+}
+
 float clamp_magnitude(float x) {
     const float m=std::clamp(std::fabs(x),5.42101e-20f,1.84467e19f);return x<0?-m:m;
 }
@@ -278,6 +396,8 @@ struct SceneMotion::Impl {
     std::unordered_map<uint64_t,uint32_t> resources;
     std::unordered_map<uint64_t,std::vector<std::pair<size_t,size_t>>> shared;
     uint32_t next_resource=1;
+    std::unordered_map<uint64_t,video::Meshes> rigid_meshes;
+    size_t cached_bytes=0;
     double elapsed=0;
     size_t geometry_bytes=0;
 };
@@ -318,6 +438,24 @@ bool SceneMotion::Add(const State& s,const Assembled& a,const DrawConstants& dc,
         if(!inverse(projection,inv_projection)) return done(false);
     }
     M local_from_clip=inv_model*inv_projection;
+    M clip_from_input{},local_from_input{};
+    bool rigid=program && rigid_clip_matrix(*vp,s,clip_from_input);
+    bool raw_model=false;
+    if(rigid) {
+        // The proven complete transform supplies its actual model-to-view
+        // matrix, even when the program did not use c96 for that purpose.
+        M actual=inv_projection*clip_from_input;
+        if(affine(actual)) {
+            model=actual;use_center=false;raw_model=true;
+            if(!inverse(model,inv_model)) return done(false);
+            local_from_clip=inv_model*inv_projection;
+        }
+        local_from_input=local_from_clip*clip_from_input;p.stats.rigid++;
+    }
+    // A deformed mesh can already contain view/world-space bone positions.
+    // Its posed bounding box supplies an actual spatial origin, so two uses
+    // of that resource are not both presented to VF3 at an identity origin.
+    if(program && !raw_model) use_center=true;
     auto ix=std::make_shared<std::vector<uint32_t>>(triangles(a));if(ix->empty()) return done(false);
     size_t owned=ix->size()*(sizeof(video::Vertex)+sizeof(uint32_t))+size_t(a.vertex_count)*sizeof(V);
     if(owned>64u*1024u*1024u-p.geometry_bytes) return done(false);
@@ -328,22 +466,33 @@ bool SceneMotion::Add(const State& s,const Assembled& a,const DrawConstants& dc,
     for(int i=0;i<3;i++) if(!std::isfinite(scale[i]) || std::fabs(scale[i])<1e-12f || !std::isfinite(offset[i])) return done(false);
     auto meshes=std::make_shared<std::vector<video::Mesh>>(1);auto& mesh=(*meshes)[0];mesh.verts.resize(ix->size());
     std::vector<V> local(a.vertex_count);std::vector<uint8_t> seen(a.vertex_count);
-    uint64_t resource=1469598103934665603ull;
+    uint64_t resource=1469598103934665603ull,uv_digest=1469598103934665603ull;
     for(size_t t=0;t<ix->size();t++) {
         uint32_t id=(*ix)[t];
         if(!seen[id]) {
-            V screen{};if(!(program?execute(*vp,s,a,id,screen):fixed_position(s,a,id,dc,screen))) return done(false);
-            float w=clamp_magnitude(screen[3]);V clip{};
-            for(int i=0;i<3;i++) clip[i]=(screen[i]-offset[i])/scale[i]*w;
-            clip[3]=w;
-            local[id]=transform_point(local_from_clip,clip);
+            V raw;if(!read_input(a,0,id,raw)) return done(false);
+            bool fast=rigid && raw[3]==1;
+            if(fast) for(float v:raw) fast&=std::isfinite(v);
+            if(fast) {
+                V clip=transform_point(clip_from_input,raw);
+                fast=std::fabs(clip[3])>=5.42101e-20f && std::fabs(clip[3])<=1.84467e19f;
+            }
+            if(fast) local[id]=raw_model?raw:transform_point(local_from_input,raw);
+            else {
+                V screen{};if(!(program?execute(*vp,s,a,id,screen):fixed_position(s,a,id,dc,screen))) return done(false);
+                float w=clamp_magnitude(screen[3]);V clip{};
+                for(int i=0;i<3;i++) clip[i]=(screen[i]-offset[i])/scale[i]*w;
+                clip[3]=w;
+                local[id]=transform_point(local_from_clip,clip);
+            }
             if(!std::isfinite(local[id][3]) || std::fabs(local[id][3])<1e-10f) return done(false);
             for(int i=0;i<3;i++) {local[id][i]/=local[id][3];if(!std::isfinite(local[id][i])) return done(false);}
             local[id][3]=1;seen[id]=1;
-            V raw;if(!read_input(a,0,id,raw)) return done(false);resource=digest(raw.data(),sizeof raw,resource);
+            resource=digest(raw.data(),sizeof raw,resource);
         }
         auto& vertex=mesh.verts[t];std::memcpy(vertex.pos,local[id].data(),12);
         V uv;if(!read_input(a,9,id,uv)) return done(false);vertex.uv[0]=uv[0];vertex.uv[1]=uv[1];
+        uv_digest=digest(vertex.uv,sizeof vertex.uv,uv_digest);
     }
     if(use_center) {
         float lo[3]={INFINITY,INFINITY,INFINITY},hi[3]={-INFINITY,-INFINITY,-INFINITY};
@@ -357,6 +506,19 @@ bool SceneMotion::Add(const State& s,const Assembled& a,const DrawConstants& dc,
     mesh.key=ix->size(); // topology compatibility; texture/UV output stays in the original shader
     auto found=p.resources.find(resource);
     if(found==p.resources.end()) found=p.resources.emplace(resource,p.next_resource++).first;
+    if(raw_model) {
+        uint64_t cache_key=digest(&uv_digest,sizeof uv_digest,resource);
+        auto cached=p.rigid_meshes.find(cache_key);
+        size_t bytes=mesh.verts.size()*sizeof(video::Vertex);
+        if(cached!=p.rigid_meshes.end() && cached->second->at(0).verts.size()==mesh.verts.size() &&
+           !std::memcmp(cached->second->at(0).verts.data(),mesh.verts.data(),bytes)) {
+            meshes=cached->second;p.stats.cached++;
+        } else {
+            if(p.cached_bytes+bytes>64u*1024u*1024u) {p.rigid_meshes.clear();p.cached_bytes=0;}
+            p.rigid_meshes[cache_key]=meshes;p.cached_bytes+=bytes;
+        }
+    }
+    const auto& selected=meshes->at(0);
     ViewKey key{s.rt.format,s.rt.size,s.viewport.x,s.viewport.y,s.viewport.w,s.viewport.h};
     auto [where,inserted]=p.viewports.emplace(key,p.now.viewports.size());
     if(inserted) {
@@ -372,13 +534,13 @@ bool SceneMotion::Add(const State& s,const Assembled& a,const DrawConstants& dc,
     size_t v=where->second;
     for(int col=0;col<4;col++) model.m[col*4+2]*=-1;
     uint64_t same=digest(model.m,64,digest(&found->second,4));
-    for(const auto& vertex:mesh.verts) same=digest(vertex.pos,sizeof vertex.pos,same);
+    for(const auto& vertex:selected.verts) same=digest(vertex.pos,sizeof vertex.pos,same);
     size_t index=p.now.viewports[v].models.size();bool reused=false;
     for(auto [u,j]:p.shared[same]) if(u==v) {
         const auto& previous=p.now.viewports[u].models[j];
-        bool same_positions=previous.meshes->at(0).verts.size()==mesh.verts.size();
-        if(same_positions) for(size_t i=0;i<mesh.verts.size();i++)
-            if(std::memcmp(previous.meshes->at(0).verts[i].pos,mesh.verts[i].pos,sizeof mesh.verts[i].pos)) {same_positions=false;break;}
+        bool same_positions=previous.meshes->at(0).verts.size()==selected.verts.size();
+        if(same_positions) for(size_t i=0;i<selected.verts.size();i++)
+            if(std::memcmp(previous.meshes->at(0).verts[i].pos,selected.verts[i].pos,sizeof selected.verts[i].pos)) {same_positions=false;break;}
         if(previous.addr==found->second && !std::memcmp(previous.matrix.m,model.m,64) && same_positions) {index=j;reused=true;break;}
     }
     if(reused) p.stats.shared++;

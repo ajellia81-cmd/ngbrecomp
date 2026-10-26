@@ -12,7 +12,10 @@ reader. The iOS NGB renderer calls this exact implementation through gpu/scene_m
 The adapter snapshots NGB's camera and evaluates the original vertex program's
 position calculation, including relative bone addressing. It converts those
 positions into model-space meshes with model-to-view matrices and viewports,
-then projects the VF3 result into a replay-only vertex buffer. Material/lighting
+then projects the VF3 result into a replay-only vertex buffer. Rigid position
+programs are reduced algebraically to their complete matrix, with finite-domain
+checks for perspective division; nonlinear/skinned programs use the original
+position evaluator. Unchanged rigid meshes retain their shared scene geometry. Material/lighting
 varyings still come from the original NGB vertex program. Offscreen effects
 keep the original recipes. The former constant-bank matcher is removed.
 

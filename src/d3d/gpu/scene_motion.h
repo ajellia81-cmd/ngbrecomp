@@ -14,7 +14,7 @@ struct SceneOutput { std::vector<ScenePosition> positions; };
 class SceneMotion {
 public:
     struct Stats {
-        uint32_t draws=0,models=0,shared=0,unsupported=0,fallback=0,changed=0,cuts=0;
+        uint32_t draws=0,models=0,shared=0,unsupported=0,fallback=0,rigid=0,cached=0,changed=0,cuts=0;
         video::InterpStats vf{};
         double cpu_ms=0;
     };

@@ -77,6 +77,9 @@ int main(int argc,char** argv) {
     for(unsigned i=0;i<8;i++) add(i,-1,after[i]);
     add(9,-1,after[8]);add(8,-1,after[9]);add(9,-1,after[10]);
     auto stats=history.Resolve();
+    check(stats.rigid==11,"rigid position program was not proved algebraically");
+    check(stats.cached>=10,"immutable static meshes were rebuilt between frames");
+    check(stats.vf.blended==0,"static meshes incorrectly became deformed meshes");
     check(stats.shared>=1,"multipass model not shared");check(stats.vf.matched>=10,"VF3 did not pair the scene");
     check(!after[8].positions.empty() && !after[9].positions.empty(),"repeated instances lost midpoint");
     near(after[8].positions[0][0],320+320*19.5f/30,"right lamp moved to a different lamp");
@@ -85,6 +88,22 @@ int main(int argc,char** argv) {
     near(s.vsc[96][3],10,"endpoint shader constants were mutated");
     history.Finish();history.Reset();SceneOutput reset;
     add(9,-2,reset);check(history.Resolve().changed==0,"reset reused an old scene");
+    // RCC's magnitude clamp has the same algebraic path only while the
+    // perspective W is inside its finite domain.
+    auto rcc=state(model);rcc.vs->program[4*4+1]&=~(7u<<25);rcc.vs->program[4*4+1]|=3u<<25;
+    SceneMotion rcc_scene;SceneOutput rcc_output;
+    check(rcc_scene.Add(rcc,a,dc,rcc_output),"RCC program was not imported");
+    check(rcc_scene.Resolve().rigid==1,"finite-domain RCC was not proved affine");
+    // A nonlinear position program must use the original evaluator. Failed
+    // symbolic expressions must never turn into a fabricated affine matrix.
+    auto nonlinear=state(model);nonlinear.vs=std::make_shared<VertexShader>();
+    instruction(nonlinear.vs->program,2,0,0,2,15,{2},{2});
+    auto nonlinear_body=position_program();
+    for(unsigned i=0;i<4;i++) {nonlinear_body[i*4+2]&=~(3u<<26);nonlinear_body[i*4+2]|=(1u<<26)|(2u<<28);}
+    nonlinear.vs->program.insert(nonlinear.vs->program.end(),nonlinear_body.begin(),nonlinear_body.end());
+    SceneMotion nonlinear_scene;SceneOutput nonlinear_output;
+    check(nonlinear_scene.Add(nonlinear,a,dc,nonlinear_output),"nonlinear program fallback failed");
+    check(nonlinear_scene.Resolve().rigid==0,"nonlinear program was mistaken for a rigid matrix");
     // Raw SHORT3 decode and base-vertex triangle strip indexing are imported.
     int16_t short_data[12]={0,0,0,0, 1,0,0,0, 0,1,0,0};
     auto packed=a;packed.buffers[0]={reinterpret_cast<const uint8_t*>(short_data),sizeof short_data,8};
@@ -106,4 +125,5 @@ int main(int argc,char** argv) {
         shader_file(std::string(argv[1])+"/motion-decoded.vert.hlsl",decoded);
     }
     std::cout<<"Unchanged VF3 core with NGB scene extraction: camera, repeated instances, shared depth passes, bone addressing, raw formats, reset and shader wrappers passed.\n";
+    return 0;
 }

@@ -136,6 +136,8 @@ void VulkanBackend::MotionPresent(const Surface& front,Image& endpoint,float bar
     motion_match_window_.shared+=motion_match_stats_.shared;
     motion_match_window_.unsupported+=motion_match_stats_.unsupported;
     motion_match_window_.fallback+=motion_match_stats_.fallback;
+    motion_match_window_.rigid+=motion_match_stats_.rigid;
+    motion_match_window_.cached+=motion_match_stats_.cached;
     motion_match_window_.cuts+=motion_match_stats_.cuts;
     motion_match_window_.vf.matched+=motion_match_stats_.vf.matched;
     motion_match_window_.vf.total+=motion_match_stats_.vf.total;
@@ -194,9 +196,9 @@ void VulkanBackend::MotionFinish() {
         std::fprintf(stderr,"[Smooth Motion eligibility] requested %d; shared queue %d; scene draws %u; 2D %d; movie %d; quick menu %d; cooldown %u frames; EQUAL-depth draws %u\n",
             ngb_pc_setting(26),int(shared_),threed_,ngb_2d_screen_frame(int(threed_)),ngb_movie_active(),ngb_quick_wanted(),motion_cooldown_,motion_equal_);
 #endif
-        std::fprintf(stderr,"[Smooth Motion VF3 scene/5s] core a8473a99091e unchanged; draws %u; models %u; shared passes %u; unsupported %u; centered models %u; cuts %u; VF3 matched %zu/%zu; vertex blends %zu; extraction+interpolation %.1f ms total\n",
+        std::fprintf(stderr,"[Smooth Motion VF3 scene/5s] core a8473a99091e unchanged; draws %u; models %u; shared passes %u; unsupported %u; centered models %u; proven affine programs %u; cached meshes %u; cuts %u; VF3 matched %zu/%zu; vertex blends %zu; extraction+interpolation %.1f ms total\n",
             motion_match_window_.draws,motion_match_window_.models,motion_match_window_.shared,motion_match_window_.unsupported,
-            motion_match_window_.fallback,motion_match_window_.cuts,motion_match_window_.vf.matched,motion_match_window_.vf.total,
+            motion_match_window_.fallback,motion_match_window_.rigid,motion_match_window_.cached,motion_match_window_.cuts,motion_match_window_.vf.matched,motion_match_window_.vf.total,
             motion_match_window_.vf.blended,motion_match_window_.cpu_ms);
         motion_match_window_={};
         motion_log_ns_=now; motion_pictures_=0;
