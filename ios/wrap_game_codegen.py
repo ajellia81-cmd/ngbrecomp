@@ -7,8 +7,22 @@ import tempfile
 
 WRAPPERS=('001E6AE0','0017E8A0')
 
+MOVIE_PROBES={
+    'RECOMP_ENTRY(0x0019A7D0u);':1,
+    'loc_0019A9CD: ;':2,
+    'RECOMP_ENTRY(0x00232D40u);':3,
+    'loc_0031E1C5: ;':4,
+}
+
+def instrument_movie(text):
+    for marker,stage in MOVIE_PROBES.items():
+        text=text.replace(marker,marker+'\n#ifdef NGB_IOS_MOVIE_DIAGNOSTICS\n'
+                          f'    ngb_ios_movie_probe({stage});\n#endif')
+    return text
+
 def wrap(folder):
     found={address:0 for address in WRAPPERS};reads=0
+    probes={marker:0 for marker in MOVIE_PROBES}
     for path in folder.glob('recomp_*.c'):
         text=path.read_text()
         for address in WRAPPERS:
@@ -22,11 +36,16 @@ def wrap(folder):
                     lambda m:'ngb_ios_game_text_language('+m[0]+')',line)
                 reads+=n
             lines.append(line)
-        path.write_text(''.join(lines))
+        result=''.join(lines)
+        for marker in probes: probes[marker]+=result.count(marker)
+        path.write_text(instrument_movie(result))
     for address,count in found.items():
         if count!=1:raise ValueError('Expected one original private wrapper body: '+address)
+    if any(count!=1 for count in probes.values()):
+        raise ValueError('Expected one original movie diagnostic boundary per stage')
     header=folder/'recomp_funcs.h'
     with header.open('a') as stream:stream.write('\nunsigned ngb_ios_game_text_language(unsigned saved);\n')
+    with header.open('a') as stream:stream.write('\n#ifdef NGB_IOS_MOVIE_DIAGNOSTICS\nvoid ngb_ios_movie_probe(unsigned stage);\n#endif\n')
     if reads<10:raise ValueError('Expected game text-language reads were not found')
     print('Private iOS text/Options wrappers prepared; language reads:',reads)
 

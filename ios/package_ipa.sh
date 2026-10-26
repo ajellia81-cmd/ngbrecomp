@@ -22,6 +22,9 @@ binary = Path(sys.argv[1]).with_name('NinjaGaidenBlack').read_bytes()
 if revision.encode() not in binary or version.encode() not in binary:
     raise SystemExit('App metadata does not match the linked runtime build identifiers')
 print('Packaged runtime build:', version, revision)
+print('Movie subtitle diagnostics:', 'enabled' if metadata.get('NGBMovieDiagnosticsEnabled') else 'disabled')
+if metadata.get('NGBMovieDiagnosticsEnabled') and b'Movie subtitle diagnostics v1' not in binary:
+    raise SystemExit('Movie diagnostic metadata requires the linked recorder')
 if metadata.get('NGBBuildConfiguration') != 'Release':
     raise SystemExit('Only a verified Release configuration may be delivered')
 if metadata.get('CFBundleDisplayName') != 'Ninja Gaiden Black' or metadata.get('CFBundleName') != 'Ninja Gaiden Black':

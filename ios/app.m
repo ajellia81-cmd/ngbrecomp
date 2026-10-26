@@ -14,12 +14,17 @@
 #include <unistd.h>
 #include "../src/install.h"
 #include "haptics.h"
+#include "movie_diagnostics.h"
 #include "../xboxrecomp/src/platform/ios_port_diagnostics.h"
 #include "platform/vcpu.h"
 // Keep provenance in the executable without writing a build-info file.
 static const char ngb_build_revision[] __attribute__((used)) = NGB_IOS_BUILD_COMMIT;
 static const char ngb_build_version[] __attribute__((used)) = NGB_IOS_BUILD_VERSION;
 void ngb_ios_log_build(void) {
+#ifdef NGB_IOS_MOVIE_DIAGNOSTICS
+    NSString *movieDocuments=NSSearchPathForDirectoriesInDomains(NSDocumentDirectory,NSUserDomainMask,YES).firstObject;
+    ngb_movie_diag_open(movieDocuments.fileSystemRepresentation,NGB_IOS_BUILD_VERSION,NGB_IOS_BUILD_COMMIT);
+#endif
 #ifndef NGB_IOS_PORT_RELEASE
     NGB_IOS_PORT_DIAG("[iOS Build] version %s; source %s\n",NGB_IOS_BUILD_VERSION,NGB_IOS_BUILD_COMMIT);
     NSString *documents=NSSearchPathForDirectoriesInDomains(NSDocumentDirectory,NSUserDomainMask,YES).firstObject;

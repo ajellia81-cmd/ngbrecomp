@@ -21,6 +21,7 @@ if ! cmake -S "$root" -B "$build" -G Ninja \
     -DNGB_MOLTENVK_ROOT="$tools/moltenvk/MoltenVK" \
     -DNGB_IOS_BUILD_COMMIT="$revision" -DNGB_IOS_BUILD_VERSION="2.$build_number" \
     -DNGB_IOS_KOREAN=ON -DNGB_KOREAN_ASSET_DIR="${NGB_KOREAN_ASSET_DIR:?Verified Korean capsule required}" \
+    -DNGB_IOS_MOVIE_DIAGNOSTICS="${NGB_MOVIE_DIAGNOSTICS:-OFF}" \
     -DNGB_NV2A_VK=ON > "$build/configure-private.log" 2>&1; then
     python3 "$root/ios/report_build_errors.py" "$build/configure-private.log"
     exit 1

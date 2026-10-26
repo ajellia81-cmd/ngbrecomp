@@ -17,6 +17,7 @@ on:
       - 'ios/native_settings_test.c'
       - 'ios/motion_test.cpp'
       - 'ios/game_hooks.c'
+      - 'ios/movie_diagnostics.*'
       - 'ios/language_policy.h'
       - 'ios/runtime_ui_test.c'
       - 'ios/presenter_descriptor_test.py'
@@ -207,6 +208,7 @@ jobs:
             ios/runtime_ui_test.c -o build/ios-platform/runtime-ui
           build/ios-platform/runtime-ui
           python3 ios/wrap_game_codegen_test.py
+          python3 ios/movie_diagnostics_test.py
           python3 ios/korean_codegen_test.py
           python3 ios/dsp_mailbox_test.py
           python3 ios/tab_lettering_preview.py
@@ -345,6 +347,8 @@ jobs:
           export VCPKG_BINARY_SOURCES="clear;files,$RUNNER_TEMP/ngb-dependency-cache,readwrite"
           bash ios/build_dependencies.sh "$RUNNER_TEMP/ngb-ios-tools"
       - name: Compile and link the original game engine target
+        env:
+          NGB_MOVIE_DIAGNOSTICS: ${{ contains(github.event.head_commit.message, '[movie-diagnostics]') && 'ON' || 'OFF' }}
         run: |
           export NGB_KOREAN_ASSET_DIR="$RUNNER_TEMP/ngb-korean/KoreanPatch"
           bash ios/build_engine.sh "$RUNNER_TEMP/ngb-ios-tools" build/ios-private/engine
