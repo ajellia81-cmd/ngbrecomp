@@ -593,3 +593,34 @@ repeatable resolution, range/format separation and rotating-buffer continuity, o
 inputs. The phone has not yet run this source. Matching counters were added to
 make the next device log actionable. Existing 60 Hz simulation and 120 Hz pair
 presentation remain unchanged.
+
+
+## Build 2.58: reject discontinuous singleton motion pairs
+
+The owner has closed the Korean glyph-bottom task after the source-bitmap pixel
+comparison; spacing and the Settings-tab image are also accepted. Those sources
+are unchanged in this build. The latest supplied build-info and log both confirm
+2.57 bc531c5. Its matching counters are active, generally with about 300 midpoint
+pairs submitted per five seconds. Some residual flicker remains in the device
+recording. The recording itself averages about 59.3 fps, so it cannot identify
+every midpoint/endpoint phase of the 120-picture output.
+
+The 2.57 matcher unconditionally connected singleton groups. A previous visible
+lamp and a different current visible lamp could therefore still produce a glow
+between them. A native fixture reproduces this case. Matching now rejects a
+candidate if any referenced vertex input or retained matrix component changes by
+more than 25% of max(1, abs(previous), abs(current)). The rejection is for the whole
+draw, retaining its current endpoint inputs; it does not mix fallback and blended
+vertices inside one triangle. This is a conservative input-continuity heuristic,
+not VF3's physical camera/model-distance calculation and not proof of the sole
+remaining device cause. Rapid legitimate motion can also fall back for a draw.
+
+The referenced constant bank is decoded using the same vertex operand encoding
+as the shader generator. Unused stale constants are excluded from pairing cost
+and continuity tests. Relative constant addressing conservatively includes the
+entire bank; fixed-function draws compare their retained matrices. Native tests
+check singleton replacement, normal small motion, active/unused constants,
+relative addressing and fixed-function isolation. All previous pairing tests
+remain. New matching telemetry accumulates candidate rejection and largest
+relative steps over five seconds instead of reporting only one sampled frame.
+Phone rendering and performance remain to be retested.

@@ -126,6 +126,12 @@ void VulkanBackend::MotionPresent(const Surface& front,Image& endpoint,float bar
     if (!motion_capture_ || !motion_valid_ || !motion_3d_) return;
     motion_match_stats_=motion_history_.Resolve();
     motion_changed_=motion_match_stats_.changed;
+    motion_match_window_.matched+=motion_match_stats_.matched;
+    motion_match_window_.missing+=motion_match_stats_.missing;
+    motion_match_window_.reordered+=motion_match_stats_.reordered;
+    motion_match_window_.bounded+=motion_match_stats_.bounded;
+    motion_match_window_.discontinuous+=motion_match_stats_.discontinuous;
+    motion_match_window_.largest_step=std::max(motion_match_window_.largest_step,motion_match_stats_.largest_step);
     if (!motion_changed_ || ngb_quick_wanted() || !motion_last_ns_ || now-motion_last_ns_>50000000LL) return;
     Target *target=EnsureTarget(front,false);
     if (!target || !motion_valid_) return;
@@ -179,8 +185,10 @@ void VulkanBackend::MotionFinish() {
         std::fprintf(stderr,"[Smooth Motion eligibility] requested %d; shared queue %d; scene draws %u; 2D %d; movie %d; quick menu %d; cooldown %u frames; EQUAL-depth draws %u\n",
             ngb_pc_setting(26),int(shared_),threed_,ngb_2d_screen_frame(int(threed_)),ngb_movie_active(),ngb_quick_wanted(),motion_cooldown_,motion_equal_);
 #endif
-        std::fprintf(stderr,"[Smooth Motion matching] matched %u; missing %u; reordered %u; bounded groups %u\n",
-            motion_match_stats_.matched,motion_match_stats_.missing,motion_match_stats_.reordered,motion_match_stats_.bounded);
+        std::fprintf(stderr,"[Smooth Motion matching/5s] matched %u; missing %u; reordered %u; bounded groups %u; discontinuous %u; largest relative input step %.3f\n",
+            motion_match_window_.matched,motion_match_window_.missing,motion_match_window_.reordered,motion_match_window_.bounded,
+            motion_match_window_.discontinuous,double(motion_match_window_.largest_step));
+        motion_match_window_={};
         motion_log_ns_=now; motion_pictures_=0;
     }
     bool wanted=false;

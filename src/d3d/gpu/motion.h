@@ -16,13 +16,37 @@ namespace gpu {
 // matched by owned pose within geometry/material groups; topology changes reset them.
 struct MotionPose {
     std::array<std::array<float,4>,192> vc{};
+    std::array<uint8_t,192> used{};
     float wvp[16]{}, wv[16]{}, wvn[16]{}, wvb[4][16]{}, wvbn[4][16]{}, pv[16]{};
-    static MotionPose Capture(const State& s,const DrawConstants& c) {
+    static MotionPose Capture(const State& s,const DrawConstants& c,bool programmable=true) {
         MotionPose p; p.vc=s.vsc;
+        if(programmable) {
+            if(s.vs && !s.vs->program.empty()) p.used=VertexProgramConstants(s.vs->program);
+            else p.used.fill(1); // unknown program: do not assume constants are unused
+        }
 #define COPY_MATRIX(x) std::memcpy(p.x,c.x,sizeof p.x)
         COPY_MATRIX(wvp); COPY_MATRIX(wv); COPY_MATRIX(wvn); COPY_MATRIX(wvb); COPY_MATRIX(wvbn); COPY_MATRIX(pv);
 #undef COPY_MATRIX
         return p;
+    }
+    // A nearest candidate is not necessarily the same object. In particular,
+    // one visible instance can replace another while both groups have size 1.
+    // Reject a large relative input step for the whole draw, never per vertex.
+    // This is an input-continuity guard, not a world-space camera-cut metric.
+    float RelativeStep(const MotionPose& current) const {
+        double largest=0;
+        auto add=[&](float a,float b) {
+            if(!std::isfinite(a) || !std::isfinite(b)) { largest=std::numeric_limits<double>::infinity(); return; }
+            double scale=std::max({1.0,std::abs(double(a)),std::abs(double(b))});
+            largest=std::max(largest,std::abs(double(a)-b)/scale);
+        };
+        for(size_t r=0;r<192;r++) if(used[r] || current.used[r])
+            for(size_t k=0;k<4;k++) add(vc[r][k],current.vc[r][k]);
+#define STEP_MATRIX(x) for(size_t k=0;k<sizeof x/sizeof(float);k++) add(((const float*)x)[k],((const float*)current.x)[k])
+        STEP_MATRIX(wvp); STEP_MATRIX(wv); STEP_MATRIX(wvn);
+        STEP_MATRIX(wvb); STEP_MATRIX(wvbn); STEP_MATRIX(pv);
+#undef STEP_MATRIX
+        return float(largest);
     }
     // Blend inputs once, before the original vertex program. In particular,
     // EQUAL-depth material passes then use the original position arithmetic.
@@ -70,7 +94,7 @@ class MotionHistory {
     Entries before_;
     std::unordered_map<uint64_t,std::vector<Pending>> now_;
 public:
-    struct Stats { unsigned matched=0,changed=0,missing=0,reordered=0,bounded=0; };
+    struct Stats { unsigned matched=0,changed=0,missing=0,reordered=0,bounded=0,discontinuous=0; float largest_step=0; };
     // Outputs belong to heap-allocated replay packets, pinned by the recipe
     // list through Resolve. No guest memory or pointers survive Finish/Reset.
     void Add(uint64_t key,const MotionPose& p,DrawConstants& c,Constants* vertices) {
@@ -105,7 +129,8 @@ public:
                     double d=(double(a)-b)/(1+std::abs(double(a))+std::abs(double(b)));
                     cost+=d*d;
                 };
-                for (size_t r=0;r<192;r++) for(size_t k=0;k<4;k++) add(old[i].vc[r][k],list[j].pose.vc[r][k]);
+                for (size_t r=0;r<192;r++) if(old[i].used[r] || list[j].pose.used[r])
+                    for(size_t k=0;k<4;k++) add(old[i].vc[r][k],list[j].pose.vc[r][k]);
 #define POSE_COST(x) for(size_t k=0;k<sizeof old[i].x/sizeof(float);k++) \
     add(((const float*)old[i].x)[k],((const float*)list[j].pose.x)[k])
                 POSE_COST(wvp); POSE_COST(wv); POSE_COST(wvn);
@@ -120,6 +145,9 @@ public:
             for (auto [cost,j,i]:candidates) {
                 (void)cost;
                 if (used[i] || paired[j] || !list[j].vertices) continue;
+                float step=old[i].RelativeStep(list[j].pose);
+                if(std::isfinite(step)) stats.largest_step=std::max(stats.largest_step,step);
+                if (!(step<=0.25f)) { stats.discontinuous++; continue; }
                 if (!old[i].Midpoint(*list[j].vertices,*list[j].output)) continue;
                 used[i]=paired[j]=true;stats.matched++;stats.reordered+=(i!=j);
                 stats.changed+=std::memcmp(&old[i],&list[j].pose,sizeof(MotionPose))!=0;

@@ -374,7 +374,7 @@ private:
     uint32_t motion_cooldown_=0,motion_late_=0;
     int64_t motion_swap_ns_=0;
     uint32_t motion_3d_=0,motion_changed_=0,motion_pictures_=0,motion_equal_=0;
-    MotionHistory::Stats motion_match_stats_{};
+    MotionHistory::Stats motion_match_stats_{},motion_match_window_{};
     int64_t motion_last_ns_=0,motion_log_ns_=0;
     std::vector<std::function<void()>> motion_commands_;
     std::unordered_map<VkImage,MotionTarget> motion_targets_;
@@ -3267,7 +3267,7 @@ void VulkanBackend::Draw(const State& s, uint32_t prim, uint32_t start, uint32_t
         }
         if (motion_shader) {
             motion_3d_++;
-            motion_history_.Add(identity,MotionPose::Capture(s,c),packet->dc,&packet->vc);
+            motion_history_.Add(identity,MotionPose::Capture(s,c,prog),packet->dc,&packet->vc);
         }
         motion_cpu_bytes_+=bytes;
         if (motion_cpu_bytes_>96u*1024u*1024u || motion_commands_.size()>16384) motion_valid_=false;

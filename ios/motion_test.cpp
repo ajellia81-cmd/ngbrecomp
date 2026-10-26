@@ -57,14 +57,44 @@ int main(int argc,char **argv) {
     check(room.Resolve().matched==1 && std::abs(lv[96][3]-10.3f)<1e-5f,"culling paired the remaining mesh with its neighbour");
     MotionHistory global;
     State zero,two,near_one,near_two;
-    two.vsc[96][3]=2;near_one.vsc[96][3]=1.1f;near_two.vsc[96][3]=2.1f;
+    two.vsc[96][3]=.2f;near_one.vsc[96][3]=.11f;near_two.vsc[96][3]=.21f;
     DrawConstants a0{},a1{},b0{},b1{};
     auto z=zero.vsc,t=two.vsc,n1=near_one.vsc,n2=near_two.vsc;
     global.Add(88,MotionPose::Capture(zero,a0),a0,&z);
     global.Add(88,MotionPose::Capture(two,a1),a1,&t);global.Finish();
     global.Add(88,MotionPose::Capture(near_one,b0),b0,&n1);
     global.Add(88,MotionPose::Capture(near_two,b1),b1,&n2);global.Resolve();
-    check(std::abs(n1[96][3]-.55f)<1e-5f && std::abs(n2[96][3]-2.05f)<1e-5f,"first draw stole a closer pose from another draw");
+    check(std::abs(n1[96][3]-.055f)<1e-5f && std::abs(n2[96][3]-.205f)<1e-5f,"first draw stole a closer pose from another draw");
+    // A new visible lamp can replace an old one even with a singleton key.
+    // Nearest-only matching fabricated a glow halfway across the room.
+    MotionHistory replaced;
+    State lamp;lamp.vsc[96][3]=10;DrawConstants lamp_dc{};auto lamp_vc=lamp.vsc;
+    replaced.Add(77,MotionPose::Capture(lamp,lamp_dc),lamp_dc,&lamp_vc);replaced.Finish();
+    lamp.vsc[96][3]=20;lamp_vc=lamp.vsc;
+    replaced.Add(77,MotionPose::Capture(lamp,lamp_dc),lamp_dc,&lamp_vc);
+    auto rejected=replaced.Resolve();
+    check(rejected.matched==0 && rejected.discontinuous==1 && lamp_vc[96][3]==20,"disappeared lamp was blended with a different visible instance");
+    // Normal small input motion still yields a distinct midpoint.
+    replaced.Finish();lamp.vsc[96][3]=20.2f;lamp_vc=lamp.vsc;
+    replaced.Add(77,MotionPose::Capture(lamp,lamp_dc),lamp_dc,&lamp_vc);
+    check(replaced.Resolve().matched==1 && std::abs(lamp_vc[96][3]-20.1f)<1e-5f,"normal small motion lost interpolation");
+    // Stale constants not read by this shader must not reject a stable draw.
+    State masked;masked.vs=std::make_shared<VertexShader>();
+    masked.vs->program={0,(1u<<21)|(5u<<13),(3u<<26),(15u<<12)|(1u<<11)|1u};
+    auto used=VertexProgramConstants(masked.vs->program);
+    check(used[5] && !used[170],"program constant use disagrees with MOV operand");
+    check(VertexProgramHlsl(masked.vs->program,1).find("c[5]")!=std::string::npos,"fixture shader does not use the claimed constant");
+    auto first=MotionPose::Capture(masked,constants);
+    masked.vsc[170][0]=1000;
+    auto second=MotionPose::Capture(masked,constants);
+    check(first.RelativeStep(second)==0,"unused constant rejected a stable pose");
+    masked.vsc[5][0]=1;
+    check(first.RelativeStep(MotionPose::Capture(masked,constants))>.25f,"active input discontinuity was ignored");
+    masked.vs->program[3]|=2;
+    check(VertexProgramConstants(masked.vs->program)[170],"relative addressing omitted possible input constants");
+    auto fixed=MotionPose::Capture(masked,constants,false);
+    masked.vsc[5][0]=2000;
+    check(fixed.RelativeStep(MotionPose::Capture(masked,constants,false))==0,"fixed function used irrelevant vertex program constants");
     // Same byte storage and relative indices can select different submeshes.
     Assembled range;State target;
     range.index_count=3;range.index16=true;

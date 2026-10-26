@@ -683,6 +683,29 @@ PixelKey MakePixelKey(const State& s, const TexInfo tex[4]) {
     return k;
 }
 
+// Constants actually referenced by the same operand encoding as Src().
+// Relative addressing can select any register, so retain the full bank then.
+std::array<uint8_t,192> VertexProgramConstants(const std::vector<uint32_t>& program) {
+    std::array<uint8_t,192> used{};
+    for(size_t n=0;n+4<=program.size();n+=4) {
+        Tok k{&program[n]};
+        unsigned mac=k.f(1,21,4),ilu=k.f(1,25,3);
+        bool a=mac>=1 && mac<=13;
+        bool b=(mac==2 || (mac>=4 && mac<=12));
+        bool c=ilu || mac==3 || mac==4;
+        auto constant=[](unsigned mux) { return mux!=1 && mux!=2; };
+        bool reads=(a && constant(k.f(2,26,2))) || (b && constant(k.f(2,11,2))) ||
+                   (c && constant(k.f(3,28,2)));
+        if(reads) {
+            if(k.f(3,1,1)) { used.fill(1); return used; }
+            unsigned reg=k.f(1,13,8);
+            if(reg<used.size()) used[reg]=1;
+        }
+        if(k.f(3,0,1)) break;
+    }
+    return used;
+}
+
 std::string VertexProgramHlsl(const std::vector<uint32_t>& prog, uint16_t regs, uint64_t decode) {
     std::string s = Common();
     s += kVsHelpers;
