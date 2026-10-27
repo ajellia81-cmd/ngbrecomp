@@ -87,3 +87,11 @@ add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
         "${CMAKE_CURRENT_SOURCE_DIR}/ios/assets/settings-ko.png"
         "$<TARGET_BUNDLE_DIR:${PROJECT_NAME}>/SettingsTab-Korean.png" VERBATIM)
+
+# The desktop relative-share lookup does not locate resources in an iOS app.
+add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "${CMAKE_CURRENT_SOURCE_DIR}/packaging/d3d-seed.bin"
+        "$<TARGET_BUNDLE_DIR:${PROJECT_NAME}>/D3DShaderSeed.bin" VERBATIM)
+set_property(TARGET ${PROJECT_NAME} APPEND PROPERTY LINK_DEPENDS
+    "${CMAKE_CURRENT_SOURCE_DIR}/packaging/d3d-seed.bin")

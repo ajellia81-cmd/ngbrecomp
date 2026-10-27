@@ -6,6 +6,8 @@ out=${2:?usage: bash ios/package_ipa.sh GAME_APP OUTPUT_DIRECTORY IOS_TOOL_DIREC
 tools=${3:?usage: bash ios/package_ipa.sh GAME_APP OUTPUT_DIRECTORY IOS_TOOL_DIRECTORY}
 test -f "$app/NinjaGaidenBlack"
 test -f "$app/Frameworks/MoltenVK.framework/MoltenVK"
+seed="$(dirname "$0")/../packaging/d3d-seed.bin"
+cmp "$seed" "$app/D3DShaderSeed.bin"
 plutil -lint "$app/Info.plist"
 python3 - "$app/Info.plist" <<'PY'
 import plistlib, sys
@@ -68,12 +70,25 @@ for notice in "$tools"/vcpkg/installed/arm64-ios/share/*/copyright; do
 done
 python3 "$(dirname "$0")/clean_bundle.py" "$bundle"
 (cd "$out" && zip -qry NinjaGaidenBlack-ios-arm64-unsigned.ipa Payload)
-python3 - "$out/NinjaGaidenBlack-ios-arm64-unsigned.ipa" <<'PY'
+python3 - "$out/NinjaGaidenBlack-ios-arm64-unsigned.ipa" "$seed" <<'PY'
 from pathlib import Path
 import hashlib, sys, zipfile
 path = Path(sys.argv[1])
 with zipfile.ZipFile(path) as archive:
     assert archive.testzip() is None
+    seed=archive.read('Payload/NinjaGaidenBlack.app/D3DShaderSeed.bin')
+    assert seed==Path(sys.argv[2]).read_bytes() and seed[:8]==b'NGBD3DC1'
+    import struct
+    offset=8;counts={}
+    while offset<len(seed):
+        assert offset+13<=len(seed)
+        kind,key,size=struct.unpack_from('<cQI',seed,offset)
+        assert kind in (b'F',b'P',b'K',b'W') and offset+13+size<=len(seed)
+        if kind==b'W': assert size==19  # references the user's XBE; no shader program bytes
+        counts[kind]=counts.get(kind,0)+1
+        offset+=13+size
+    assert offset==len(seed) and counts.get(b'K',0)>0
+    print('Bundled D3D preparation seed: verified; %d recipes; source bytes preserved' % sum(counts.values()))
     port_files={'build-info.txt','compile-private.log','configure-private.log','platform-private.log','symbols-private.log'}
     assert not any(Path(name).name in port_files for name in archive.namelist())
     import plistlib

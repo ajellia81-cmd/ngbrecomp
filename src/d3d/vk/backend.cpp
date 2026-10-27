@@ -4298,6 +4298,10 @@ void VulkanBackend::Prewarm() {
     if (!seed.empty()) parse(ReadFile(seed));
     size_t from_seed = recs.size();
     if (!cache_dir_.empty()) parse(ReadFile(cache_dir_ + "/recipes.bin"));
+#ifdef NGB_IOS_MOVIE_DIAGNOSTICS
+    std::fprintf(stderr,"[D3D] shader preparation: %zu seed recipes, %zu cached recipes\n",
+                 from_seed,recs.size()-from_seed);
+#endif
     // the seed's pipelines already in recipes.bin: not copied there again (it grew by the whole seed at
     // every launch)
     std::unordered_map<PipeKey, bool, PipeHash> recorded;

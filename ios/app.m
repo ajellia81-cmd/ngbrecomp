@@ -696,6 +696,16 @@ int ngb_ios_prepare(void)
         // First-visit walls can disappear for a frame even with cached replays.
         // Keep every draw; the existing disk cache/prewarm limits cold hitches.
         setenv("NGB_D3D_SYNC_COMPILE", "1", 1);
+        NSString *shaderSeed=[NSBundle.mainBundle.resourcePath stringByAppendingPathComponent:@"D3DShaderSeed.bin"];
+        if (![fm isReadableFileAtPath:shaderSeed]) {
+            fprintf(stderr,"The bundled D3D shader preparation seed is missing.\n");
+            return 0;
+        }
+        setenv("NGB_D3D_SEED",shaderSeed.fileSystemRepresentation,1);
+#ifdef NGB_IOS_MOVIE_DIAGNOSTICS
+        // Use the original renderer's numeric timing log for remaining hitches.
+        setenv("NGB_D3D_HITCHLOG","1",1);
+#endif
         if (ngb_check_xbe(game.fileSystemRepresentation) != 0) {
             NGBImport *importer = [NGBImport new]; importer.destination = game;
             if (![importer run]) return 0;

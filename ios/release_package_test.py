@@ -20,7 +20,7 @@ with tempfile.TemporaryDirectory(prefix='ngb-release-scope-') as temp:
             'KoreanPatch/manifest.json', 'KoreanPatch/assets/font.bin', 'LICENSES/vf3-scene.txt',
             'Frameworks/MoltenVK.framework/Headers/vulkan.h',
             'Frameworks/MoltenVK.framework/Modules/module.modulemap',
-            'original-debug.log', 'original.dSYM/Contents/Resources/DWARF/game',
+            'D3DShaderSeed.bin', 'original-debug.log', 'original.dSYM/Contents/Resources/DWARF/game',
             'original.a', 'ngb-trace-1/draws.txt']
     discard = ['compile-private.log', 'configure-private.log', 'platform-private.log',
                'symbols-private.log', 'build-info.txt']
