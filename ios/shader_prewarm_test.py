@@ -10,6 +10,7 @@ body=backend.split('void VulkanBackend::Prewarm() {',1)[1].split('\n// Every pip
 recipe_check=backend.split('    bool vnew;',1)[1].split('    if (vnew &&',1)[0]
 source=r'''
 #include <algorithm>
+#include <atomic>
 #include <cassert>
 #include <chrono>
 #include <cstdint>
@@ -33,6 +34,7 @@ struct PipeHash { size_t operator()(const PipeKey& k)const{return k.vs^k.ps^k.sa
 static std::map<std::string,std::vector<uint8_t>> files;
 static std::map<std::string,unsigned> compiled;
 static unsigned built,recorded;
+static std::atomic<bool> g_shader_prewarm_ready{false};
 static std::vector<uint8_t> ReadFile(const std::string& p){return files[p];}
 static uint64_t Hash(const void*,size_t,uint64_t=0){return 42;}
 static std::string VertexProgramHlsl(const std::vector<uint32_t>&,uint16_t,uint64_t){return "program";}
@@ -88,6 +90,7 @@ int main(){
  assert(compiled["program"]==1 && compiled["program-motion"]==1);
  assert(b.pipelines_.size()==5 && built==5); // duplicated base/motion recipes build once
  assert(b.prewarm_done_==1);
+ assert(g_shader_prewarm_ready.load());
  unsigned before=compiled.size();b.Prewarm();assert(compiled.size()==before && built==5);
  for(auto& [key,count]:compiled)if(key!="fixed100-model")assert(count==1);
  b.modules_[300^tag]=99;
@@ -104,7 +107,7 @@ int main(){
 with tempfile.TemporaryDirectory() as directory:
     p=Path(directory);(p/'warm.cpp').write_text(source)
     for smooth in [False,True]:
-        cmd=[os.environ.get('CXX','c++'),'-std=c++17',str(p/'warm.cpp'),'-o',str(p/'warm')]
+        cmd=[os.environ.get('CXX','c++'),'-std=c++17','-DNGB_IOS_APP=1',str(p/'warm.cpp'),'-o',str(p/'warm')]
         if smooth:cmd.insert(1,'-DNGB_SMOOTH_MOTION=1')
         subprocess.run(cmd,check=True)
         subprocess.run([str(p/'warm')],check=True)

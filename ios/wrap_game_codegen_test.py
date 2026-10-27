@@ -3,7 +3,7 @@ import unittest
 import os
 import subprocess
 from pathlib import Path
-from wrap_game_codegen import wrap, CACHE_WAIT, CACHE_PROBES, PRODUCER_WAIT, adapt_cache_wait
+from wrap_game_codegen import wrap, CACHE_WAIT, CACHE_PROBES, PRODUCER_WAIT, SHADER_READY, DEMO_READY, adapt_cache_wait
 
 class HooksTest(unittest.TestCase):
     def test_cache_wait_keeps_pause_stop_and_other_waits(self):
@@ -12,12 +12,15 @@ class HooksTest(unittest.TestCase):
             hooks=(Path(__file__).resolve().parent/'game_hooks.c').read_text()
             helper='unsigned ngb_ios_cache_copy_delay'+hooks.split('unsigned ngb_ios_cache_copy_delay',1)[1].split('\n}',1)[0]+'\n}\n'
             helper+='unsigned ngb_ios_cache_producer_fast'+hooks.split('unsigned ngb_ios_cache_producer_fast',1)[1].split('\n}',1)[0]+'\n}\n'
+            helper+='unsigned ngb_ios_shader_loading_ready'+hooks.split('unsigned ngb_ios_shader_loading_ready',1)[1].split('\n}',1)[0]+'\n}\n'
             source.write_text('''#include <assert.h>
 #include <stdint.h>
 #include "cache_copy_policy.h"
 static unsigned char ram[16*1024*1024];
 #define MEM8(a) (*(uint8_t *)(ram+(a)))
 #define MEM32(a) (*(uint32_t *)(ram+(a)))
+static unsigned prepared,queries;
+static unsigned ngb_ios_shader_prewarm_ready(void){queries++;return prepared;}
 '''+helper+'''
 int main(void) {
  assert(ngb_cache_copy_wait(50,0,1)==1);
@@ -29,6 +32,11 @@ int main(void) {
   MEM32(0x8DB160)=stage;MEM8(0xD52F2D)=gate;
   assert(ngb_ios_cache_copy_delay(50,0)==(gate && stage>=1 && stage<=3 ? 1 : 50));
   assert(ngb_ios_cache_copy_delay(50,1)==50);
+  for(prepared=0;prepared<2;prepared++) {
+   queries=0;
+   assert(ngb_ios_shader_loading_ready()==(stage<1 || stage>3 || prepared));
+   assert(queries==(stage>=1 && stage<=3));
+  }
   for(unsigned state=0;state<4;state++)for(unsigned copying=0;copying<5;copying++)for(unsigned stopping=0;stopping<2;stopping++) {
    MEM32(0xC0608C)=state;MEM32(0xC06098)=copying;MEM32(0x45EC3C)=stopping;
    assert(ngb_ios_cache_producer_fast()==(gate && stage>=1 && stage<=3 && state==0 && copying==1 && !stopping));
@@ -52,6 +60,8 @@ int main(void) {
             source+='void movie_userdata(void) { loc_0031E1C5: ; }\n'
             source+='void cache_worker(void) {\n'+CACHE_WAIT+'\n}\n'
             source+='void producer(void) {\n'+PRODUCER_WAIT+'\n}\n'
+            source+='void idle(void) {\n'+DEMO_READY+'\n}\n'
+            source+='void loading(void) {\n'+'\n'.join(SHADER_READY)+'\n}\n'
             source+='void cache_probes(void) {\n'+'\n'.join(CACHE_PROBES)+'\n}\n'
             (root/'recomp_0000.c').write_text(source)
             (root/'recomp_funcs.h').write_text('')
@@ -73,4 +83,7 @@ int main(void) {
             self.assertEqual(adapt_cache_wait(other),other)
             self.assertIn(PRODUCER_WAIT,result)
             self.assertEqual(result.count('ngb_ios_cache_producer_fast()'),1)
+            self.assertIn(DEMO_READY+'\n    if (!ngb_ios_shader_prewarm_ready()) goto loc_00165DF9;',result)
+            for marker,destination in SHADER_READY.items():
+                self.assertIn(marker+'\n    if (!ngb_ios_shader_loading_ready()) goto '+destination+';',result)
 if __name__=='__main__':unittest.main()

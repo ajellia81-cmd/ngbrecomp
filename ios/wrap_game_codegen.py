@@ -8,6 +8,21 @@ import tempfile
 WRAPPERS=('001E6AE0','0017E8A0','00232D40')
 CACHE_WAIT='loc_0031C750: ;\n    PUSH32(esp, 0x32);'
 PRODUCER_WAIT='    PUSH32(esp, 0x00333085u); RECOMP_ICALL_SAFE(0x003C7CB0u, _icall_esp); /* manual call 0x003C7CB0 */'
+SHADER_READY={
+    'loc_002E20E1: ;':'loc_002E20EE',
+    'loc_002E2131: ;':'loc_002E213E',
+    'loc_002E2180: ;':'loc_002E218D',
+}
+
+DEMO_READY='loc_00165DEF: ;'
+
+def adapt_shader_ready(text):
+    for marker,destination in SHADER_READY.items():
+        text=text.replace(marker,marker+'\n    if (!ngb_ios_shader_loading_ready()) goto '+destination+';')
+    # Only the title-idle timer's completion is held. Input handling and
+    # the existing per-frame title rendering continue on their original paths.
+    text=text.replace(DEMO_READY,DEMO_READY+'\n    if (!ngb_ios_shader_prewarm_ready()) goto loc_00165DF9;')
+    return text
 
 # Observe the cache consumer and its library's two ReadFile branches. These
 # probes never write guest state and disappear from ordinary release builds.
@@ -54,8 +69,9 @@ def instrument_movie(text):
 def wrap(folder):
     found={address:0 for address in WRAPPERS};reads=0
     probes={marker:0 for marker in MOVIE_PROBES}
-    cache_waits=0;producer_waits=0
+    cache_waits=0;producer_waits=0;demo_ready=0
     cache_probes={marker:0 for marker in CACHE_PROBES}
+    shader_ready={marker:0 for marker in SHADER_READY}
     for path in folder.glob('recomp_*.c'):
         text=path.read_text()
         for address in WRAPPERS:
@@ -74,7 +90,9 @@ def wrap(folder):
         cache_waits+=result.count(CACHE_WAIT)
         producer_waits+=result.count(PRODUCER_WAIT)
         for marker in cache_probes: cache_probes[marker]+=result.count(marker)
-        path.write_text(adapt_cache_wait(instrument_cache(instrument_movie(result))))
+        for marker in shader_ready: shader_ready[marker]+=result.count(marker)
+        demo_ready+=result.count(DEMO_READY)
+        path.write_text(adapt_shader_ready(adapt_cache_wait(instrument_cache(instrument_movie(result)))))
     for address,count in found.items():
         if count!=1:raise ValueError('Expected one original private wrapper body: '+address)
     if any(count!=1 for count in probes.values()):
@@ -83,10 +101,14 @@ def wrap(folder):
     if producer_waits!=1:raise ValueError('Expected one original cache-producer display wait')
     if any(count!=1 for count in cache_probes.values()):
         raise ValueError('Expected one original cache I/O diagnostic boundary per stage')
+    if any(count!=1 for count in shader_ready.values()):
+        raise ValueError('Expected all original loading-ready transitions exactly once')
+    if demo_ready!=1:raise ValueError('Expected one original title-idle completion')
     header=folder/'recomp_funcs.h'
     with header.open('a') as stream:stream.write('\nunsigned ngb_ios_game_text_language(unsigned saved);\n')
     with header.open('a') as stream:stream.write('\nunsigned ngb_ios_cache_copy_delay(unsigned milliseconds,unsigned state);\n')
     with header.open('a') as stream:stream.write('\nunsigned ngb_ios_cache_producer_fast(void);\n')
+    with header.open('a') as stream:stream.write('\nunsigned ngb_ios_shader_loading_ready(void);\nunsigned ngb_ios_shader_prewarm_ready(void);\n')
     with header.open('a') as stream:stream.write('\n#ifdef NGB_IOS_MOVIE_DIAGNOSTICS\nvoid ngb_ios_movie_probe(unsigned stage);\n#endif\n')
     with header.open('a') as stream:stream.write('\n#ifdef NGB_IOS_MOVIE_DIAGNOSTICS\n'
         'void ngb_movie_diag_cache_queue(unsigned available,unsigned remaining);\n'

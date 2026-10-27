@@ -4109,7 +4109,13 @@ void VulkanBackend::CacheOpen() {
         d_.vkCreatePipelineCache(dev_, &pci, nullptr, &pcache_);
     }
     if (const char* sr = std::getenv("NGB_D3D_SEED_RECORD")) seed_out_ = OpenAppend(sr);
+#ifdef NGB_IOS_APP
+    g_shader_prewarm_ready.store(false,std::memory_order_release);
+#endif
     if (!std::getenv("NGB_D3D_NO_PREWARM")) prewarm_ = std::thread([this] { Prewarm(); });
+#ifdef NGB_IOS_APP
+    else g_shader_prewarm_ready.store(true,std::memory_order_release);
+#endif
     async_ = !std::getenv("NGB_D3D_SYNC_COMPILE");
     if (async_) compiler_ = std::thread([this] { Compiler(); });
 }
@@ -4452,6 +4458,9 @@ void VulkanBackend::Prewarm() {
     warm_want_ = uint32_t(ms);
     WarmSamples(uint32_t(ms));
     prewarm_done_ = 1;
+#ifdef NGB_IOS_APP
+    g_shader_prewarm_ready.store(true,std::memory_order_release);
+#endif
 }
 
 // Every pipeline made so far again for a sample count (anti-aliasing), in the background: a change of
@@ -4500,3 +4509,9 @@ void VulkanBackend::WarmSamples(uint32_t samples) {
 std::unique_ptr<Backend> CreateBackend() { return std::make_unique<VulkanBackend>(); }
 
 }  // namespace gpu
+
+#ifdef NGB_IOS_APP
+extern "C" unsigned ngb_ios_shader_prewarm_ready(void) {
+    return gpu::g_shader_prewarm_ready.load(std::memory_order_acquire);
+}
+#endif

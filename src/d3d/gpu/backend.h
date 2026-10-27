@@ -56,6 +56,10 @@ private:
 std::unique_ptr<Backend> CreateBackend();
 // Init failed only because the device it shares is not up yet: call again later
 inline bool g_init_retry = false;
+#ifdef NGB_IOS_APP
+// The guest loader keeps drawing its loading screen until preparation finishes.
+inline std::atomic<bool> g_shader_prewarm_ready{false};
+#endif
 // the same backend driven from a thread of its own: calls return once recorded
 std::unique_ptr<Backend> CreateThreadedBackend(std::unique_ptr<Backend> inner);
 

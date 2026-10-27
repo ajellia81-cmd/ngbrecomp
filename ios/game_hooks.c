@@ -14,6 +14,12 @@ extern void ngb_base_00232D40(void);
 extern int ngb_pc_setting(int);
 extern int ngb_ios_text_override(void);
 extern void ngb_pc_set_setting(int,int);
+extern unsigned ngb_ios_shader_prewarm_ready(void);
+
+unsigned ngb_ios_shader_loading_ready(void) {
+    unsigned stage=MEM32(0x8DB160);
+    return stage<1 || stage>3 || ngb_ios_shader_prewarm_ready();
+}
 
 unsigned ngb_ios_cache_copy_delay(unsigned milliseconds,unsigned state) {
     unsigned stage=MEM32(0x8DB160);
