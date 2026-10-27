@@ -3,7 +3,7 @@ import unittest
 import os
 import subprocess
 from pathlib import Path
-from wrap_game_codegen import wrap, CACHE_WAIT, adapt_cache_wait
+from wrap_game_codegen import wrap, CACHE_WAIT, CACHE_PROBES, adapt_cache_wait
 
 class HooksTest(unittest.TestCase):
     def test_cache_wait_keeps_pause_stop_and_other_waits(self):
@@ -46,6 +46,7 @@ int main(void) {
             source+='void sub_00232D40(void) { RECOMP_ENTRY(0x00232D40u); }\n'
             source+='void movie_userdata(void) { loc_0031E1C5: ; }\n'
             source+='void cache_worker(void) {\n'+CACHE_WAIT+'\n}\n'
+            source+='void cache_probes(void) {\n'+'\n'.join(CACHE_PROBES)+'\n}\n'
             (root/'recomp_0000.c').write_text(source)
             (root/'recomp_funcs.h').write_text('')
             wrap(root)

@@ -60,6 +60,36 @@ void ngb_movie_diag_glyph(void) {
     atomic_fetch_add_explicit(&glyphs,1,memory_order_relaxed);
 }
 
+static _Atomic uint32_t cachePolls,cacheReady,cacheAvailable,cacheRemaining;
+static _Atomic uint32_t ioCalls[2],ioBytes[2],ioMicros[2],ioMax[2],ioFailures[2];
+static _Thread_local uint64_t ioBegin[2];
+static _Thread_local uint32_t ioRequest[2];
+
+void ngb_movie_diag_cache_queue(uint32_t available,uint32_t remaining) {
+    atomic_fetch_add(&cachePolls,1);
+    if (available >= (remaining<65536u ? remaining : 65536u))
+        atomic_fetch_add(&cacheReady,1);
+    atomic_store(&cacheAvailable,available);
+    atomic_store(&cacheRemaining,remaining);
+}
+
+/* SDK-call elapsed time, not asynchronous completion latency. Byte counts are
+ * requested bytes, not proof that all bytes were transferred. Thread-local
+ * starts avoid mixing reads from different library threads or callback paths. */
+void ngb_movie_diag_cache_io(unsigned kind,unsigned end,unsigned bytes,unsigned result) {
+    if (kind>1) return;
+    if (!end) { ioBegin[kind]=micros();ioRequest[kind]=bytes;return; }
+    if (!ioBegin[kind]) return;
+    uint32_t elapsed=(uint32_t)(micros()-ioBegin[kind]);
+    ioBegin[kind]=0;
+    atomic_fetch_add(&ioCalls[kind],1);
+    atomic_fetch_add(&ioBytes[kind],ioRequest[kind]);
+    atomic_fetch_add(&ioMicros[kind],elapsed);
+    if (!result) atomic_fetch_add(&ioFailures[kind],1);
+    uint32_t maximum=atomic_load(&ioMax[kind]);
+    while (elapsed>maximum && !atomic_compare_exchange_weak(&ioMax[kind],&maximum,elapsed)) {}
+}
+
 void ngb_movie_diag_cache_wait(uint32_t original,uint32_t effective,uint32_t state) {
     static uint64_t last;
     static uint32_t calls,requested,actual,previous=UINT32_MAX;
@@ -69,6 +99,12 @@ void ngb_movie_diag_cache_wait(uint32_t original,uint32_t effective,uint32_t sta
     if (samples>=240 || (samples && state==previous && now-last<1000000u)) return;
     last=now;previous=state;samples++;
     ngb_movie_diag_emit("ui-cache-wait",calls,requested,actual,state);
+    ngb_movie_diag_emit("ui-cache-queue",atomic_load(&cachePolls),atomic_load(&cacheReady),
+        atomic_load(&cacheAvailable),atomic_load(&cacheRemaining));
+    for (unsigned i=0;i<2;i++)
+        ngb_movie_diag_emit(i ? "ui-cache-write" : "ui-cache-read",atomic_load(&ioCalls[i]),
+            atomic_load(&ioBytes[i]),atomic_load(&ioMicros[i]),atomic_load(&ioMax[i]));
+    ngb_movie_diag_emit("ui-cache-fail",atomic_load(&ioFailures[0]),atomic_load(&ioFailures[1]),0,0);
 }
 
 void ngb_movie_diag_punctuation(uint32_t code,uint32_t format,uint32_t scale,uint32_t shift) {

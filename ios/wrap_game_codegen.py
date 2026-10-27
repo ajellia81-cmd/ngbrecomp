@@ -8,6 +8,26 @@ import tempfile
 WRAPPERS=('001E6AE0','0017E8A0','00232D40')
 CACHE_WAIT='loc_0031C750: ;\n    PUSH32(esp, 0x32);'
 
+# Observe the cache consumer and its library's two ReadFile branches. These
+# probes never write guest state and disappear from ordinary release builds.
+CACHE_PROBES={
+    'loc_0031C771: ;':'ngb_movie_diag_cache_queue(eax,esi);',
+    'loc_0031C7ED: ;':'ngb_movie_diag_cache_io(1,0,MEM32(0x9B1C88),0);',
+    'loc_0031C806: ;':'ngb_movie_diag_cache_io(1,1,0,eax);',
+    'loc_0031C8C7: ;':'ngb_movie_diag_cache_io(1,0,esi,0);',
+    'loc_0031C8DA: ;':'ngb_movie_diag_cache_io(1,1,0,eax);',
+    'loc_00337583: ;':'ngb_movie_diag_cache_io(0,0,MEM32(esi+0x50),0);',
+    'loc_003375AE: ;':'ngb_movie_diag_cache_io(0,1,0,eax);',
+    'loc_0033765E: ;':'ngb_movie_diag_cache_io(0,0,MEM32(esi+0x50),0);',
+    'loc_0033766B: ;':'ngb_movie_diag_cache_io(0,1,0,eax);',
+}
+
+def instrument_cache(text):
+    for marker,call in CACHE_PROBES.items():
+        text=text.replace(marker,marker+'\n#ifdef NGB_IOS_MOVIE_DIAGNOSTICS\n'
+                          '    '+call+'\n#endif')
+    return text
+
 def adapt_cache_wait(text):
     return text.replace(CACHE_WAIT,'loc_0031C750: ;\n'
         '    PUSH32(esp, ngb_ios_cache_copy_delay(0x32u,MEM32(0xC0608C)));')
@@ -29,6 +49,7 @@ def wrap(folder):
     found={address:0 for address in WRAPPERS};reads=0
     probes={marker:0 for marker in MOVIE_PROBES}
     cache_waits=0
+    cache_probes={marker:0 for marker in CACHE_PROBES}
     for path in folder.glob('recomp_*.c'):
         text=path.read_text()
         for address in WRAPPERS:
@@ -45,16 +66,22 @@ def wrap(folder):
         result=''.join(lines)
         for marker in probes: probes[marker]+=result.count(marker)
         cache_waits+=result.count(CACHE_WAIT)
-        path.write_text(adapt_cache_wait(instrument_movie(result)))
+        for marker in cache_probes: cache_probes[marker]+=result.count(marker)
+        path.write_text(adapt_cache_wait(instrument_cache(instrument_movie(result))))
     for address,count in found.items():
         if count!=1:raise ValueError('Expected one original private wrapper body: '+address)
     if any(count!=1 for count in probes.values()):
         raise ValueError('Expected one original movie diagnostic boundary per stage')
     if cache_waits!=1:raise ValueError('Expected one original cache-worker packet wait')
+    if any(count!=1 for count in cache_probes.values()):
+        raise ValueError('Expected one original cache I/O diagnostic boundary per stage')
     header=folder/'recomp_funcs.h'
     with header.open('a') as stream:stream.write('\nunsigned ngb_ios_game_text_language(unsigned saved);\n')
     with header.open('a') as stream:stream.write('\nunsigned ngb_ios_cache_copy_delay(unsigned milliseconds,unsigned state);\n')
     with header.open('a') as stream:stream.write('\n#ifdef NGB_IOS_MOVIE_DIAGNOSTICS\nvoid ngb_ios_movie_probe(unsigned stage);\n#endif\n')
+    with header.open('a') as stream:stream.write('\n#ifdef NGB_IOS_MOVIE_DIAGNOSTICS\n'
+        'void ngb_movie_diag_cache_queue(unsigned available,unsigned remaining);\n'
+        'void ngb_movie_diag_cache_io(unsigned kind,unsigned end,unsigned bytes,unsigned result);\n#endif\n')
     if reads<10:raise ValueError('Expected game text-language reads were not found')
     print('Private iOS text/Options wrappers prepared; language reads:',reads)
 
