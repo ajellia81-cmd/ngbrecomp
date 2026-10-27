@@ -37,6 +37,7 @@ on:
       - 'ios/tab_lettering_preview.py'
       - 'ios/fps_counter_test.py'
       - 'ios/motion_precision_test.py'
+      - 'ios/shader_prewarm_test.py'
       - 'ios/rumble_warmup_test.py'
       - 'ios/haptics.m'
       - 'ios/haptics.h'
@@ -213,6 +214,7 @@ jobs:
           build/ios-platform/runtime-ui
           python3 ios/wrap_game_codegen_test.py
           python3 ios/movie_diagnostics_test.py
+          python3 ios/shader_prewarm_test.py
           python3 ios/movie_subtitle_test.py
           python3 ios/korean_codegen_test.py
           python3 ios/korean_sprite_layout_test.py

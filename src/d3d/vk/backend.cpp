@@ -2515,10 +2515,17 @@ void VulkanBackend::Draw(const State& s, uint32_t prim, uint32_t start, uint32_t
                          Bits(s.rs[kRsPointSizeMax]));
         }
     }
+#ifdef NGB_SMOOTH_MOTION
+    const bool motion_shader=motion_capture_ && !a.pretransformed && !quad && !points;
+#endif
     bool vnew;
     {
         std::lock_guard<std::recursive_mutex> g(cache_mu_);
-        vnew = !modules_.count(vkey);
+        uint64_t module_key=vkey;
+#ifdef NGB_SMOOTH_MOTION
+        if (motion_shader) module_key^=0x5646335343454E45ull;
+#endif
+        vnew = !modules_.count(module_key);
     }
     if (vnew && !points && !spark_quad) {   // how it is made, for the cache (ShaderCache)
         std::vector<uint8_t> r;
@@ -2535,7 +2542,6 @@ void VulkanBackend::Draw(const State& s, uint32_t prim, uint32_t start, uint32_t
         }
     }
 #ifdef NGB_SMOOTH_MOTION
-    const bool motion_shader=motion_capture_ && !a.pretransformed && !quad && !points;
     if (motion_shader) vkey ^= 0x5646335343454E45ull;
 #endif
     async_now_ = async_;
@@ -4319,36 +4325,52 @@ void VulkanBackend::Prewarm() {
             if ((r.kind == 'K') != (pass == 1)) continue;
             if (r.kind == 'K') {
                 if (r.data.size() != sizeof(PipeKey)) continue;
-                PipeKey k;
-                std::memcpy(&k, r.data.data(), sizeof(k));
-                VkShaderModule vs, ps;
-                {
+                // A motion pipeline uses the same material/state with a
+                // transformed vertex module. Warm both forms before use.
+                unsigned variants=1;
+#ifdef NGB_SMOOTH_MOTION
+                variants=2;
+#endif
+                for (unsigned variant=0;variant<variants;variant++) {
+                    PipeKey k;
+                    std::memcpy(&k, r.data.data(), sizeof(k));
+                    if (variant) k.vs^=0x5646335343454E45ull;
+                    VkShaderModule vs, ps;
+                    {
+                        std::lock_guard<std::recursive_mutex> g(cache_mu_);
+                        if (pipelines_.count(k)) continue;
+                        auto a = modules_.find(k.vs), b = modules_.find(k.ps);
+                        if (a == modules_.end() || b == modules_.end() || !a->second || !b->second) continue;
+                        vs = a->second;
+                        ps = b->second;
+                    }
+                    VkPipeline p = MakePipeline(k, vs, ps);
                     std::lock_guard<std::recursive_mutex> g(cache_mu_);
-                    if (pipelines_.count(k)) continue;
-                    auto a = modules_.find(k.vs), b = modules_.find(k.ps);
-                    if (a == modules_.end() || b == modules_.end() || !a->second || !b->second) continue;
-                    vs = a->second;
-                    ps = b->second;
-                }
-                VkPipeline p = MakePipeline(k, vs, ps);
-                std::lock_guard<std::recursive_mutex> g(cache_mu_);
-                if (pipelines_.count(k)) {
-                    if (p) d_.vkDestroyPipeline(dev_, p, nullptr);
-                } else {
-                    pipelines_[k] = p;
-                    pipes++;
-                    if (&r - recs.data() < long(from_seed) && !recorded.count(k))
-                        CacheRecord('K', 0, r.data.data(), r.data.size(), recipes_);
+                    if (pipelines_.count(k)) {
+                        if (p) d_.vkDestroyPipeline(dev_, p, nullptr);
+                    } else {
+                        pipelines_[k] = p;
+                        known_pipes_[k] = true;
+                        pipes++;
+                        if (!variant && &r - recs.data() < long(from_seed) && !recorded.count(k))
+                            CacheRecord('K', 0, r.data.data(), r.data.size(), recipes_);
+                    }
                 }
                 continue;
             }
-            {
-                std::lock_guard<std::recursive_mutex> g(cache_mu_);
-                if (modules_.count(r.key)) continue;
-            }
             std::string hlsl;
             bool vertex = true;
+            bool motion_candidate=false;
             const uint8_t* d = r.data.data();
+#ifdef NGB_SMOOTH_MOTION
+            motion_candidate=((r.kind=='V' && r.data.size()>=15) || (r.kind=='W' && r.data.size()==19)) ?
+                !d[10] : r.kind=='F' && r.data.size()==11+sizeof(FixedKey) && !d[2];
+#endif
+            {
+                std::lock_guard<std::recursive_mutex> g(cache_mu_);
+                if (modules_.count(r.key) && (!motion_candidate || modules_.count(r.key^0x5646335343454E45ull)))
+                    continue;
+            }
             if ((r.kind == 'V' && r.data.size() >= 15) || (r.kind == 'W' && r.data.size() == 19)) {
                 uint16_t regs;
                 uint64_t decode;
@@ -4377,6 +4399,7 @@ void VulkanBackend::Prewarm() {
                 if (key != r.key) continue;
                 hlsl = VertexProgramHlsl(words, regs, decode);
                 if (d[10]) hlsl = QuadHlsl(std::move(hlsl));   // as Draw makes a screen quad's
+                motion_candidate=!d[10];
             } else if (r.kind == 'F' && r.data.size() == 11 + sizeof(FixedKey)) {
                 uint16_t regs;
                 uint64_t decode;
@@ -4386,6 +4409,7 @@ void VulkanBackend::Prewarm() {
                 std::memcpy(&fk, d + 11, sizeof(fk));
                 hlsl = FixedVertexHlsl(regs, d[2] != 0, decode, fk);
                 if (d[2]) hlsl = QuadHlsl(std::move(hlsl));    // pretransformed: as Draw makes it
+                motion_candidate=!d[2];
             } else if (r.kind == 'P' && r.data.size() == sizeof(PixelKey)) {
                 PixelKey pk;
                 std::memcpy(&pk, d, sizeof(pk));
@@ -4394,15 +4418,25 @@ void VulkanBackend::Prewarm() {
             } else {
                 continue;
             }
-            std::vector<uint32_t> spirv;
-            VkShaderModule m = Compile(hlsl, vertex, spirv) ? MakeModule(spirv) : VK_NULL_HANDLE;
-            std::lock_guard<std::recursive_mutex> g(cache_mu_);
-            if (modules_.count(r.key)) {
-                if (m) d_.vkDestroyShaderModule(dev_, m, nullptr);
-            } else {
-                modules_[r.key] = m;
-                made++;
-            }
+            auto warm_module=[&](uint64_t key,const std::string& source) {
+                {
+                    std::lock_guard<std::recursive_mutex> g(cache_mu_);
+                    if (modules_.count(key)) return;
+                }
+                std::vector<uint32_t> spirv;
+                VkShaderModule m=Compile(source,vertex,spirv) ? MakeModule(spirv) : VK_NULL_HANDLE;
+                std::lock_guard<std::recursive_mutex> g(cache_mu_);
+                if (modules_.count(key)) {
+                    if (m) d_.vkDestroyShaderModule(dev_,m,nullptr);
+                } else { modules_[key]=m;made++; }
+            };
+            warm_module(r.key,hlsl);
+#ifdef NGB_SMOOTH_MOTION
+            if (motion_candidate)
+                warm_module(r.key^0x5646335343454E45ull,MotionVertexHlsl(hlsl));
+#else
+            (void)motion_candidate;
+#endif
         }
     std::fprintf(stderr, "[D3D] shader cache: %u shaders and %u pipelines made ahead in %.1f s\n", made, pipes,
                  std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count());
