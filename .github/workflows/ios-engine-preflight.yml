@@ -20,6 +20,7 @@ on:
       - 'ios/movie_diagnostics.*'
       - 'ios/movie_subtitle*'
       - 'ios/language_policy.h'
+      - 'ios/cache_copy_policy.h'
       - 'ios/runtime_ui_test.c'
       - 'ios/presenter_descriptor_test.py'
       - 'ios/wrap_game_codegen_test.py'

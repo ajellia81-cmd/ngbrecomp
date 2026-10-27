@@ -60,6 +60,26 @@ void ngb_movie_diag_glyph(void) {
     atomic_fetch_add_explicit(&glyphs,1,memory_order_relaxed);
 }
 
+void ngb_movie_diag_cache_wait(uint32_t original,uint32_t effective,uint32_t state) {
+    static uint64_t last;
+    static uint32_t calls,requested,actual,previous=UINT32_MAX;
+    static unsigned samples;
+    uint64_t now=micros();
+    calls++;requested+=original;actual+=effective;
+    if (samples>=240 || (samples && state==previous && now-last<1000000u)) return;
+    last=now;previous=state;samples++;
+    ngb_movie_diag_emit("ui-cache-wait",calls,requested,actual,state);
+}
+
+void ngb_movie_diag_punctuation(uint32_t code,uint32_t format,uint32_t scale,uint32_t shift) {
+    static uint32_t codes[16],formats[16];
+    static unsigned count;
+    for (unsigned i=0;i<count;i++) if (codes[i]==code && formats[i]==format) return;
+    if (count==16) return;
+    codes[count]=code;formats[count++]=format;
+    ngb_movie_diag_emit("ui-punct-shift",code,format,scale,shift);
+}
+
 /* One sample per second, plus stage changes, for at most three minutes.
  * This observes the original loading drawer; it never advances its state. */
 void ngb_movie_diag_loading(uint32_t stage,uint32_t ticks,uint32_t frame,uint32_t gate,

@@ -7,12 +7,21 @@
 #include "language_policy.h"
 #include "movie_diagnostics.h"
 #include "movie_subtitle_policy.h"
+#include "cache_copy_policy.h"
 extern void ngb_base_001E6AE0(void);
 extern void ngb_base_0017E8A0(void);
 extern void ngb_base_00232D40(void);
 extern int ngb_pc_setting(int);
 extern int ngb_ios_text_override(void);
 extern void ngb_pc_set_setting(int,int);
+
+unsigned ngb_ios_cache_copy_delay(unsigned milliseconds,unsigned state) {
+    unsigned wait=ngb_cache_copy_wait(milliseconds,state);
+#ifdef NGB_IOS_MOVIE_DIAGNOSTICS
+    ngb_movie_diag_cache_wait(milliseconds,wait,state);
+#endif
+    return wait;
+}
 
 /* The game's saved text enum is Japanese=0, English=1. The public text
  * lookup's pointer-column enum is the reverse. Never change speech settings. */

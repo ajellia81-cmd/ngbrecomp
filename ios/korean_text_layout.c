@@ -1,5 +1,6 @@
 /* Korean text layout uses the existing glyph pictures and measured line widths.
- * No texture edits, font replacement, string rewriting, or runtime logging. */
+ * No texture edits, font replacement or string rewriting. Optional bounded
+ * diagnostics remain behind the investigation build option. */
 #define RECOMP_GENERATED_CODE
 #include "recomp_funcs.h"
 #include "korean.h"
@@ -28,7 +29,7 @@ static unsigned swizzle(unsigned x,unsigned y,unsigned w,unsigned h) {
 
 /* Bounds include every nontransparent bright pixel, including faint AA.
  * The glyph callback has already selected this character's window in its page. */
-typedef struct { uint32_t key[10]; float left,advance,ink_right; int valid; } PunctBounds;
+typedef struct { uint32_t key[10]; float left,ink_right; int valid; } PunctBounds;
 static PunctBounds bounds_cache[32];
 static unsigned bounds_next;
 static PunctBounds *punct_bounds(unsigned def) {
@@ -69,8 +70,9 @@ static PunctBounds *punct_bounds(unsigned def) {
     if (!(unit>0 && unit<=2)) return NULL;
     PunctBounds *result=&bounds_cache[bounds_next++%32];
     memcpy(result->key,key,sizeof key);
-    result->left=fmaxf(0,(lo-u0*w)*unit-1);
-    result->advance=fminf((u1-u0)*w*unit,(hi-lo+1)*unit+2);
+    // Comma-style side bearings for punctuation: attach the ink to the
+    // preceding cell, reserving the separation after the mark instead.
+    result->left=fmaxf(0,(lo-u0*w)*unit);
     result->ink_right=(hi+1-u0*w)*unit;
     result->valid=1;
     return result;
@@ -79,14 +81,22 @@ static PunctBounds *punct_bounds(unsigned def) {
 int ngb_korean_punctuation_left(unsigned def,unsigned text,unsigned font,float scale) {
     if (font!=1 || !ngb_korean_punctuation_at(text) || !(scale>0 && scale<=8)) return 0;
     PunctBounds *b=punct_bounds(def);
-    return b ? (int)floorf(b->left*scale) : 0;
+    int shift=b ? (int)floorf(b->left*scale) : 0;
+#ifdef NGB_IOS_MOVIE_DIAGNOSTICS
+    unsigned texture=def ? MEM32(def+16) : 4096;
+    unsigned hdr=texture<4096 ? MEM32(0x8DBB28+texture*8) : 0;
+    uint32_t scale_bits;memcpy(&scale_bits,&scale,4);
+    unsigned code=MEM8(text)==0x81 ? MEM16(text) : MEM8(text);
+    ngb_movie_diag_punctuation(code,hdr ? MEM32(hdr+12) : 0,scale_bits,b ? (uint32_t)shift : UINT32_MAX);
+#endif
+    return shift;
 }
 unsigned ngb_korean_punctuation_advance(unsigned original,unsigned def,unsigned text,unsigned font,float scale) {
     if (font!=1 || !ngb_korean_punctuation_at(text) || !(scale>0 && scale<=8)) return original;
     PunctBounds *b=punct_bounds(def);
     if (!b) return original;
     float ink_end=b->ink_right*scale-floorf(b->left*scale);
-    unsigned compact=(unsigned)fmaxf(1,fmaxf(nearbyintf(b->advance*scale),ceilf(ink_end+.5f)));
+    unsigned compact=(unsigned)fmaxf(1,ceilf(ink_end+2*scale));
     return compact<original ? compact : original;
 }
 

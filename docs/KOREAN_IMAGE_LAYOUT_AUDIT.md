@@ -175,3 +175,19 @@ samples. The observation never changes loading state, calls file I/O from the
 original title, or edits saves. It is absent when movie diagnostics are disabled.
 A fresh first-run trace is needed before changing loading behavior or claiming
 a duration fix. Do not delete user saves to obtain that trace.
+
+
+### Comma-style punctuation side bearings
+
+Period and comma pictures now share the same ink-based side-bearing policy:
+no extra leading padding and two source units after the complete ink. The
+period is no longer positioned with symmetric added padding. Fractional-scale
+rounding reserves the complete glyph and trailing margin. Both measuring and
+drawing continuations use the same advance; the separate legacy auto-fit
+measurer remains unchanged so font proportions stay at the approved values.
+Native tests compare synthetic periods and commas whose ink occupies different
+atlas columns and widths, checking equal left/right margins and unchanged
+pixels. Optional `ui-punct-shift` diagnostics report the first 16 distinct
+punctuation-code/texture-format pairs with scale bits and applied left shift;
+`FFFFFFFF` indicates unavailable ink bounds. This makes an unsupported runtime
+font format visible without logging text content or glyph pictures.

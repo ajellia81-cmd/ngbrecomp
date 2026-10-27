@@ -65,9 +65,22 @@ int main(void) {
  }
  MEM32(hdr+12)=(8<<20)|(8<<24)|(0x19<<8);MEM32(hdr+4)=0x4000;
  memcpy(AT(0x4000),before,sizeof before);
- assert(ngb_korean_punctuation_left(def,text,1,.5f)==3);
- assert(ngb_korean_punctuation_advance(8,def,text,1,.5f)==3);
- assert(!memcmp(before,AT(0x4000),sizeof before)); // Sampling window and AA pixels never change.
+ assert(ngb_korean_punctuation_left(def,text,1,.5f)==4);
+ assert(ngb_korean_punctuation_advance(8,def,text,1,.5f)==2);
+ assert(!memcmp(before,AT(0x4000),sizeof before)); // Sampling leaves all original pixels intact.
+ // Period/comma ink can occupy different columns. Both receive exactly the
+ // same leading/trailing side bearings; neither is centered in its cell.
+ unsigned comma=def+64;
+ memcpy(AT(comma),AT(def),24);MEMF(comma)=16.0f/256;MEMF(comma+8)=32.0f/256;
+ for(unsigned y=13;y<15;y++)for(unsigned x=18;x<21;x++)MEM8(0x4000+address(x,y))=255;
+ for(unsigned which=0;which<2;which++) {
+  MEM8(text)=0x81;MEM8(text+1)=which?0x43:0x44;
+  unsigned glyph=which?comma:def;
+  int left=ngb_korean_punctuation_left(glyph,text,1,1);
+  unsigned advance=ngb_korean_punctuation_advance(16,glyph,text,1,1);
+  int ink_left=(which?2:8)-left,ink_right=(which?5:10)-left;
+  assert(ink_left==0 && (int)advance-ink_right==2);
+ }
  MEM8(text)='A';assert(!ngb_korean_punctuation_at(text));
  assert(ngb_korean_punctuation_advance(8,def,text,1,.5f)==8);
  for(unsigned t=0;t<8;t++){MEM8(text)=0x81;MEM8(text+1)=(unsigned[]){0x41,0x42,0x43,0x44,0x46,0x47,0x48,0x49}[t];assert(ngb_korean_punctuation_at(text));}

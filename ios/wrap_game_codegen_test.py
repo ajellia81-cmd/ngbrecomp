@@ -1,9 +1,26 @@
 import tempfile
 import unittest
+import os
+import subprocess
 from pathlib import Path
-from wrap_game_codegen import wrap
+from wrap_game_codegen import wrap, CACHE_WAIT, adapt_cache_wait
 
 class HooksTest(unittest.TestCase):
+    def test_cache_wait_keeps_pause_stop_and_other_waits(self):
+        with tempfile.TemporaryDirectory() as directory:
+            p=Path(directory);source=p/'policy.c';exe=p/'policy'
+            source.write_text('''#include <assert.h>
+#include "cache_copy_policy.h"
+int main(void) {
+ assert(ngb_cache_copy_wait(50,0)==1);
+ for(unsigned state=1;state<4;state++)assert(ngb_cache_copy_wait(50,state)==50);
+ assert(ngb_cache_copy_wait(50,0xFFFFFFFFu)==50);
+ for(unsigned wait=0;wait<100;wait++)if(wait!=50)assert(ngb_cache_copy_wait(wait,0)==wait);
+ return 0;
+}''')
+            subprocess.run([os.environ.get('CC','cc'),'-I'+str(Path(__file__).resolve().parent),str(source),'-o',str(exe)],check=True)
+            subprocess.run([str(exe)],check=True)
+
     def test_preserves_calls_writes_and_unrelated_reads(self):
         with tempfile.TemporaryDirectory() as directory:
             root=Path(directory)
@@ -15,6 +32,7 @@ class HooksTest(unittest.TestCase):
             source+='void movie_cue(void) { loc_0019A9CD: ; }\n'
             source+='void sub_00232D40(void) { RECOMP_ENTRY(0x00232D40u); }\n'
             source+='void movie_userdata(void) { loc_0031E1C5: ; }\n'
+            source+='void cache_worker(void) {\n'+CACHE_WAIT+'\n}\n'
             (root/'recomp_0000.c').write_text(source)
             (root/'recomp_funcs.h').write_text('')
             wrap(root)
@@ -26,4 +44,7 @@ class HooksTest(unittest.TestCase):
             self.assertIn('MEM32(0xDB9890)=1;',result)
             self.assertIn('MEM32(0xDB9894)',result)
             self.assertEqual(result.count('ngb_ios_movie_probe('),4)
+            self.assertEqual(result.count('ngb_ios_cache_copy_delay('),1)
+            pause='loc_0031C825: ;\n    PUSH32(esp, 0x32);'
+            self.assertEqual(adapt_cache_wait(pause),pause)
 if __name__=='__main__':unittest.main()
