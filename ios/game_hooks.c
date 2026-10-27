@@ -25,6 +25,17 @@ unsigned ngb_ios_cache_copy_delay(unsigned milliseconds,unsigned state) {
     return wait;
 }
 
+unsigned ngb_ios_cache_producer_fast(void) {
+    unsigned stage=MEM32(0x8DB160);
+    unsigned foreground=MEM8(0xD52F2D) && stage>=1 && stage<=3;
+    unsigned fast=ngb_cache_producer_fast(MEM32(0xC0608C),foreground,
+                                         MEM32(0xC06098),MEM32(0x45EC3C));
+#ifdef NGB_IOS_MOVIE_DIAGNOSTICS
+    ngb_movie_diag_cache_producer(fast);
+#endif
+    return fast;
+}
+
 /* The game's saved text enum is Japanese=0, English=1. The public text
  * lookup's pointer-column enum is the reverse. Never change speech settings. */
 unsigned ngb_ios_game_text_language(unsigned saved) {

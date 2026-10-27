@@ -3,7 +3,7 @@ import unittest
 import os
 import subprocess
 from pathlib import Path
-from wrap_game_codegen import wrap, CACHE_WAIT, CACHE_PROBES, adapt_cache_wait
+from wrap_game_codegen import wrap, CACHE_WAIT, CACHE_PROBES, PRODUCER_WAIT, adapt_cache_wait
 
 class HooksTest(unittest.TestCase):
     def test_cache_wait_keeps_pause_stop_and_other_waits(self):
@@ -11,6 +11,7 @@ class HooksTest(unittest.TestCase):
             p=Path(directory);source=p/'policy.c';exe=p/'policy'
             hooks=(Path(__file__).resolve().parent/'game_hooks.c').read_text()
             helper='unsigned ngb_ios_cache_copy_delay'+hooks.split('unsigned ngb_ios_cache_copy_delay',1)[1].split('\n}',1)[0]+'\n}\n'
+            helper+='unsigned ngb_ios_cache_producer_fast'+hooks.split('unsigned ngb_ios_cache_producer_fast',1)[1].split('\n}',1)[0]+'\n}\n'
             source.write_text('''#include <assert.h>
 #include <stdint.h>
 #include "cache_copy_policy.h"
@@ -28,6 +29,10 @@ int main(void) {
   MEM32(0x8DB160)=stage;MEM8(0xD52F2D)=gate;
   assert(ngb_ios_cache_copy_delay(50,0)==(gate && stage>=1 && stage<=3 ? 1 : 50));
   assert(ngb_ios_cache_copy_delay(50,1)==50);
+  for(unsigned state=0;state<4;state++)for(unsigned copying=0;copying<5;copying++)for(unsigned stopping=0;stopping<2;stopping++) {
+   MEM32(0xC0608C)=state;MEM32(0xC06098)=copying;MEM32(0x45EC3C)=stopping;
+   assert(ngb_ios_cache_producer_fast()==(gate && stage>=1 && stage<=3 && state==0 && copying==1 && !stopping));
+  }
  }
  return 0;
 }''')
@@ -46,6 +51,7 @@ int main(void) {
             source+='void sub_00232D40(void) { RECOMP_ENTRY(0x00232D40u); }\n'
             source+='void movie_userdata(void) { loc_0031E1C5: ; }\n'
             source+='void cache_worker(void) {\n'+CACHE_WAIT+'\n}\n'
+            source+='void producer(void) {\n'+PRODUCER_WAIT+'\n}\n'
             source+='void cache_probes(void) {\n'+'\n'.join(CACHE_PROBES)+'\n}\n'
             (root/'recomp_0000.c').write_text(source)
             (root/'recomp_funcs.h').write_text('')
@@ -61,4 +67,10 @@ int main(void) {
             self.assertEqual(result.count('ngb_ios_cache_copy_delay('),1)
             pause='loc_0031C825: ;\n    PUSH32(esp, 0x32);'
             self.assertEqual(adapt_cache_wait(pause),pause)
+            # The other library thread's display wait and all call targets
+            # outside the pinned service-thread site remain byte-for-byte.
+            other=PRODUCER_WAIT.replace('00333085','00333005')
+            self.assertEqual(adapt_cache_wait(other),other)
+            self.assertIn(PRODUCER_WAIT,result)
+            self.assertEqual(result.count('ngb_ios_cache_producer_fast()'),1)
 if __name__=='__main__':unittest.main()

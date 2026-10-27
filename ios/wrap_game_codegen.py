@@ -7,6 +7,7 @@ import tempfile
 
 WRAPPERS=('001E6AE0','0017E8A0','00232D40')
 CACHE_WAIT='loc_0031C750: ;\n    PUSH32(esp, 0x32);'
+PRODUCER_WAIT='    PUSH32(esp, 0x00333085u); RECOMP_ICALL_SAFE(0x003C7CB0u, _icall_esp); /* manual call 0x003C7CB0 */'
 
 # Observe the cache consumer and its library's two ReadFile branches. These
 # probes never write guest state and disappear from ordinary release builds.
@@ -29,6 +30,11 @@ def instrument_cache(text):
     return text
 
 def adapt_cache_wait(text):
+    text=text.replace(PRODUCER_WAIT,
+        '    if (ngb_ios_cache_producer_fast()) {\n'
+        '        PUSH32(esp, 1);\n'
+        '        PUSH32(esp, 0x00333085u); RECOMP_ABI_CALL(0x0032B077u, sub_0032B077);\n'
+        '    } else {\n'+PRODUCER_WAIT+'\n    }')
     return text.replace(CACHE_WAIT,'loc_0031C750: ;\n'
         '    PUSH32(esp, ngb_ios_cache_copy_delay(0x32u,MEM32(0xC0608C)));')
 
@@ -48,7 +54,7 @@ def instrument_movie(text):
 def wrap(folder):
     found={address:0 for address in WRAPPERS};reads=0
     probes={marker:0 for marker in MOVIE_PROBES}
-    cache_waits=0
+    cache_waits=0;producer_waits=0
     cache_probes={marker:0 for marker in CACHE_PROBES}
     for path in folder.glob('recomp_*.c'):
         text=path.read_text()
@@ -66,6 +72,7 @@ def wrap(folder):
         result=''.join(lines)
         for marker in probes: probes[marker]+=result.count(marker)
         cache_waits+=result.count(CACHE_WAIT)
+        producer_waits+=result.count(PRODUCER_WAIT)
         for marker in cache_probes: cache_probes[marker]+=result.count(marker)
         path.write_text(adapt_cache_wait(instrument_cache(instrument_movie(result))))
     for address,count in found.items():
@@ -73,11 +80,13 @@ def wrap(folder):
     if any(count!=1 for count in probes.values()):
         raise ValueError('Expected one original movie diagnostic boundary per stage')
     if cache_waits!=1:raise ValueError('Expected one original cache-worker packet wait')
+    if producer_waits!=1:raise ValueError('Expected one original cache-producer display wait')
     if any(count!=1 for count in cache_probes.values()):
         raise ValueError('Expected one original cache I/O diagnostic boundary per stage')
     header=folder/'recomp_funcs.h'
     with header.open('a') as stream:stream.write('\nunsigned ngb_ios_game_text_language(unsigned saved);\n')
     with header.open('a') as stream:stream.write('\nunsigned ngb_ios_cache_copy_delay(unsigned milliseconds,unsigned state);\n')
+    with header.open('a') as stream:stream.write('\nunsigned ngb_ios_cache_producer_fast(void);\n')
     with header.open('a') as stream:stream.write('\n#ifdef NGB_IOS_MOVIE_DIAGNOSTICS\nvoid ngb_ios_movie_probe(unsigned stage);\n#endif\n')
     with header.open('a') as stream:stream.write('\n#ifdef NGB_IOS_MOVIE_DIAGNOSTICS\n'
         'void ngb_movie_diag_cache_queue(unsigned available,unsigned remaining);\n'

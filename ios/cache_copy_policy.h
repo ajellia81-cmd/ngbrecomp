@@ -6,3 +6,10 @@
 static inline unsigned ngb_cache_copy_wait(unsigned milliseconds,unsigned state,unsigned foreground) {
     return milliseconds==50 && state==0 && foreground ? 1 : milliseconds;
 }
+
+/* Only the library's service thread may replace its display-paced wait while
+ * the foreground loader is waiting for an active cache copy. */
+static inline unsigned ngb_cache_producer_fast(unsigned state,unsigned foreground,
+                                              unsigned copying,unsigned stopping) {
+    return state==0 && foreground && copying==1 && !stopping;
+}

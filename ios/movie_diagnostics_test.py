@@ -34,6 +34,8 @@ int main(int argc,char **argv) {
  struct timespec delay={0,2000000};nanosleep(&delay,0);
  ngb_movie_diag_cache_io(1,1,0,0);
  ngb_movie_diag_cache_io(2,0,999,0); /* invalid kind is ignored */
+ ngb_movie_diag_cache_producer(1);ngb_movie_diag_cache_producer(1);
+ ngb_movie_diag_cache_producer(0);
  ngb_movie_diag_cache_wait(50,1,0);
  for(unsigned i=0;i<41000;i++) ngb_movie_diag_emit("cue",i,2,3,4);
  for(unsigned i=0;i<13000;i++) ngb_movie_diag_emit("ui-rect",i,2,3,4);
@@ -57,6 +59,7 @@ int main(int argc,char **argv) {
     assert samples['ui-cache-write'][2]>=1000
     assert samples['ui-cache-write'][2]==samples['ui-cache-write'][3]
     assert samples['ui-cache-fail']==[0,1,0,0]
+    assert samples['ui-cache-producer']==[2,1,0,0]
     # Disabled builds have no calls, data writes or recorder references.
     body='void run(void) {\n'+ '\n'.join(MOVIE_PROBES) +'\n}'
     body=body.replace('RECOMP_ENTRY(0x0019A7D0u);','/* marker */\nRECOMP_ENTRY(0x0019A7D0u);')

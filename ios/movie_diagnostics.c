@@ -64,6 +64,10 @@ static _Atomic uint32_t cachePolls,cacheReady,cacheAvailable,cacheRemaining;
 static _Atomic uint32_t ioCalls[2],ioBytes[2],ioMicros[2],ioMax[2],ioFailures[2];
 static _Thread_local uint64_t ioBegin[2];
 static _Thread_local uint32_t ioRequest[2];
+static _Atomic uint32_t producerFast,producerDisplay;
+void ngb_movie_diag_cache_producer(unsigned fast) {
+    atomic_fetch_add(fast ? &producerFast : &producerDisplay,1);
+}
 
 void ngb_movie_diag_cache_queue(uint32_t available,uint32_t remaining) {
     atomic_fetch_add(&cachePolls,1);
@@ -105,6 +109,7 @@ void ngb_movie_diag_cache_wait(uint32_t original,uint32_t effective,uint32_t sta
         ngb_movie_diag_emit(i ? "ui-cache-write" : "ui-cache-read",atomic_load(&ioCalls[i]),
             atomic_load(&ioBytes[i]),atomic_load(&ioMicros[i]),atomic_load(&ioMax[i]));
     ngb_movie_diag_emit("ui-cache-fail",atomic_load(&ioFailures[0]),atomic_load(&ioFailures[1]),0,0);
+    ngb_movie_diag_emit("ui-cache-producer",atomic_load(&producerFast),atomic_load(&producerDisplay),0,0);
 }
 
 void ngb_movie_diag_punctuation(uint32_t code,uint32_t format,uint32_t scale,uint32_t shift) {
