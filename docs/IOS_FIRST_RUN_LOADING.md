@@ -17,7 +17,9 @@ to the reported wait still needs the next device measurement.
 
 The iOS-only code-generation adapter now calls a host delay policy at that
 one pinned boundary. An original 50 ms wait becomes 1 ms only in active
-state zero. Pause, pause requests, stop requests, error backoffs, other sleep
+state zero while the foreground loading screen is in stages 1–3 with its
+busy gate set. Background copying during gameplay retains the original pace.
+Pause, pause requests, stop requests, error backoffs, other sleep
 call sites, decoded bytes, write calls and completion conditions remain
 unchanged. The original macOS generation does not run this adapter.
 `ios/cache_copy_policy.h` is the small native policy; tests check its scope,

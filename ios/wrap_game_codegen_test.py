@@ -9,13 +9,26 @@ class HooksTest(unittest.TestCase):
     def test_cache_wait_keeps_pause_stop_and_other_waits(self):
         with tempfile.TemporaryDirectory() as directory:
             p=Path(directory);source=p/'policy.c';exe=p/'policy'
+            hooks=(Path(__file__).resolve().parent/'game_hooks.c').read_text()
+            helper='unsigned ngb_ios_cache_copy_delay'+hooks.split('unsigned ngb_ios_cache_copy_delay',1)[1].split('\n}',1)[0]+'\n}\n'
             source.write_text('''#include <assert.h>
+#include <stdint.h>
 #include "cache_copy_policy.h"
+static unsigned char ram[16*1024*1024];
+#define MEM8(a) (*(uint8_t *)(ram+(a)))
+#define MEM32(a) (*(uint32_t *)(ram+(a)))
+'''+helper+'''
 int main(void) {
- assert(ngb_cache_copy_wait(50,0)==1);
- for(unsigned state=1;state<4;state++)assert(ngb_cache_copy_wait(50,state)==50);
- assert(ngb_cache_copy_wait(50,0xFFFFFFFFu)==50);
- for(unsigned wait=0;wait<100;wait++)if(wait!=50)assert(ngb_cache_copy_wait(wait,0)==wait);
+ assert(ngb_cache_copy_wait(50,0,1)==1);
+ assert(ngb_cache_copy_wait(50,0,0)==50);
+ for(unsigned state=1;state<4;state++)assert(ngb_cache_copy_wait(50,state,1)==50);
+ assert(ngb_cache_copy_wait(50,0xFFFFFFFFu,1)==50);
+ for(unsigned wait=0;wait<100;wait++)if(wait!=50)assert(ngb_cache_copy_wait(wait,0,1)==wait);
+ for(unsigned stage=0;stage<7;stage++)for(unsigned gate=0;gate<2;gate++) {
+  MEM32(0x8DB160)=stage;MEM8(0xD52F2D)=gate;
+  assert(ngb_ios_cache_copy_delay(50,0)==(gate && stage>=1 && stage<=3 ? 1 : 50));
+  assert(ngb_ios_cache_copy_delay(50,1)==50);
+ }
  return 0;
 }''')
             subprocess.run([os.environ.get('CC','cc'),'-I'+str(Path(__file__).resolve().parent),str(source),'-o',str(exe)],check=True)

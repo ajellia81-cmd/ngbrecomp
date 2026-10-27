@@ -16,7 +16,9 @@ extern int ngb_ios_text_override(void);
 extern void ngb_pc_set_setting(int,int);
 
 unsigned ngb_ios_cache_copy_delay(unsigned milliseconds,unsigned state) {
-    unsigned wait=ngb_cache_copy_wait(milliseconds,state);
+    unsigned stage=MEM32(0x8DB160);
+    unsigned foreground=MEM8(0xD52F2D) && stage>=1 && stage<=3;
+    unsigned wait=ngb_cache_copy_wait(milliseconds,state,foreground);
 #ifdef NGB_IOS_MOVIE_DIAGNOSTICS
     ngb_movie_diag_cache_wait(milliseconds,wait,state);
 #endif
