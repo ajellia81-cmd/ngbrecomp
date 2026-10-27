@@ -116,9 +116,17 @@ int main(void) {
         duplicate='void duplicate(void) {\nloc_001E818A: ;\nloc_001E83F8: ;\nloc_001E8481: ;\n    eax = ngb_korean_space_advance(eax,MEM32(esi + 0x38));\n}'
         bodies={'a':body,'b':duplicate};repair_korean_text_layout(bodies)
         self.assertIn('MEM32(ebp+20)',bodies['a'])
-        self.assertIn('esi++; goto loc_001E8CC6',bodies['a'])
+        self.assertNotIn('esi++; goto loc_001E8CC6',bodies['a'])
         self.assertIn('ngb_korean_center_paragraph',bodies['a'])
         self.assertEqual(bodies['a'].count('unsigned ngb_punct_def=0;'),1)
+        # The public measurer selects the original horizontal compression.
+        # No compact spacing hook may enter it, even for punctuation or spaces.
+        legacy='void legacy(void) {\n'+''.join('loc_'+x+': ;\n' for x in
+            ['001E8CC6','001E8B55','001E8BB8','001E8C00','001E8C41'])+'}'
+        bodies={'a':body,'b':duplicate,'legacy':legacy}
+        repair_korean_text_layout(bodies)
+        self.assertEqual(bodies['legacy'],legacy)
+
         self.assertIn('*MEMF(esp+0xAC)',bodies['b'])
         with self.assertRaises(ValueError):repair_korean_text_layout({'a':body})
 

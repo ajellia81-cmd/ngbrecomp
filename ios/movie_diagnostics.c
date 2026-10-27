@@ -59,3 +59,19 @@ void ngb_movie_diag_emit(const char *event,uint32_t a,uint32_t b,uint32_t c,uint
 void ngb_movie_diag_glyph(void) {
     atomic_fetch_add_explicit(&glyphs,1,memory_order_relaxed);
 }
+
+/* One sample per second, plus stage changes, for at most three minutes.
+ * This observes the original loading drawer; it never advances its state. */
+void ngb_movie_diag_loading(uint32_t stage,uint32_t ticks,uint32_t frame,uint32_t gate,
+                           uint32_t sx,uint32_t sy,uint32_t anchor,uint32_t count) {
+    static uint64_t first,last;
+    static uint32_t previous=UINT32_MAX;
+    static unsigned samples;
+    uint64_t now=micros();
+    if (!first) first=now;
+    if (samples>=240 || now-first>180000000u) return;
+    if (samples && stage==previous && now-last<1000000u) return;
+    last=now;previous=stage;samples++;
+    ngb_movie_diag_emit("ui-load-state",stage,ticks,frame,gate);
+    ngb_movie_diag_emit("ui-load-font",sx,sy,anchor,count);
+}

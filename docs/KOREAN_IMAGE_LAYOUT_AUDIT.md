@@ -129,3 +129,49 @@ and draw continuation to be present. The adapted private translation and host
 helper are compiled locally before the production IPA build. Device visual
 confirmation is still needed; these checks do not substitute for playing every
 screen in the game.
+
+
+### Preserve original auto-fit proportions after 2.73
+
+The loading story caller uses the separate public measurer at return address
+0x002053DF, then computes horizontal compression as `min(1, limit / width)`
+at 0x00205529. This is independent of the later paragraph-origin translation.
+Changing the public measured spaces and punctuation in 2.73 reduced `width`,
+so the original caller compressed the glyphs less. The glyph pictures were not
+resampled, but their drawn proportions became wider. That was an unintended
+regression; the earlier claim that no size changed missed this caller effect.
+
+Restore the separate public measurer byte-for-byte to its pre-2.73 metrics for
+all callers, including other auto-fit screens. Keep compact punctuation and
+approved spaces in the drawer's own measuring pass and rendering continuations;
+these place quads after the caller has selected its original compression.
+Paragraph centering still translates origins only. The code-generation test
+now requires the public measurer to remain unmodified, rather than requiring
+it to return compact widths. This supersedes the public-measurer alignment
+claims above. Native checks do not establish first-run loading duration.
+
+
+### First-run loading investigation
+
+The iOS bootstrap explicitly retains the original title's AFS cache under
+`saves-korean/Cache`, with shared `UserData` and `TitleData`. Successful Korean
+archive rebuilding invalidates only that disposable cache; an unchanged capsule
+returns before invalidation. A fresh install or an asset-changing upgrade can
+therefore cause original cache preparation again. The shader warmup in the
+available older device log finished in 0.2 seconds; that is not evidence for
+attributing the reported 60-second wait to shaders.
+
+The story drawer belongs to the original loading state machine. Its stage 3
+also checks controller input before the fade-out, so a visible story screen is
+not by itself proof that disk work is still pending. Neither observation proves
+which condition dominates the user's current first-run delay.
+
+For the next explicitly diagnostic build, the existing optional recorder adds
+`ui-load-state` (stage at 0x8DB160, local tick counter at 0xBCDFDC, global frame
+at 0xD21734, gate byte at 0xD52F2D) and `ui-load-font` (horizontal/vertical scale
+float bit patterns, packed anchor, line count) to `ui-layout.log`. It samples
+once per second or at a stage transition, with limits of 180 seconds and 240
+samples. The observation never changes loading state, calls file I/O from the
+original title, or edits saves. It is absent when movie diagnostics are disabled.
+A fresh first-run trace is needed before changing loading behavior or claiming
+a duration fix. Do not delete user saves to obtain that trace.

@@ -129,19 +129,14 @@ def repair_korean_spacing(bodies):
 
 
 def repair_korean_text_layout(bodies):
-    # The separate public measurer must agree with the draw function's own
-    # measuring pass. Font 1 converts Latin punctuation to full-width JIS cells.
+    # Keep the public measurer's legacy metrics. Its callers also use that
+    # width to choose horizontal font compression; compacting it changes glyph
+    # proportions on loading prose and any other auto-fit screen. The drawer's
+    # own measurement below uses compact advances only to place existing quads.
     changes = {
-        '001E8CC6': ('eax = ZX16(MEM16(esp + 0x2C));',
-                     'eax = ngb_korean_space_advance(eax,MEM32(MEM32(esp + 0x1260)+0x38));\n'
-                     '    if (MEM32(MEM32(esp + 0x1260)+0x38)==1 && ngb_korean_punctuation_at(esi+1)) eax=0;'),
-        '001E8B55': ('', 'if (MEM32(MEM32(esp + 0x1260)+0x38)==1 && MEM8(esi)==0x81 && MEM8(esi+1)==0x40) { esi++; goto loc_001E8CC6; }'),
-        '001E8BB8': ('', 'if (MEM32(MEM32(esp + 0x1260)+0x38)==1 && ngb_korean_punctuation_at(esi)) goto loc_001E8BCF;'),
         '001E734F': ('', 'ngb_punct_def=0;\n    if (MEM32(esi+0x38)==1 && ngb_korean_punctuation_at(edi)) goto loc_001E7374;'),
         '001E73A9': ('', 'ngb_punct_def=eax;'),
         '001E73EF': ('', 'eax=ngb_korean_punctuation_advance(eax,ngb_punct_def,edi,MEM32(esi+0x38),MEMF(esp+0x1C)*MEMF(esp+0xAC));'),
-        '001E8C00': ('', 'ngb_punct_def=eax;'),
-        '001E8C41': ('', 'eax=ngb_korean_punctuation_advance(eax,ngb_punct_def,esi,MEM32(MEM32(esp+0x1260)+0x38),MEMF(esp+0x14)*MEMF(0x414EF4));'),
         '001E818A': ('', 'ngb_punct_def=eax;\n    ngb_punct_left=ngb_korean_punctuation_left(eax,edi,MEM32(esi+0x38),MEMF(esp+0x1C)*MEMF(esp+0xAC));\n    MEM32(esp+0x10)-=ngb_punct_left;'),
         '001E83F8': ('', 'eax=ngb_korean_punctuation_advance(eax,ngb_punct_def,MEM32(esp+0x18),MEM32(esi+0x38),MEMF(esp+0x1C)*MEMF(esp+0xAC))+ngb_punct_left;'),
         '001E7462': ('ecx = ngb_korean_space_advance(ecx,MEM32(esi + 0x38));',

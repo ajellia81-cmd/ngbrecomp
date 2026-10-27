@@ -3,6 +3,7 @@
 #define RECOMP_GENERATED_CODE
 #include "recomp_funcs.h"
 #include "korean.h"
+#include "movie_diagnostics.h"
 #include <math.h>
 
 int ngb_korean_punctuation_at(unsigned text) {
@@ -95,9 +96,13 @@ unsigned ngb_korean_punctuation_advance(unsigned original,unsigned def,unsigned 
  * at the page's left margin is centered as a block; columns, footer hints,
  * subtitles with per-line centering and small HUD prompts do not qualify. */
 void ngb_korean_center_paragraph(unsigned state,unsigned widths,unsigned origins,unsigned count,unsigned caller) {
+    int known_loading=caller==0x00205574u;
+#ifdef NGB_IOS_MOVIE_DIAGNOSTICS
+    if (known_loading) ngb_movie_diag_loading(MEM32(0x8DB160),MEM32(0xBCDFDC),
+        MEM32(0xD21734),MEM8(0xD52F2D),MEM32(state+0x1C),MEM32(state+0x20),MEM32(state+0x44),count);
+#endif
     if (MEM32(state+0x38)!=1 || (MEM8(state+0x4A)&15)!=0 || count<2 || count>255) return;
     int x=(int16_t)MEM16(state+0x44),y=(int16_t)MEM16(state+0x46);
-    int known_loading=caller==0x00205574u;
     if (x<40 || x>140 || (!known_loading && (y<0 || y>320))) return;
     int left=720,right=0,nonempty=0;
     for (unsigned i=0;i<count;i++) {
