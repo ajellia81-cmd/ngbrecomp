@@ -128,6 +128,50 @@ def repair_korean_spacing(bodies):
         raise ValueError("Pinned Korean space measurement/draw branches changed")
 
 
+def repair_korean_text_layout(bodies):
+    # The separate public measurer must agree with the draw function's own
+    # measuring pass. Font 1 converts Latin punctuation to full-width JIS cells.
+    changes = {
+        '001E8CC6': ('eax = ZX16(MEM16(esp + 0x2C));',
+                     'eax = ngb_korean_space_advance(eax,MEM32(MEM32(esp + 0x1260)+0x38));\n'
+                     '    if (MEM32(MEM32(esp + 0x1260)+0x38)==1 && ngb_korean_punctuation_at(esi+1)) eax=0;'),
+        '001E8B55': ('', 'if (MEM32(MEM32(esp + 0x1260)+0x38)==1 && MEM8(esi)==0x81 && MEM8(esi+1)==0x40) { esi++; goto loc_001E8CC6; }'),
+        '001E8BB8': ('', 'if (MEM32(MEM32(esp + 0x1260)+0x38)==1 && ngb_korean_punctuation_at(esi)) goto loc_001E8BCF;'),
+        '001E734F': ('', 'ngb_punct_def=0;\n    if (MEM32(esi+0x38)==1 && ngb_korean_punctuation_at(edi)) goto loc_001E7374;'),
+        '001E73A9': ('', 'ngb_punct_def=eax;'),
+        '001E73EF': ('', 'eax=ngb_korean_punctuation_advance(eax,ngb_punct_def,edi,MEM32(esi+0x38),MEMF(esp+0x1C)*MEMF(esp+0xAC));'),
+        '001E8C00': ('', 'ngb_punct_def=eax;'),
+        '001E8C41': ('', 'eax=ngb_korean_punctuation_advance(eax,ngb_punct_def,esi,MEM32(MEM32(esp+0x1260)+0x38),MEMF(esp+0x14)*MEMF(0x414EF4));'),
+        '001E818A': ('', 'ngb_punct_def=eax;\n    ngb_punct_left=ngb_korean_punctuation_left(eax,edi,MEM32(esi+0x38),MEMF(esp+0x1C)*MEMF(esp+0xAC));\n    MEM32(esp+0x10)-=ngb_punct_left;'),
+        '001E83F8': ('', 'eax=ngb_korean_punctuation_advance(eax,ngb_punct_def,MEM32(esp+0x18),MEM32(esi+0x38),MEMF(esp+0x1C)*MEMF(esp+0xAC))+ngb_punct_left;'),
+        '001E7462': ('ecx = ngb_korean_space_advance(ecx,MEM32(esi + 0x38));',
+                     'if (MEM32(esi+0x38)==1 && ngb_korean_punctuation_at(edi+1)) ecx=0;'),
+        '001E8481': ('eax = ngb_korean_space_advance(eax,MEM32(esi + 0x38));',
+                     'if (MEM32(esi+0x38)==1 && ngb_korean_punctuation_at(MEM32(esp+0x18)+1)) eax=0;'),
+        '001E7527': ('', 'ngb_korean_center_paragraph(esi,esp+0xC8,esp+0x2C8,ZX16(MEM16(esp+0x20))+1,\n'
+                     '        MEM32(ebp+4)==0x00E02FB5u ? MEM32(ebp+20) : MEM32(ebp+4));'),
+    }
+    expected={label:1 for label in changes}
+    for label in ('001E818A','001E83F8','001E8481'): expected[label]=2
+    counts={label:0 for label in changes}
+    for name,body in list(bodies.items()):
+        touched=False
+        for label,(after,code) in changes.items():
+            marker='loc_'+label+': ;'+ ('\n    '+after if after and label not in ('001E7462','001E8481') else '')
+            if label in ('001E7462','001E8481'):
+                marker=after
+            n=body.count(marker)
+            if n:
+                body=body.replace(marker,marker+'\n    '+code)
+                counts[label]+=n;touched=True
+        if touched:
+            at=body.index('{')+1
+            body=body[:at]+'\n    unsigned ngb_punct_def=0; int ngb_punct_left=0;\n'+body[at:]
+            bodies[name]=body
+    if counts!=expected:
+        raise ValueError('Pinned Korean paragraph/punctuation paths changed: '+str(counts))
+
+
 HOST_WRAPPERS={'sub_001E6D30','sub_001E86A0','sub_001E6AE0','sub_0017E8A0'}
 
 def route_direct_entries(original, selected):
@@ -241,6 +285,7 @@ def merge(original, translated, missing_seeds=None):
         selected[name]=body
     repair_korean_vertical_uv(selected)
     repair_korean_spacing(selected)
+    repair_korean_text_layout(selected)
     # Read-only metrics to distinguish font-cell clipping from renderer bounds.
     key='sub_001E6D36'
     marker='loc_001E6E59: ;'

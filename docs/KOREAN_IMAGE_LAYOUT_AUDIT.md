@@ -77,3 +77,55 @@ Use `--previews /tmp/korean-image-previews` to inspect every crop in readable
 pages. Keep private assets, reports, screenshots and previews out of Git and
 out of the IPA. The audit tool is a build-time investigation tool; it adds no
 runtime recording or scanning to the game.
+
+## Follow-up: font-rendered paragraphs and punctuation
+
+The image audit above did not reposition font-rendered story paragraphs. The
+loading story uses the five rotating messages beginning at ID 0x70000; its drawer
+submits the whole title/body block at a fixed left margin. Reducing spaces made
+its visible block narrower while keeping that margin.
+
+`ios/korean_text_layout.c` now operates after the existing drawer finishes
+measuring all lines. It calculates one bounding span across the line origins and
+widths, then shifts every line by the same delta to center the complete block in
+the original 720-pixel UI plane. It preserves explicit line breaks, indentation,
+blank lines, all Y coordinates, and the original state's anchor. The loading
+story caller is recognized explicitly, including its pinned Korean trampoline
+frame. The shared path also covers other wide, multi-line Korean prose at the
+page's left margin. It excludes single-line items, already centered/right-aligned
+text, right-hand description columns, small HUD text and footer hints. The
+specific scope guards are in the helper; this is not a change to every text box.
+
+The separate public text measurer previously retained the old space width even
+though the draw function's measuring and rendering passes used quarter-cell
+spaces. Both ASCII and full-width spaces now use that same advance there too.
+This also keeps layouts that ask for measurements before drawing consistent.
+
+The font-1 preprocessing path converts Latin punctuation into full-width JIS
+cells. The character's picture can therefore have large side bearings even
+when the resource string contains no space before it. For period, comma,
+colon, semicolon, question mark and exclamation mark, the helper reads the
+current original glyph window and its texture's actual ink bounds. It moves
+the original quad's pen to remove excessive left padding, and uses a compact
+advance with space for the complete ink and a small right margin. No glyph
+pixels, UVs, font weight, size or texture data are edited. The helper supports
+the original A8, palette, ARGB and ARGB4444 glyph textures; unsupported formats
+retain original behavior. Bounds are cached by texture and selected glyph
+window. Explicit extra spaces immediately before punctuation use zero advance;
+normal word spaces retain their approved quarter-cell width.
+
+All three relevant measuring/drawing paths use matching punctuation advances:
+the public measurer, the draw function's measuring pass and both draw
+continuations. Korean/Japanese full-width punctuation pairs and their ASCII
+forms are recognized. Other language boots use the original functions, and
+other font modes retain their original metrics.
+
+Native synthetic regressions in `ios/korean_text_layout_test.py` replay GPU glyph
+bounds in four texture formats at several scales, check that every ink pixel
+fits the new advance, and prove the texture and UV data are unchanged. They also
+check common paragraph translation, blank lines, scrolling loading prose and
+the exclusions above. Strict code-generation guards require every measuring
+and draw continuation to be present. The adapted private translation and host
+helper are compiled locally before the production IPA build. Device visual
+confirmation is still needed; these checks do not substitute for playing every
+screen in the game.

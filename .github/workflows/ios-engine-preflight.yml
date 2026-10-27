@@ -31,6 +31,7 @@ on:
       - 'ios/korean_archive_test.m'
       - 'ios/korean_codegen_test.py'
       - 'ios/korean_sprite_layout*'
+      - 'ios/korean_text_layout*'
       - 'ios/dsp_mailbox_test.py'
       - 'ios/tab_lettering_preview.py'
       - 'ios/fps_counter_test.py'
@@ -214,6 +215,7 @@ jobs:
           python3 ios/movie_subtitle_test.py
           python3 ios/korean_codegen_test.py
           python3 ios/korean_sprite_layout_test.py
+          python3 ios/korean_text_layout_test.py
           python3 ios/dsp_mailbox_test.py
           python3 ios/tab_lettering_preview.py
           python3 ios/presenter_descriptor_test.py
