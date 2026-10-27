@@ -13,6 +13,7 @@ from pathlib import Path, PurePosixPath
 import struct
 import urllib.request
 import zipfile
+from korean_sprite_layout import correct_sprite_layout
 
 PATCH_URL = 'https://github.com/slimshadykor-cmd/korean-patches/releases/download/ngb-v1.2/NGB_Korean_Patch_v1.2.zip'
 PATCH_SHA256 = 'c7df8ebc34b75077e75647f89606ea31eef5860d21bf3416941b0c3e5bba19d2'
@@ -132,6 +133,7 @@ def prepare(source_path, archive_path, output):
     with zipfile.ZipFile(archive_path) as package:
         plan = json.loads(package.read('ngb_native11/assets/build_plan.json'))
         candidate = apply_xbe(source_path.read_bytes(), plan)
+        settings_mask = None
         for archive_spec in plan['archives']:
             for member in archive_spec['members']:
                 relative = PurePosixPath(archive_spec['path']) / member['name']
@@ -140,14 +142,19 @@ def prepare(source_path, archive_path, output):
                 data = package.read('ngb_native11/assets/members/' + str(relative))
                 if sha(data) != member['output_sha256']:
                     raise ValueError('Patch member fingerprint mismatch')
+                if str(relative) == 'spr.afs/option.spr':
+                    # The approved tab lettering samples the unshifted source.
+                    settings_mask = settings_tab_mask(data)
                 if str(relative) == 'demo.afs/main_menu.spr':
                     data = center_menu_headings(data)
-                    member['output_sha256'] = sha(data)
+                data = correct_sprite_layout(str(relative), data)
+                member['output_sha256'] = sha(data)
                 target = assets / 'members' / str(relative)
                 target.parent.mkdir(parents=True, exist_ok=True)
                 target.write_bytes(data)
-    (assets/'settings-tab.mask').write_bytes(settings_tab_mask(
-        (assets/'members/spr.afs/option.spr').read_bytes()))
+    if settings_mask is None:
+        raise ValueError('Korean Options lettering is missing')
+    (assets/'settings-tab.mask').write_bytes(settings_mask)
     capsule = {
         'patch_zip_sha256': PATCH_SHA256,
         'source_xbe_sha256': USA_SHA256,
