@@ -692,6 +692,10 @@ int ngb_ios_prepare(void)
         }
         setenv("NGB_GAME_DIR", game.fileSystemRepresentation, 1);
         setenv("NGB_RENDERER", "d3d", 1);
+        // A new async shader/pipeline omits its draws until compilation finishes.
+        // First-visit walls can disappear for a frame even with cached replays.
+        // Keep every draw; the existing disk cache/prewarm limits cold hitches.
+        setenv("NGB_D3D_SYNC_COMPILE", "1", 1);
         if (ngb_check_xbe(game.fileSystemRepresentation) != 0) {
             NGBImport *importer = [NGBImport new]; importer.destination = game;
             if (![importer run]) return 0;
