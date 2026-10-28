@@ -84,7 +84,8 @@ int ngb_conversion_startup(void){@autoreleasepool {
         NSString *documents=NSSearchPathForDirectoriesInDomains(NSDocumentDirectory,NSUserDomainMask,YES).firstObject;
         NSString *log=[documents stringByAppendingPathComponent:@"macos-on-ios-startup.log"];
         if(log){
-            freopen(log.fileSystemRepresentation,"w",stdout);
+            FILE *fresh=fopen(log.fileSystemRepresentation,"w");if(fresh)fclose(fresh);
+            freopen(log.fileSystemRepresentation,"a",stdout);
             freopen(log.fileSystemRepresentation,"a",stderr);
             setvbuf(stdout,NULL,_IONBF,0);setvbuf(stderr,NULL,_IONBF,0);
         }
