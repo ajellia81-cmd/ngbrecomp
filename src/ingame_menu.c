@@ -180,6 +180,12 @@ void ngb_pc_set_setting(int which, int value)
         nv2a_set_quality(ngb_settings_runtime_scale(&s_running), s_running.anisotropy, s_running.shadow_scale, s_running.msaa);
     if (!getenv("NGB_NO_SETTINGS"))
         ngb_settings_save(&s_running);
+#ifdef NGB_IOS_KOREAN
+    if (which==25) {
+        extern void ngb_ios_language_changed(int language);
+        ngb_ios_language_changed(s_running.text_language);
+    }
+#endif
 }
 
 /* Opens the recomp settings menu at the next frame (the main menu's "RECOMP SETTINGS"). */
