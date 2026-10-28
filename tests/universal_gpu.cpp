@@ -220,6 +220,27 @@ int main(){try{
   reference=gpu.draw(state,a,key,dc,false,false,false,1,false,true);
   compare(reference,universal,("generic depth -> specialized EQUAL "+std::to_string(skin)+"/"+std::to_string(lighting)).c_str());cases++;
  }
+
+ state.vs=program;state.vs_handle=1;
+ for(unsigned trial=0;trial<16;trial++) {
+  program->program.clear();
+  float rows[4][4]={{19.7537f+float(trial)*.0013f,.137f,.031f,23.591f},{.091f,20.1771f,.017f,23.817f},{.0123f,.0317f,6543210.5f+float(trial)*.5f,123456.f},{0,0,0,1}};
+  for(unsigned lane=0;lane<4;lane++) {
+   std::copy(rows[lane],rows[lane]+4,state.vsc[96+lane].begin());
+   uint32_t instruction[]={0,(7u<<21)|((96u+lane)<<13)|0x1bu,(2u<<26)|(0x1bu<<17),((8u>>lane)<<12)|(1u<<11)};
+   program->program.insert(program->program.end(),instruction,instruction+4);
+  }
+  for(auto instruction:{move(3,3,false),move(9,9,true)})program->program.insert(program->program.end(),instruction.begin(),instruction.end());
+  key=MakePixelKey(state,textures);
+  reference=gpu.draw(state,a,key,dc,false,false,false,1,true,false);
+  unsigned covered=0;for(unsigned pixel=0;pixel<GPU::W*GPU::H;pixel++)if(reference[pixel*4+3]>100)covered++;
+  check(covered>50,"NV2A depth fixture did not rasterize enough pixels");
+  universal=gpu.draw(state,a,key,dc,true,false,false,1,false,true);
+  compare(reference,universal,("NV2A DP4 specialized -> generic depth "+std::to_string(trial)).c_str());cases++;
+  universal=gpu.draw(state,a,key,dc,true,false,false,1,true,false);
+  reference=gpu.draw(state,a,key,dc,false,false,false,1,false,true);
+  compare(reference,universal,("NV2A DP4 generic -> specialized depth "+std::to_string(trial)).c_str());cases++;
+ }
  check(gpu.validation_errors==0,"Vulkan validation reported errors");
  std::cout<<"PASS: "<<cases<<" uncached synthetic GPU image comparisons, including same-draw overlapping blend primitives\n";
  return 0;
