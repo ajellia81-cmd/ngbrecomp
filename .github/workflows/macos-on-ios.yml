@@ -30,6 +30,11 @@ jobs:
         xcrun --sdk iphoneos clang -target arm64-apple-ios17.0 -fobjc-arc -c porting/macos-on-ios/AppKit_NGBImages.m -o "$RUNNER_TEMP/ngb-image-bridge.o"
         xcrun --sdk macosx clang -fobjc-arc -fsanitize=address porting/macos-on-ios/tests/image_storage.m -framework Foundation -framework CoreGraphics -framework ImageIO -o "$RUNNER_TEMP/ngb-image-storage-test"
         "$RUNNER_TEMP/ngb-image-storage-test"
+    - name: Check sandbox-local Xbox shared-memory aliases without game data
+      run: |
+        xcrun --sdk iphoneos clang -target arm64-apple-ios17.0 -fobjc-arc -c porting/macos-on-ios/libSystem_NGBSharedMemory.m -o "$RUNNER_TEMP/ngb-shared-memory.o"
+        xcrun --sdk macosx clang -fobjc-arc -fsanitize=address porting/macos-on-ios/tests/shared_memory.m -framework Foundation -o "$RUNNER_TEMP/ngb-shared-memory-test"
+        "$RUNNER_TEMP/ngb-shared-memory-test"
     - name: Require private disc input
       env:
         NGB_DISC_URL: ${{ secrets.NGB_DISC_URL }}
