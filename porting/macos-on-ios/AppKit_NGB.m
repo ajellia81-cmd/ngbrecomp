@@ -7,6 +7,7 @@
 #include <string.h>
 #include <stdlib.h>
 #include <unistd.h>
+#include <stdio.h>
 #include "bridge.h"
 #include "korean/haptics.h"
 #define NGB_IOS_PORT_DIAG(...) ((void)0)
@@ -387,13 +388,16 @@ int ngb_macos_on_ios_prepare(const NgbConversionHost *api){@autoreleasepool{
     for(NSUInteger i=0;i<names.count;i++){NSString *p=[documents stringByAppendingPathComponent:names[i]];if(![fm createDirectoryAtPath:p withIntermediateDirectories:YES attributes:nil error:nil])return 0;setenv(variables[i],p.fileSystemRepresentation,1);}
     NSString *game=[documents stringByAppendingPathComponent:@"game"];setenv("NGB_GAME_DIR",game.fileSystemRepresentation,1);
     if(ngb_check_xbe(game.fileSystemRepresentation)!=0){NGBImport *importer=[NGBImport new];importer.destination=game;if(![importer run])return 0;}
+    fprintf(stderr,"[Startup] game data validated; configuring audio session\n");
     [AVAudioSession.sharedInstance setCategory:AVAudioSessionCategoryAmbient error:nil];
     NSNotificationCenter *nc=NSNotificationCenter.defaultCenter;
     [nc addObserverForName:UIApplicationWillResignActiveNotification object:nil queue:NSOperationQueue.mainQueue usingBlock:^(NSNotification *n){(void)n;__atomic_store_n(&active,0,__ATOMIC_RELEASE);[touchControls releaseInputs];ngb_ios_haptics_active(0);previousAudioPause=host.audio_paused();host.audio_pause(1);}];
     [nc addObserverForName:UIApplicationDidBecomeActiveNotification object:nil queue:NSOperationQueue.mainQueue usingBlock:^(NSNotification *n){(void)n;__atomic_store_n(&active,1,__ATOMIC_RELEASE);ngb_ios_haptics_active(1);host.audio_pause(previousAudioPause);}];
     for(NSNotificationName name in @[GCControllerDidConnectNotification,GCControllerDidDisconnectNotification])
       [nc addObserverForName:name object:nil queue:NSOperationQueue.mainQueue usingBlock:^(NSNotification *n){(void)n;[touchControls refresh];for(unsigned i=0;i<4;i++)ngb_ios_haptics_prepare(i);}];
+    fprintf(stderr,"[Startup] preparing controller haptics\n");
     for(unsigned i=0;i<4;i++)ngb_ios_haptics_prepare(i);
+    fprintf(stderr,"[Startup] UIKit preparation complete\n");
     return 1;
 }}
 

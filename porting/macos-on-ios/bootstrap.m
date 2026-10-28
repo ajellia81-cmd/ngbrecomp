@@ -81,6 +81,14 @@ int ngb_conversion_startup(void){@autoreleasepool {
     NgbConversionPrepare prepare=(NgbConversionPrepare)dlsym(RTLD_DEFAULT,"ngb_macos_on_ios_prepare");
     converted=prepare!=NULL;
     if(converted){
+        NSString *documents=NSSearchPathForDirectoriesInDomains(NSDocumentDirectory,NSUserDomainMask,YES).firstObject;
+        NSString *log=[documents stringByAppendingPathComponent:@"macos-on-ios-startup.log"];
+        if(log){
+            freopen(log.fileSystemRepresentation,"w",stdout);
+            freopen(log.fileSystemRepresentation,"a",stderr);
+            setvbuf(stdout,NULL,_IONBF,0);setvbuf(stderr,NULL,_IONBF,0);
+        }
+        fprintf(stderr,"[Startup] 3.0 diagnostic: starting UIKit bridge\n");
         [NSApplication sharedApplication];
         [NSApp nextEventMatchingMask:NSEventMaskAny untilDate:[NSDate distantPast] inMode:NSDefaultRunLoopMode dequeue:YES];
         NgbConversionHost api={1,sizeof(NgbConversionHost),ngb_check_xbe,ngb_install,ngb_install_set_progress,
@@ -88,7 +96,9 @@ int ngb_conversion_startup(void){@autoreleasepool {
             (int(*)(void*,int,int16_t))SDL_JoystickSetVirtualAxis,(int(*)(void*,int,uint8_t))SDL_JoystickSetVirtualButton,
             (int32_t(*)(void*))SDL_JoystickInstanceID,(void(*)(void*))SDL_JoystickClose,SDL_NumJoysticks,
             SDL_JoystickGetDeviceInstanceID,SDL_JoystickDetachVirtual,apu_host_pause,audio_paused};
-        if(!prepare(&api))return 0;
+        fprintf(stderr,"[Startup] preparing import and device services\n");
+        if(!prepare(&api)){fprintf(stderr,"[Startup] preparation failed or cancelled\n");return 0;}
+        fprintf(stderr,"[Startup] import and device services complete\n");
         void (*screen)(int*,int*)=(void(*)(int*,int*))dlsym(RTLD_DEFAULT,"ngb_macos_on_ios_screen_size");
         if(screen)screen(&w,&h);
         bridge_tick=(void(*)(void))dlsym(RTLD_DEFAULT,"ngb_macos_on_ios_tick");
@@ -101,10 +111,12 @@ int ngb_conversion_startup(void){@autoreleasepool {
     NSString *loader=[resources stringByAppendingPathComponent:@"../Frameworks/libvulkan.1.dylib"];
     setenv("NGB_D3D_SEED",seed.fileSystemRepresentation,0);setenv("NV2A_SHADER_SEED",vkseed.fileSystemRepresentation,0);
     setenv("VK_DRIVER_FILES",icd.fileSystemRepresentation,0);setenv("SDL_VULKAN_LIBRARY",loader.fileSystemRepresentation,0);
+    fprintf(stderr,"[Startup] loading settings\n");
     NgbSettings settings;ngb_settings_load(&settings);
     override=settings.text_language_options ? (settings.text_language==1 ? 1 : 0) : -1;
     setenv("NGB_TEXT_LANGUAGE",settings.text_language==1 ? "English" : "Japanese",1);
-    if(settings.text_language!=2)return 1;
+    if(settings.text_language!=2){fprintf(stderr,"[Startup] entering original Mac engine\n");return 1;}
+    fprintf(stderr,"[Startup] preparing Korean resources\n");
     const char *original=getenv("NGB_GAME_DIR");if(!original)return 1;
     NSString *documents=NSSearchPathForDirectoriesInDomains(NSDocumentDirectory,NSUserDomainMask,YES).firstObject;
     NSString *output=[documents stringByAppendingPathComponent:@"korean-game"];
@@ -128,7 +140,7 @@ int ngb_conversion_startup(void){@autoreleasepool {
         if(![fm fileExistsAtPath:target])[fm createSymbolicLinkAtPath:target withDestinationPath:source error:nil];
     }
     setenv("NGB_SAVE_DIR",localized.fileSystemRepresentation,1);setenv("NGB_GAME_DIR",output.fileSystemRepresentation,1);
-    active=1;override=0;return 1;
+    active=1;override=0;fprintf(stderr,"[Startup] Korean resources ready; entering original Mac engine\n");return 1;
 }}
 
 extern int ngb_pc_setting(int);
