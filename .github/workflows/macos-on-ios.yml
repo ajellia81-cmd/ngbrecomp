@@ -71,11 +71,26 @@ jobs:
       run: |-
         brew install cmake ninja pkg-config sdl2-compat sdl3 libepoxy glib glslang molten-vk vulkan-loader sevenzip
         bash xboxrecomp/third_party/fetch.sh
+    - name: Cache public-source native framebuffer-fetch driver
+      id: universal_driver_cache
+      uses: actions/cache@v4
+      with:
+        path: ${{ runner.temp }}/ngb-universal-mvk
+        key: ngb-mvk-1.4.2-native-fetch-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('porting/macos-on-ios/universal/patch_moltenvk.py', 'porting/macos-on-ios/universal/build_moltenvk.sh', 'porting/macos-on-ios/universal/MOLTENVK-NOTICE.txt') }}
+    - name: Build pinned MoltenVK with native color fetch for explicit local-read pipelines
+      if: steps.universal_driver_cache.outputs.cache-hit != 'true'
+      run: |
+        bash porting/macos-on-ios/universal/build_moltenvk.sh "$RUNNER_TEMP/ngb-mvk-source" "$RUNNER_TEMP/ngb-universal-mvk"
+    - name: Select the exact driver tested and packaged
+      run: |
+        test -s "$RUNNER_TEMP/ngb-universal-mvk/libMoltenVK.dylib"
+        echo "NGB_MOLTENVK_LIBRARY=$RUNNER_TEMP/ngb-universal-mvk/libMoltenVK.dylib" >> "$GITHUB_ENV"
+        shasum -a 256 "$RUNNER_TEMP/ngb-universal-mvk/libMoltenVK.dylib"
     - name: Verify the packaged MoltenVK submission policy without rendering
       run: |
         xcrun --sdk macosx clang -std=c11 porting/macos-on-ios/tests/mvk_queue_policy.c -o "$RUNNER_TEMP/ngb-mvk-queue-policy-test"
-        MVK_CONFIG_SYNCHRONOUS_QUEUE_SUBMITS=1 "$RUNNER_TEMP/ngb-mvk-queue-policy-test" "$(brew --prefix)/lib/libMoltenVK.dylib" 1
-        MVK_CONFIG_SYNCHRONOUS_QUEUE_SUBMITS=0 "$RUNNER_TEMP/ngb-mvk-queue-policy-test" "$(brew --prefix)/lib/libMoltenVK.dylib" 0
+        MVK_CONFIG_SYNCHRONOUS_QUEUE_SUBMITS=1 "$RUNNER_TEMP/ngb-mvk-queue-policy-test" "$NGB_MOLTENVK_LIBRARY" 1
+        MVK_CONFIG_SYNCHRONOUS_QUEUE_SUBMITS=0 "$RUNNER_TEMP/ngb-mvk-queue-policy-test" "$NGB_MOLTENVK_LIBRARY" 0
     - name: Check unchanged VF3 interpolation and original endpoints without game data
       shell: bash
       run: |
@@ -103,10 +118,10 @@ jobs:
         cmake -S tests/universal -B "$RUNNER_TEMP/ngb-universal-tests" -G Ninja \
           -DCMAKE_PREFIX_PATH="$(brew --prefix)" \
           -DVulkan_INCLUDE_DIR="$PWD/xboxrecomp/third_party/Vulkan-Headers/include" \
-          -DVulkan_LIBRARY="$(brew --prefix molten-vk)/lib/libMoltenVK.dylib"
+          -DVulkan_LIBRARY="$NGB_MOLTENVK_LIBRARY"
         cmake --build "$RUNNER_TEMP/ngb-universal-tests" -j 3
         mkdir -p "$RUNNER_TEMP/ngb-universal-cache"
-        XDG_CACHE_HOME="$RUNNER_TEMP/ngb-universal-cache" \
+        DYLD_LIBRARY_PATH="$RUNNER_TEMP/ngb-universal-mvk" XDG_CACHE_HOME="$RUNNER_TEMP/ngb-universal-cache" \
           ctest --test-dir "$RUNNER_TEMP/ngb-universal-tests" --output-on-failure
     - name: Require private disc input
       env:

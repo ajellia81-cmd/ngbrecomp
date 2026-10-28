@@ -109,6 +109,7 @@ VkPipeline VulkanBackend::MakeUniversalPipeline(const PipeKey& k, VkShaderModule
 
 bool VulkanBackend::UniversalInit() {
     if(!universal_capable_)return false;
+    universal_ready_modules_.reserve(2048);universal_ready_pipelines_.reserve(16384);
     VkPhysicalDevicePushDescriptorPropertiesKHR push{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PUSH_DESCRIPTOR_PROPERTIES_KHR};
     VkPhysicalDeviceProperties2 properties{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2};properties.pNext=&push;
     vkGetPhysicalDeviceProperties2(phys_,&properties);
@@ -182,24 +183,16 @@ void VulkanBackend::UniversalDestroy() {
     DestroyImage(universal_null3d_);DestroyImage(universal_depth_);
     universal_ready_=false;
 }
-VkShaderModule VulkanBackend::RequestModule(uint64_t key,std::function<std::string()> factory,bool vertex) {
-    {
-        std::unique_lock<std::recursive_mutex> lock(cache_mu_,std::try_to_lock);
-        if(!lock.owns_lock())return VK_NULL_HANDLE;
-        auto found=modules_.find(key);if(found!=modules_.end())return found->second;
-    }
-    std::lock_guard<std::mutex> lock(job_mu_);
-    if(!pending_mods_.count(key)) {
-        pending_mods_[key]=true;Job job{false,key,{},vertex,{}};job.factory=std::move(factory);
-        jobs_.push_back(std::move(job));job_cv_.notify_one();
-    }
-    return VK_NULL_HANDLE;
-}
 VkPipeline VulkanBackend::RequestPipeline(const PipeKey& key) {
+    auto ready=universal_ready_pipelines_.find(key);
+    if(ready!=universal_ready_pipelines_.end())return ready->second;
     {
         std::unique_lock<std::recursive_mutex> lock(cache_mu_,std::try_to_lock);
         if(!lock.owns_lock())return VK_NULL_HANDLE;
-        auto found=pipelines_.find(key);if(found!=pipelines_.end())return found->second;
+        auto found=pipelines_.find(key);if(found!=pipelines_.end()) {
+            if(found->second)universal_ready_pipelines_.emplace(key,found->second);
+            return found->second;
+        }
         auto vs=modules_.find(key.vs),ps=modules_.find(key.ps);
         if(vs==modules_.end() || ps==modules_.end() || !vs->second || !ps->second)return VK_NULL_HANDLE;
     }

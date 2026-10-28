@@ -19,9 +19,11 @@ jobs:
           fetch-depth: 0
       - name: Install public build tools
         run: brew install cmake ninja glslang
-      - name: Fetch public Vulkan headers at the existing pinned revision
+      - name: Fetch pinned public renderer dependencies
+        run: bash xboxrecomp/third_party/fetch.sh
+      - name: Compile renderer wiring without game data
         run: |
-          git clone --depth 1 --branch v1.4.350 https://github.com/KhronosGroup/Vulkan-Headers.git "$RUNNER_TEMP/ngb-public-vulkan-headers"
+          xcrun --sdk macosx clang++ -std=c++20 -fsyntax-only -DNGB_SMOOTH_MOTION=1 -DNGB_CONVERTED_DISPLAY=1 -DVK_NO_PROTOTYPES -Isrc -Isrc/d3d -Isrc/d3d/compat -Ixboxrecomp/src -Ixboxrecomp/src/nv2a_vk/host -Ixboxrecomp/third_party/Vulkan-Headers/include -Ixboxrecomp/third_party/volk -Ixboxrecomp/third_party/VulkanMemoryAllocator/include src/d3d/vk/backend.cpp
       - name: Cache public-source native framebuffer-fetch driver
         id: driver_cache
         uses: actions/cache@v4
@@ -36,7 +38,7 @@ jobs:
           set -euo pipefail
           cmake -S tests/universal -B "$RUNNER_TEMP/ngb-public-universal-tests" -G Ninja \
             -DCMAKE_PREFIX_PATH="$(brew --prefix)" \
-            -DVulkan_INCLUDE_DIR="$RUNNER_TEMP/ngb-public-vulkan-headers/include" \
+            -DVulkan_INCLUDE_DIR="$PWD/xboxrecomp/third_party/Vulkan-Headers/include" \
             -DVulkan_LIBRARY="$RUNNER_TEMP/ngb-universal-mvk/libMoltenVK.dylib"
           cmake --build "$RUNNER_TEMP/ngb-public-universal-tests" -j 3
           mkdir -p "$RUNNER_TEMP/ngb-public-universal-cache"

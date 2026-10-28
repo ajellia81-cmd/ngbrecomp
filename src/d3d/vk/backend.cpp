@@ -18,6 +18,8 @@
 #include <cstdlib>
 #include <cstring>
 #include <functional>
+#include <optional>
+#include <utility>
 #include <sstream>
 #include <iomanip>
 #include <memory>
@@ -574,7 +576,7 @@ private:
     Target* draw_rt_ = nullptr;      // the colour target of the draw whose textures are being bound
     Target* bound_ds_ = nullptr;
     bool rendering_ = false,rendering_universal_=false;
-    void BeginRendering(Target* rt, Target* ds, bool universal=false);
+    void BeginRendering(Target* rt, Target* ds);
     void EndRendering();
     void FillMs(Target& t);    // MSAA image from the plain one (a picture kept across a setting change)
     VkSampler fill_sampler_ = VK_NULL_HANDLE;
@@ -599,6 +601,10 @@ private:
     VkPipelineLayout universal_layout_=VK_NULL_HANDLE;
     VkShaderModule universal_vs_=VK_NULL_HANDLE,universal_ps_[3]{};
     std::unordered_map<uint32_t,VkPipeline> universal_pipes_;
+    // Render-thread snapshots of immutable ready handles. Compiler cache file
+    // writes must not send already-ready draws back through the generic path.
+    std::unordered_map<uint64_t,VkShaderModule> universal_ready_modules_;
+    std::unordered_map<PipeKey,VkPipeline,PipeHash> universal_ready_pipelines_;
     Image universal_null3d_,universal_depth_;
     VkSampler universal_normal_=VK_NULL_HANDLE,universal_comparison_=VK_NULL_HANDLE;
     void UniversalDynamic(const PipeKey&,float,float);
@@ -606,7 +612,25 @@ private:
     bool UniversalInit();
     void UniversalDestroy();
     VkPipeline MakeUniversalPipeline(const PipeKey&,VkShaderModule,VkShaderModule);
-    VkShaderModule RequestModule(uint64_t,std::function<std::string()>,bool);
+    template<class Factory> VkShaderModule RequestModule(uint64_t key,Factory&& factory,bool vertex) {
+        auto ready=universal_ready_modules_.find(key);
+        if(ready!=universal_ready_modules_.end())return ready->second;
+        {
+            std::unique_lock<std::recursive_mutex> lock(cache_mu_,std::try_to_lock);
+            if(!lock.owns_lock())return VK_NULL_HANDLE;
+            auto found=modules_.find(key);if(found!=modules_.end()) {
+                if(found->second)universal_ready_modules_.emplace(key,found->second);
+                return found->second;
+            }
+        }
+        std::lock_guard<std::mutex> lock(job_mu_);
+        if(!pending_mods_.count(key)) {
+            pending_mods_[key]=true;Job job{false,key,{},vertex,{}};
+            job.factory=std::forward<Factory>(factory);
+            jobs_.push_back(std::move(job));job_cv_.notify_one();
+        }
+        return VK_NULL_HANDLE;
+    }
     VkPipeline RequestPipeline(const PipeKey&);
     Assembled asm_;
     // the shader cache (ShaderCache below): how each module was made, its SPIR-V, the pipelines
@@ -1691,7 +1715,10 @@ void VulkanBackend::EndRendering() {
     rendering_ = false;
 }
 
-void VulkanBackend::BeginRendering(Target* rt, Target* ds,bool universal) {
+void VulkanBackend::BeginRendering(Target* rt, Target* ds) {
+    // Both pipeline kinds share a local-read pass while the fallback is active.
+    // Switching between a ready and pending state must not flush the tile.
+    bool universal=universal_ready_ && rt;
     // a colour and a depth target of different sizes cannot share a pass (one scaled, one not):
     // the depth goes without, as the title's picture is in the colour
     if (rt && ds && (rt->img.w != ds->img.w || rt->img.h != ds->img.h || rt->samples != ds->samples)) ds = nullptr;
@@ -2635,7 +2662,7 @@ void VulkanBackend::Draw(const State& s, uint32_t prim, uint32_t start, uint32_t
         }
         return vertex_source(use_motion);
     };
-    VkShaderModule vmod=universal_ready_?RequestModule(vkey,vertex_factory,true):Module(vkey,vertex_factory,true);
+    VkShaderModule vmod=universal_ready_?RequestModule(vkey,vertex_factory,true):Module(vkey,[&]{return vertex_factory();},true);
 #ifdef NGB_SMOOTH_MOTION
     auto original_vertex=[&] {
         if (!motion_shader) return;
@@ -2751,7 +2778,7 @@ void VulkanBackend::Draw(const State& s, uint32_t prim, uint32_t start, uint32_t
         }
         return src;
     };
-    VkShaderModule pmod=universal_ready_?RequestModule(pkey,pixel_factory,false):Module(pkey,pixel_factory,false);
+    VkShaderModule pmod=universal_ready_?RequestModule(pkey,pixel_factory,false):Module(pkey,[&]{return pixel_factory();},false);
 
     // the pipeline
     PipeKey k;
@@ -2857,7 +2884,7 @@ void VulkanBackend::Draw(const State& s, uint32_t prim, uint32_t start, uint32_t
         async_now_=false;
         pkey^=0x674C4F5753540001ull;k.ps=pkey;
         auto factory=[pk]{return GlowStrengthHlsl(PixelHlsl(pk));};
-        pmod=universal_ready_?RequestModule(pkey,factory,false):Module(pkey,factory,false);
+        pmod=universal_ready_?RequestModule(pkey,factory,false):Module(pkey,[&]{return factory();},false);
     }
     auto shadow_pipeline=[&] { return ShadowPipelineOrOriginal(k,[&](const PipeKey& key){return universal_ready_?RequestPipeline(key):Pipeline(key);}); };
     VkPipeline pipe = vmod && pmod ? shadow_pipeline() : VK_NULL_HANDLE;
@@ -3200,7 +3227,7 @@ void VulkanBackend::Draw(const State& s, uint32_t prim, uint32_t start, uint32_t
 #ifdef NGB_SMOOTH_MOTION
     // Uniforms and this draw's geometry must stay in the same ring generation.
     // A wrap between their uploads would replace uniforms before the draw used them.
-    uint64_t required=sizeof(s.vsc)+sizeof(c)+sizeof(UniversalConstants)+ringAlign_*3+16*16+4;
+    uint64_t required=sizeof(s.vsc)+sizeof(c)+ringAlign_*2+16*16+4+(universal_draw?sizeof(UniversalConstants)+ringAlign_:0);
     for (uint32_t b=0;b<a.buffer_count;b++) required+=a.buffers[b].bytes;
     required+=uint64_t(a.index_count)*(a.index16 ? 2 : 4);
     if (required>kUploadSlotBytes) ngb_renderer_fatal("One draw exceeds the GPU upload frame slot.");
@@ -3232,21 +3259,21 @@ void VulkanBackend::Draw(const State& s, uint32_t prim, uint32_t start, uint32_t
     uint32_t ibytes = a.index_count * (a.index16 ? 2 : 4);
     if (a.index_count) ioff = Upload(a.index_src, ibytes, 4);
 
-    UniversalConstants universal_constants;
+    std::optional<UniversalConstants> universal_constants;
     VkDeviceSize universal_offset=0;
     if(universal_draw) {
         uint32_t flags=(a.pretransformed?uPretransformed:0)|(prog?uProgrammableVertex:0)|(points?uPoints:0)|
             (sprite?uSprite:0)|(quad?uQuad:0)|(spark_quad?uSpark:0)|(k.blend?uBlending:0)|(glow_pass?128:0);
-        universal_constants=MakeUniversalConstants(s,a,pk,flags);
-        UniversalVertexOffsets(universal_constants,a,voff);
-        universal_constants[uBlend]=Blend(k.src,false);universal_constants[uBlend+1]=Blend(k.dst,false);
-        universal_constants[uBlend+2]=BlendOp(k.op);universal_constants[uBlend+3]=k.wmask;
+        universal_constants.emplace(MakeUniversalConstants(s,a,pk,flags));
+        UniversalVertexOffsets(*universal_constants,a,voff);
+        (*universal_constants)[uBlend]=Blend(k.src,false);(*universal_constants)[uBlend+1]=Blend(k.dst,false);
+        (*universal_constants)[uBlend+2]=BlendOp(k.op);(*universal_constants)[uBlend+3]=k.wmask;
         float color[4];Color(SimpleState(s,kMBlendColor),color);
-        std::memcpy(&universal_constants.words[uBlendConstant/4],color,sizeof color);
-        universal_offset=Upload(&universal_constants,sizeof universal_constants,ringAlign_);
+        std::memcpy(&universal_constants->words[uBlendConstant/4],color,sizeof color);
+        universal_offset=Upload(&*universal_constants,sizeof(UniversalConstants),ringAlign_);
     }
     // record: the uploads above may have submitted, so everything is set after them
-    BeginRendering(rt, ds,universal_draw);
+    BeginRendering(rt, ds);
     d_.vkCmdBindPipeline(cmd_, VK_PIPELINE_BIND_POINT_GRAPHICS, pipe);
     if(universal_draw)UniversalDynamic(k,float(k.zbias)+shadow_pull.steps,k.zslope+shadow_pull.slope);
     else if(k.has_ds&kDsDynamicBias) {
@@ -3388,7 +3415,7 @@ void VulkanBackend::Draw(const State& s, uint32_t prim, uint32_t start, uint32_t
         packet->rt=rt; packet->ds=ds; packet->pipeline=pipe;
         if(universal_draw) {
             packet->universal=std::make_unique<UniversalReplay>();
-            auto& saved=*packet->universal;saved.constants=universal_constants;saved.key=k;
+            auto& saved=*packet->universal;saved.constants=*universal_constants;saved.key=k;
             std::copy(info,info+4,saved.textures.begin());
             for(unsigned r=0;r<16;r++)if(a.regs&(1u<<r)) {
                 saved.buffers[r]=a.elements[r].buffer;

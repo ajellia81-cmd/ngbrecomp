@@ -101,7 +101,7 @@ void VulkanBackend::MotionReplay(const MotionDraw& p) {
         universal_offset=Upload(&data,sizeof data,ringAlign_);
     }
     auto replay_rt=MotionTargetFor(p.rt);
-    BeginRendering(replay_rt,MotionTargetFor(p.ds),bool(p.universal));
+    BeginRendering(replay_rt,MotionTargetFor(p.ds));
     d_.vkCmdBindPipeline(cmd_,VK_PIPELINE_BIND_POINT_GRAPHICS,p.pipeline);
     if(p.universal)UniversalDynamic(p.universal->key,p.bias_steps,p.bias_slope);
     else if(p.depth_bias) d_.vkCmdSetDepthBias(cmd_,p.bias_steps,0,p.bias_slope);

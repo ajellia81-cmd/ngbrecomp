@@ -13,3 +13,7 @@ target_link_libraries(universal_gpu PRIVATE Vulkan::Vulkan glslang::glslang
 enable_testing()
 add_test(NAME universal_gpu COMMAND universal_gpu)
 set_tests_properties(universal_gpu PROPERTIES TIMEOUT 600)
+find_package(Python3 COMPONENTS Interpreter REQUIRED)
+add_test(NAME native_fetch_scope COMMAND ${Python3_EXECUTABLE}
+    ${CMAKE_CURRENT_LIST_DIR}/native_fetch_scope.py
+    --vulkan-include ${Vulkan_INCLUDE_DIRS} --compiler ${CMAKE_CXX_COMPILER})

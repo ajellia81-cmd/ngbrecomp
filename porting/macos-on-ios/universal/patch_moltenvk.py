@@ -1,20 +1,24 @@
 #!/usr/bin/env python3
-"""Enable native color-attachment fetch only for explicit local-read pipelines."""
+"""Native color0 fetch, retaining its Vulkan dependency without a tile-pass break."""
 from pathlib import Path
-import argparse,hashlib,subprocess
+import argparse,hashlib,json,subprocess
 BASE='db66022459ffb663aa2b50f6b018bc2e124f5edf'
 parser=argparse.ArgumentParser();parser.add_argument('source',type=Path);args=parser.parse_args()
 assert subprocess.check_output(['git','-C',str(args.source),'rev-parse','HEAD'],text=True).strip()==BASE
-path=args.source/'MoltenVK/MoltenVK/GPUObjects/MVKPipeline.mm'
-source=path.read_text()
-original=subprocess.check_output(['git','-C',str(args.source),'show',BASE+':MoltenVK/MoltenVK/GPUObjects/MVKPipeline.mm'],text=True)
-assert source==original,'Patch requires the untouched pinned source'
-anchor='\t\tshaderConfig.options.mslOptions.input_attachment_is_ds_attachment = _inputAttachmentIsDSAttachment;\n'
-assert source.count(anchor)==1
+paths=['MoltenVK/MoltenVK/GPUObjects/MVKPipeline.mm','MoltenVK/MoltenVK/GPUObjects/MVKPipeline.h','MoltenVK/MoltenVK/Commands/MVKCmdPipeline.mm']
+sources={}
+for name in paths:
+    original=subprocess.check_output(['git','-C',str(args.source),'show',BASE+':'+name],text=True)
+    assert (args.source/name).read_text()==original,'Patch requires untouched pinned source: '+name
+    sources[name]=original
+
+def insert(name,anchor,replacement):
+    assert sources[name].count(anchor)==1,(name,anchor)
+    sources[name]=sources[name].replace(anchor,replacement)
+
 patch='''
-        // NGB: color input attachments in an explicit local-read pipeline must
-        // use native framebuffer fetch. Sampling the attached texture does not
-        // observe preceding overlapping primitives within the same draw.
+        // NGB: a single color0/input0 local-read mapping uses native fetch.
+        // Texture reads cannot observe earlier overlapping primitives in a draw.
         bool nativeColorInput = false;
         for (auto* next = reinterpret_cast<const VkBaseInStructure*>(pCreateInfo->pNext);
              next; next = next->pNext) {
@@ -28,7 +32,33 @@ patch='''
         if (nativeColorInput && !_inputAttachmentIsDSAttachment &&
             getPhysicalDevice()->getMTLDeviceCapabilities().isAppleGPU) {
             shaderConfig.options.mslOptions.use_framebuffer_fetch_subpasses = true;
+            _usesNativeColorFetch = true;
         }
 '''
-path.write_text(source.replace(anchor,anchor+patch))
-print('MoltenVK 1.4.2 native color-fetch patch:',hashlib.sha256(path.read_bytes()).hexdigest())
+anchor='\t\tshaderConfig.options.mslOptions.input_attachment_is_ds_attachment = _inputAttachmentIsDSAttachment;\n'
+insert(paths[0],anchor,anchor+patch)
+anchor='\tbool isRasterizationDisabled() const { return !_isRasterizing; }\n'
+insert(paths[1],anchor,anchor+'\tbool usesNativeColorFetch() const { return _usesNativeColorFetch; }\n')
+anchor='\tbool _inputAttachmentIsDSAttachment = false;\n'
+insert(paths[1],anchor,anchor+'\tbool _usesNativeColorFetch = false;\n')
+
+barrier_patch='''
+                // Native color fetch implements this exact pixel dependency
+                // without storing/reloading the tile after every generic draw.
+                if (b.type == MVKPipelineBarrier::Memory &&
+                    b.srcStageMask == VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT &&
+                    b.dstStageMask == VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT &&
+                    b.srcAccessMask == VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT &&
+                    b.dstAccessMask == VK_ACCESS_2_INPUT_ATTACHMENT_READ_BIT) {
+                    auto* pipeline = cmdEncoder->getGraphicsPipeline();
+                    if (pipeline && pipeline->usesNativeColorFetch()) continue;
+                }
+'''
+anchor='''\t\t\tif (mvkIsAnyFlagEnabled(_dependencyFlags, VK_DEPENDENCY_BY_REGION_BIT) &&
+\t\t\t\tmvkIsAnyFlagEnabled(b.dstAccessMask, VK_ACCESS_INPUT_ATTACHMENT_READ_BIT)) {
+
+\t\t\t\tneedsRenderpassRestart = true;'''
+replacement=anchor.replace('\n\n\t\t\t\tneedsRenderpassRestart', '\n'+barrier_patch+'\n\t\t\t\tneedsRenderpassRestart')
+insert(paths[2],anchor,replacement)
+for name,text in sources.items():(args.source/name).write_text(text)
+print('MoltenVK 1.4.2 scoped native-fetch patch:',json.dumps({n:hashlib.sha256(t.encode()).hexdigest() for n,t in sources.items()},sort_keys=True))

@@ -121,7 +121,7 @@ public:
  VkPipelineRenderingCreateInfo rendering{VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO};rendering.colorAttachmentCount=1;rendering.pColorAttachmentFormats=&format;rendering.depthAttachmentFormat=depth_write||depth_equal?VK_FORMAT_D32_SFLOAT:VK_FORMAT_UNDEFINED;rendering.pNext=fetch?&input:nullptr;
  VkPipelineDepthStencilStateCreateInfo depth_state{VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO};depth_state.depthTestEnable=depth_write||depth_equal;depth_state.depthWriteEnable=depth_write;depth_state.depthCompareOp=depth_equal?VK_COMPARE_OP_EQUAL:VK_COMPARE_OP_ALWAYS;
  VkGraphicsPipelineCreateInfo ci{VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO};ci.pDepthStencilState=&depth_state;ci.pNext=&rendering;ci.stageCount=2;ci.pStages=stages;ci.pVertexInputState=&vi;ci.pInputAssemblyState=&ia;ci.pViewportState=&vp;ci.pRasterizationState=&rs;ci.pMultisampleState=&ms;ci.pColorBlendState=&cb;ci.pDynamicState=&dy;ci.layout=generic?universal_pipeline_layout:special_pipeline_layout;VkPipeline p;vk(vkCreateGraphicsPipelines(device,VK_NULL_HANDLE,1,&ci,nullptr,&p));return p;}
- std::vector<uint8_t> draw(const State& s,const Assembled& a,const PixelKey& pixel,DrawConstants constants,bool generic,bool fetch,bool blend,unsigned repetitions=1,bool depth_write=false,bool depth_equal=false){
+ std::vector<uint8_t> draw(const State& s,const Assembled& a,const PixelKey& pixel,DrawConstants constants,bool generic,bool fetch,bool blend,unsigned repetitions=1,bool depth_write=false,bool depth_equal=false,bool local_pass=false){
   Image target=image(VK_IMAGE_TYPE_2D,VK_IMAGE_VIEW_TYPE_2D,VK_FORMAT_B8G8R8A8_UNORM,1,VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT|VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT|VK_IMAGE_USAGE_TRANSFER_SRC_BIT);
   uint32_t flags=a.pretransformed?uPretransformed:0;if(s.vs&&!s.vs->program.empty())flags|=uProgrammableVertex;if(blend)flags|=uBlending;
   auto universal=MakeUniversalConstants(s,a,pixel,flags);uint64_t offsets[16]{};UniversalVertexOffsets(universal,a,offsets);universal[uBlend]=src_factor;universal[uBlend+1]=dst_factor;universal[uBlend+2]=blend_op;universal[uBlend+3]=write_mask;float bf[]={.2f,.4f,.6f,.8f};std::memcpy(&universal.words[uBlendConstant/4],bf,sizeof bf);
@@ -129,12 +129,12 @@ public:
   VkShaderModule vs=generic?universal_vs:module(s.vs&&!s.vs->program.empty()?VertexProgramHlsl(s.vs->program,a.regs,a.decode):FixedVertexHlsl(a.regs,a.pretransformed,a.decode,MakeFixedKey(s)),true);
   VkShaderModule ps=generic?(fetch?fetch_ps:universal_ps):module(PixelHlsl(pixel),false);
   VkPipeline p;if(generic){auto& cached=universal_pipelines[(fetch?1:0)+(depth_write?2:depth_equal?4:0)];if(!cached)cached=pipeline(true,vs,ps,a,blend,fetch,depth_write,depth_equal);p=cached;}else p=pipeline(false,vs,ps,a,blend,fetch,depth_write,depth_equal);auto set=descriptors(generic,pixel,target,fetch);
-  begin();barrier(target,fetch?VK_IMAGE_LAYOUT_RENDERING_LOCAL_READ_KHR:VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+  begin();barrier(target,(fetch||local_pass)?VK_IMAGE_LAYOUT_RENDERING_LOCAL_READ_KHR:VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
   VkRenderingAttachmentInfo color{VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO};color.imageView=target.view;color.imageLayout=target.layout;color.loadOp=VK_ATTACHMENT_LOAD_OP_CLEAR;color.storeOp=VK_ATTACHMENT_STORE_OP_STORE;color.clearValue.color={{.05f,.1f,.15f,.2f}};
   VkRenderingAttachmentInfo z{VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO};
   if(depth_write||depth_equal){barrier(depth_target,VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,true);z.imageView=depth_target.view;z.imageLayout=depth_target.layout;z.loadOp=depth_write?VK_ATTACHMENT_LOAD_OP_CLEAR:VK_ATTACHMENT_LOAD_OP_LOAD;z.storeOp=VK_ATTACHMENT_STORE_OP_STORE;z.clearValue.depthStencil={1,0};}
   VkRenderingInfo info{VK_STRUCTURE_TYPE_RENDERING_INFO};if(depth_write||depth_equal)info.pDepthAttachment=&z;info.renderArea={{0,0},{W,H}};info.layerCount=1;info.colorAttachmentCount=1;info.pColorAttachments=&color;vkCmdBeginRendering(cmd,&info);
-  if(fetch){uint32_t index=0;VkRenderingInputAttachmentIndexInfoKHR indices{VK_STRUCTURE_TYPE_RENDERING_INPUT_ATTACHMENT_INDEX_INFO_KHR};indices.colorAttachmentCount=1;indices.pColorAttachmentInputIndices=&index;auto function=(PFN_vkCmdSetRenderingInputAttachmentIndicesKHR)vkGetDeviceProcAddr(device,"vkCmdSetRenderingInputAttachmentIndicesKHR");check(function!=nullptr,"local read command unavailable");function(cmd,&indices);}
+  if(fetch||local_pass){uint32_t index=0;VkRenderingInputAttachmentIndexInfoKHR indices{VK_STRUCTURE_TYPE_RENDERING_INPUT_ATTACHMENT_INDEX_INFO_KHR};indices.colorAttachmentCount=1;indices.pColorAttachmentInputIndices=&index;auto function=(PFN_vkCmdSetRenderingInputAttachmentIndicesKHR)vkGetDeviceProcAddr(device,"vkCmdSetRenderingInputAttachmentIndicesKHR");check(function!=nullptr,"local read command unavailable");function(cmd,&indices);}
   vkCmdBindPipeline(cmd,VK_PIPELINE_BIND_POINT_GRAPHICS,p);vkCmdBindDescriptorSets(cmd,VK_PIPELINE_BIND_POINT_GRAPHICS,generic?universal_pipeline_layout:special_pipeline_layout,0,1,&set,0,nullptr);
   VkViewport viewport{0,float(H),float(W),-float(H),0,1};VkRect2D scissor{{0,0},{W,H}};vkCmdSetViewport(cmd,0,1,&viewport);vkCmdSetScissor(cmd,0,1,&scissor);
   VkDeviceSize offset=0;if(!generic)vkCmdBindVertexBuffers(cmd,0,1,&vertices.buffer,&offset);
@@ -154,9 +154,10 @@ int main(){try{
  DrawConstants dc{};dc.surf[0]=GPU::W;dc.surf[1]=GPU::H;dc.surf[2]=1.f/16777215;dc.surf[3]=1;dc.misc[1]=7;dc.misc[2]=3;dc.misc[3]=1;for(auto& size:dc.texsize){size[0]=size[1]=GPU::W;}dc.tfactor[0]=.7f;dc.tfactor[1]=.3f;dc.tfactor[2]=.2f;dc.tfactor[3]=.4f;
  TexInfo textures[4]{};auto key=MakePixelKey(state,textures);
  auto reference=gpu.draw(state,a,key,dc,false,false,false);auto universal=gpu.draw(state,a,key,dc,true,false,false);compare(reference,universal,"universal pretransformed diffuse");
+ auto mixed=gpu.draw(state,a,key,dc,false,false,false,1,false,false,true);compare(reference,mixed,"specialized pipeline in a local-read render pass");
  auto fetch=gpu.draw(state,a,key,dc,true,true,false);compare(reference,fetch,"framebuffer fetch opaque");
  auto additive_reference=gpu.draw(state,a,key,dc,false,false,true,2);auto additive_generic=gpu.draw(state,a,key,dc,true,true,true,2);compare(additive_reference,additive_generic,"overlapping primitives programmable blend");
- unsigned cases=3;
+ unsigned cases=4;
  textures[0].kind=kTex2D;
  for(unsigned op=2;op<=24;op++){
   state.tss[0][kTssColorOp]=op;state.tss[0][kTssColorArg1]=0;state.tss[0][kTssColorArg2]=2;state.tss[0][kTssColorArg0]=3;

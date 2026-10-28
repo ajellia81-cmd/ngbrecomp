@@ -21,11 +21,12 @@ Vulkan 1.3 and VK_KHR_dynamic_rendering_local_read. On non-Metal devices the
 ordered overlap test also needs rasterization-order color attachment access;
 this is not a substitute for checking the packaged MoltenVK on iPhone.
 
-The 319 comparisons cover pretransformed geometry, fixed texture-stage
+The 320 comparisons cover pretransformed geometry, fixed texture-stage
 operations, generated register-combiner states, an NV2A MOV program, framebuffer
 fetch, same-draw overlapping additive primitives, randomized blend equations,
 factors and channel write masks, all fixed skin modes, three light types, and
-bidirectional specialized/generic depth EQUAL passes for both fixed transforms
+a specialized pipeline sharing the local-read pass, and bidirectional
+specialized/generic depth EQUAL passes for both fixed transforms
 and generated NV2A DP4 programs. Differences greater than one UNORM8 step fail.
 This does not yet establish full instruction/format, MSAA, shadow, or Smooth
 Motion replay equivalence. The test executable does not enable game rendering.
