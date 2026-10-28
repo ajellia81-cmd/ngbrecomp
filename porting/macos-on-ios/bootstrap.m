@@ -106,6 +106,11 @@ int ngb_conversion_startup(void){@autoreleasepool {
         }
         fprintf(stderr,"[Startup] 3.0 diagnostic: starting UIKit bridge\n");
         setenv("NV2A_FPS_LOG","1",0);
+        // Use the renderer's existing counters to distinguish missing draws
+        // from visible surfaces disagreeing in depth. No capture or sync policy.
+        setenv("NGB_D3D_HITCHLOG","1",0);
+        setenv("NGB_D3D_STATS","1",0);
+        fprintf(stderr,"[Graphics diagnostics] existing missing-draw/compiler log and renderer counts enabled; rendering policy unchanged\n");
         // Presentation may wait for UIKit to retire a drawable. Keep that
         // wait on MoltenVK's submission worker, outside the game thread.
         setenv("MVK_CONFIG_SYNCHRONOUS_QUEUE_SUBMITS","0",0);
