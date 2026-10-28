@@ -2571,8 +2571,8 @@ void VulkanBackend::Draw(const State& s, uint32_t prim, uint32_t start, uint32_t
 #ifdef NGB_SMOOTH_MOTION
     bool motion_shader=motion_capture_ && !a.pretransformed && !quad && !points;
 #endif
-    bool vnew;
-    {
+    bool vnew=false;
+    if(!universal_ready_) {
         std::lock_guard<std::recursive_mutex> g(cache_mu_);
         vnew = !modules_.count(vkey);
     }
@@ -2617,7 +2617,24 @@ void VulkanBackend::Draw(const State& s, uint32_t prim, uint32_t start, uint32_t
 #ifdef NGB_SMOOTH_MOTION
     use_motion=motion_shader;
 #endif
-    auto vertex_factory=[vertex_source,use_motion]{return vertex_source(use_motion);};
+    auto vertex_factory=[this,vertex_source,use_motion,universal=universal_ready_,program=s.vs,regs=a.regs,decode=a.decode,
+                         pre=a.pretransformed,fk,quad,points,spark_quad,prog,vkey] {
+        if(universal && !points && !spark_quad) {
+            // Record only once, on the compiler worker. Repeated pending draws
+            // must not flush the recipe file on the game/render thread.
+            uint64_t key=vkey^(use_motion?0x5646335343454E45ull:0);
+            if(prog) {
+                std::vector<uint8_t> recipe;CurrentVertexProgramRecipe(program->program,regs,decode,quad,recipe);
+                CacheRecord('V',key,recipe.data(),recipe.size());
+            } else {
+                uint8_t recipe[2+1+8+sizeof(FixedKey)];
+                std::memcpy(recipe,&regs,2);recipe[2]=uint8_t(pre);
+                std::memcpy(recipe+3,&decode,8);std::memcpy(recipe+11,&fk,sizeof fk);
+                CacheRecord('F',key,recipe,sizeof recipe);
+            }
+        }
+        return vertex_source(use_motion);
+    };
     VkShaderModule vmod=universal_ready_?RequestModule(vkey,vertex_factory,true):Module(vkey,vertex_factory,true);
 #ifdef NGB_SMOOTH_MOTION
     auto original_vertex=[&] {
@@ -2670,7 +2687,7 @@ void VulkanBackend::Draw(const State& s, uint32_t prim, uint32_t start, uint32_t
     static const char* psdbg = std::getenv("NGB_D3D_PSDEBUG");
     static int flat = psdbg && !std::strcmp(psdbg, "flat");
     if (psdbg) pkey = Hash(psdbg, std::strlen(psdbg), pkey);
-    if (!psdbg && !sprite) {
+    if (!universal_ready_ && !psdbg && !sprite) {
         bool pnew;
         {
             std::lock_guard<std::recursive_mutex> g(cache_mu_);
@@ -2678,7 +2695,8 @@ void VulkanBackend::Draw(const State& s, uint32_t prim, uint32_t start, uint32_t
         }
         if (pnew) CacheRecord('P', pkey, &pk, sizeof(pk));
     }
-    auto pixel_factory = [pk,sprite,pkey] {
+    auto pixel_factory = [this,pk,sprite,pkey,universal=universal_ready_] {
+        if(universal && !psdbg && !sprite)CacheRecord('P',pkey,&pk,sizeof pk);
         std::string src = PixelHlsl(pk);
         if (sprite) src = SpriteHlsl(std::move(src));
         // NGB_D3D_PSDEBUG=bump | duv | copy: the water's draws only (a bump map in stage 0 displacing stage

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Bundle the macOS engine directly, without the subprocess launcher or Qt installer."""
-import argparse,json,plistlib,shutil,subprocess
+import argparse,json,os,plistlib,shutil,subprocess
 from pathlib import Path
 
 def run(*a):return subprocess.check_output([str(x) for x in a],text=True)
@@ -13,7 +13,7 @@ def main():
  binary=mac/'NinjaGaidenBlack';shutil.copy2(o.binary,binary)
  queue=[(binary,o.binary)];seen={};requested=['libvulkan.1.dylib','libMoltenVK.dylib','libSDL3.0.dylib']
  for name in requested:
-  src=prefix/'lib'/name;dst=libs/name;shutil.copy2(src.resolve(),dst);seen[name]=src;queue.append((dst,src))
+  src=Path(os.environ['NGB_MOLTENVK_LIBRARY']) if name=='libMoltenVK.dylib' and os.environ.get('NGB_MOLTENVK_LIBRARY') else prefix/'lib'/name;dst=libs/name;shutil.copy2(src.resolve(),dst);seen[name]=src;queue.append((dst,src))
  while queue:
   target,source=queue.pop(0)
   for dep in dependencies(target):
@@ -43,6 +43,8 @@ def main():
  licenses=res/'licenses';licenses.mkdir()
  for f in [root/'LICENSE',root/'THIRD_PARTY.md',root/'xboxrecomp/LICENSE',root/'xboxrecomp/NOTICE',root/'src/d3d/NOTICE',root/'third_party/vf3_scene/LICENSE',*root.glob('assets/fonts/OFL-*.txt')]:
   if f.exists():shutil.copy2(f,licenses/(f.parent.name+'-'+f.name))
+ if os.environ.get('NGB_MOLTENVK_LIBRARY'):
+  for f in Path(os.environ['NGB_MOLTENVK_LIBRARY']).parent.glob('*.txt'):shutil.copy2(f,licenses/f.name)
  info={'CFBundleName':'Ninja Gaiden Black','CFBundleDisplayName':'Ninja Gaiden Black','CFBundleExecutable':'NinjaGaidenBlack','CFBundleIdentifier':'com.ngbrecomp.game','CFBundleVersion':'3.1','CFBundleShortVersionString':'3.1','CFBundlePackageType':'APPL','NSHighResolutionCapable':True,'LSMinimumSystemVersion':'26.0'}
  (o.app/'Contents/Info.plist').write_bytes(plistlib.dumps(info))
  for p in [*libs.iterdir(),binary]:

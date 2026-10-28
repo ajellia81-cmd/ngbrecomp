@@ -1,0 +1,49 @@
+name: Public universal shader and Metal driver checks
+'on':
+  push:
+    branches: [universal-public-checks]
+  workflow_dispatch: null
+permissions:
+  contents: read
+concurrency:
+  group: ngb-public-universal-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  synthetic_gpu:
+    runs-on: macos-26
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Install public build tools
+        run: brew install cmake ninja glslang
+      - name: Fetch public Vulkan headers at the existing pinned revision
+        run: |
+          git clone --depth 1 --branch v1.4.350 https://github.com/KhronosGroup/Vulkan-Headers.git "$RUNNER_TEMP/ngb-public-vulkan-headers"
+      - name: Cache public-source native framebuffer-fetch driver
+        id: driver_cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/ngb-universal-mvk
+          key: ngb-public-mvk-1.4.2-native-fetch-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('porting/macos-on-ios/universal/patch_moltenvk.py', 'porting/macos-on-ios/universal/build_moltenvk.sh', 'porting/macos-on-ios/universal/MOLTENVK-NOTICE.txt') }}
+      - name: Build only public MoltenVK source
+        if: steps.driver_cache.outputs.cache-hit != 'true'
+        run: bash porting/macos-on-ios/universal/build_moltenvk.sh "$RUNNER_TEMP/ngb-public-mvk-source" "$RUNNER_TEMP/ngb-universal-mvk"
+      - name: Compare synthetic GPU images without game data or windows
+        run: |
+          set -euo pipefail
+          cmake -S tests/universal -B "$RUNNER_TEMP/ngb-public-universal-tests" -G Ninja \
+            -DCMAKE_PREFIX_PATH="$(brew --prefix)" \
+            -DVulkan_INCLUDE_DIR="$RUNNER_TEMP/ngb-public-vulkan-headers/include" \
+            -DVulkan_LIBRARY="$RUNNER_TEMP/ngb-universal-mvk/libMoltenVK.dylib"
+          cmake --build "$RUNNER_TEMP/ngb-public-universal-tests" -j 3
+          mkdir -p "$RUNNER_TEMP/ngb-public-universal-cache"
+          DYLD_LIBRARY_PATH="$RUNNER_TEMP/ngb-universal-mvk" \
+            XDG_CACHE_HOME="$RUNNER_TEMP/ngb-public-universal-cache" \
+            ctest --test-dir "$RUNNER_TEMP/ngb-public-universal-tests" --output-on-failure
+      - name: Verify original shader/loading guards
+        run: |
+          python3 porting/macos-on-ios/check_baseline.py
+          python3 tests/endpoint_shader_compat.py

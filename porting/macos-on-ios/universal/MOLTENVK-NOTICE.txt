@@ -1,0 +1,12 @@
+MoltenVK 1.4.2, modified for the NGB universal shader experiment.
+Original: https://github.com/KhronosGroup/MoltenVK
+Revision: db66022459ffb663aa2b50f6b018bc2e124f5edf
+License: Apache License 2.0 (see MoltenVK-LICENSE.txt).
+
+Modification: MVKPipeline.mm enables SPIRV-Cross native framebuffer fetch on
+Apple GPUs when a graphics pipeline explicitly maps color input attachment 0
+to the single color attachment 0 for dynamic rendering local read. Ordinary pipeline shader conversion,
+compilation scheduling, cache copying and game loading are not changed.
+
+The reproducible source patch and build script are in:
+https://github.com/ajellia81-cmd/ngbrecomp/tree/macos-on-ios-universal/porting/macos-on-ios/universal
