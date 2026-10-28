@@ -1,3 +1,6 @@
+#ifdef NGB_CONVERTED_DISPLAY
+#include "display_policy.h"
+#endif
 /*
  * Window and swapchain for the NV2A Vulkan renderer (SDL2).
  *
@@ -712,6 +715,9 @@ static bool create_swapchain(PGRAPHVkState *r)
         VkPresentModeKHR mode = choose_present_mode(r);
         /* Mailbox needs a spare image to replace; a FIFO queue is kept short. */
         uint32_t want = caps.minImageCount + (mode == VK_PRESENT_MODE_MAILBOX_KHR ? 1 : 0);
+#ifdef NGB_CONVERTED_DISPLAY
+        want = ngb_output_image_count(want, caps.maxImageCount, ngb_conversion_is_ios());
+#endif
         if (want < 2)
             want = 2;
         if (caps.maxImageCount && want > caps.maxImageCount)

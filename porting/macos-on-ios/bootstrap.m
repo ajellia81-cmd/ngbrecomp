@@ -16,6 +16,7 @@ static int audio_paused(void){return apu_host_paused;}
 extern BOOL ngb_prepare_korean(NSString *,NSString *,NSString *,void (^)(NSString *),NSError **);
 static int active,override=-1,converted,w=1280,h=720;
 int ngb_korean_active(void){return active;}
+int ngb_conversion_is_ios(void){return converted;}
 int ngb_ios_text_override(void){return override;}
 void ngb_ios_language_changed(int language){
     void (*notice)(int)=(void(*)(int))dlsym(RTLD_DEFAULT,"ngb_macos_on_ios_language_changed");
@@ -95,6 +96,11 @@ int ngb_conversion_startup(void){@autoreleasepool {
         }
         fprintf(stderr,"[Startup] 3.0 diagnostic: starting UIKit bridge\n");
         setenv("NV2A_FPS_LOG","1",0);
+        // Presentation may wait for UIKit to retire a drawable. Keep that
+        // wait on MoltenVK's submission worker, outside the game thread.
+        setenv("MVK_CONFIG_SYNCHRONOUS_QUEUE_SUBMITS","0",0);
+        fprintf(stderr,"[Display] asynchronous presentation submits: %s\n",getenv("MVK_CONFIG_SYNCHRONOUS_QUEUE_SUBMITS"));
+        setenv("RECOMP_DSP_ACK","auto",0);
         [NSApplication sharedApplication];
         [NSApp nextEventMatchingMask:NSEventMaskAny untilDate:[NSDate distantPast] inMode:NSDefaultRunLoopMode dequeue:YES];
         NgbConversionHost api={1,sizeof(NgbConversionHost),ngb_check_xbe,ngb_install,ngb_install_set_progress,

@@ -48,6 +48,14 @@ jobs:
         xcrun --sdk iphoneos clang -target arm64-apple-ios17.0 -fobjc-arc -c porting/macos-on-ios/AudioToolbox_NGB.m -o "$RUNNER_TEMP/ngb-audioqueue.o"
         xcrun --sdk macosx clang -fobjc-arc -fsanitize=address porting/macos-on-ios/tests/audio_device.m -framework Foundation -framework AudioToolbox -o "$RUNNER_TEMP/ngb-audio-device-test"
         "$RUNNER_TEMP/ngb-audio-device-test"
+    - name: Check relocated Korean DirectSound mailbox handshake
+      run: |
+        xcrun --sdk macosx clang -std=c11 -Wall -Wextra -fsanitize=address,undefined porting/macos-on-ios/dsp_mailbox.c porting/macos-on-ios/tests/dsp_mailbox.c -o "$RUNNER_TEMP/ngb-dsp-mailbox-test"
+        "$RUNNER_TEMP/ngb-dsp-mailbox-test"
+    - name: Check iOS presentation image count and driver limits
+      run: |
+        xcrun --sdk macosx clang -std=c11 -Wall -Wextra -fsanitize=address,undefined porting/macos-on-ios/tests/display_policy.c -o "$RUNNER_TEMP/ngb-display-policy-test"
+        "$RUNNER_TEMP/ngb-display-policy-test"
     - name: Require private disc input
       env:
         NGB_DISC_URL: ${{ secrets.NGB_DISC_URL }}
@@ -127,6 +135,11 @@ jobs:
       run: |-
         brew install cmake ninja pkg-config sdl2-compat sdl3 libepoxy glib glslang molten-vk vulkan-loader sevenzip
         bash xboxrecomp/third_party/fetch.sh
+    - name: Verify the packaged MoltenVK submission policy without rendering
+      run: |
+        xcrun --sdk macosx clang -std=c11 porting/macos-on-ios/tests/mvk_queue_policy.c -o "$RUNNER_TEMP/ngb-mvk-queue-policy-test"
+        MVK_CONFIG_SYNCHRONOUS_QUEUE_SUBMITS=1 "$RUNNER_TEMP/ngb-mvk-queue-policy-test" "$(brew --prefix)/lib/libMoltenVK.dylib" 1
+        MVK_CONFIG_SYNCHRONOUS_QUEUE_SUBMITS=0 "$RUNNER_TEMP/ngb-mvk-queue-policy-test" "$(brew --prefix)/lib/libMoltenVK.dylib" 0
     - name: Compile original engine for macOS ARM64, not iPhoneOS
       shell: bash
       run: |-

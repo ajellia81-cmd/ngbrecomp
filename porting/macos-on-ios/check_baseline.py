@@ -19,7 +19,7 @@ for path in ('src/d3d/gpu/shaders.cpp','src/d3d/gpu/shaders.h','src/d3d/hle.cpp'
  assert (root/path).read_text()==original(path),path+' changed'
 for path in ('porting/macos-on-ios/bootstrap.m','porting/macos-on-ios/AppKit_NGB.m','porting/macos-on-ios/korean/game_hooks.c','porting/macos-on-ios/korean/wrap_game_codegen.py'):
  s=(root/path).read_text()
- for forbidden in ('NGB_D3D_SYNC_COMPILE','shader_prewarm_ready','cache_producer_fast','cache_copy_delay','MVK_CONFIG_SYNCHRONOUS_QUEUE_SUBMITS'):
+ for forbidden in ('NGB_D3D_SYNC_COMPILE','shader_prewarm_ready','cache_producer_fast','cache_copy_delay'):
   assert forbidden not in s,(path,forbidden)
 assert 'ROW_SMOOTH,' not in function((root/'src/pc_menu.c').read_text(),'static const uint8_t s_rows_disp[]')
-print('Mac shader compiler/prewarm/cache, shader sources, guest scheduler and kernel preserved; old iOS preparation/timing overrides absent')
+print('Mac shader compiler/prewarm/cache, shader sources, guest scheduler and kernel preserved; iOS presentation submits and drawable buffering are separate from shader policy')

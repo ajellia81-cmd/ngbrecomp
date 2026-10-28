@@ -376,6 +376,31 @@ static void attach_controls(UIWindow *window)
 }
 
 
+// The comparison build renders the original 60 Hz game, without interpolation.
+@interface NgbFrameCadence : NSObject
+@property(nonatomic,strong) CADisplayLink *link;
+@property CFTimeInterval lastReport;
+@end
+@implementation NgbFrameCadence
+- (void)tick:(CADisplayLink *)link {
+    CFTimeInterval duration=link.targetTimestamp-link.timestamp;
+    if(link.timestamp-self.lastReport>=5 && duration>0){
+        fprintf(stderr,"[Display] UIKit cadence %.1f Hz (requested 60)\n",1.0/duration);
+        self.lastReport=link.timestamp;
+    }
+}
+@end
+static NgbFrameCadence *frameCadence;
+static void request_frame_cadence(void){
+    if(frameCadence)return;
+    frameCadence=[NgbFrameCadence new];
+    frameCadence.link=[CADisplayLink displayLinkWithTarget:frameCadence selector:@selector(tick:)];
+    float rate=MIN(60.0f,MAX(1.0f,(float)UIScreen.mainScreen.maximumFramesPerSecond));
+    frameCadence.link.preferredFrameRateRange=CAFrameRateRangeMake(rate,rate,rate);
+    [frameCadence.link addToRunLoop:NSRunLoop.mainRunLoop forMode:NSRunLoopCommonModes];
+    fprintf(stderr,"[Display] requested %.0f Hz; screen maximum %ld; low power %d; thermal %ld\n",rate,(long)UIScreen.mainScreen.maximumFramesPerSecond,NSProcessInfo.processInfo.lowPowerModeEnabled,(long)NSProcessInfo.processInfo.thermalState);
+}
+
 static int active=1,previousAudioPause;
 void ngb_macos_on_ios_screen_size(int *w,int *h){CGSize p=UIScreen.mainScreen.nativeBounds.size;*w=(int)MAX(p.width,p.height);*h=(int)MIN(p.width,p.height);}
 void ngb_macos_on_ios_tick(void){for(UIWindow *window in UIApplication.sharedApplication.windows)if(window.isKeyWindow)attach_controls(window);[touchControls refresh];}
@@ -389,6 +414,7 @@ int ngb_macos_on_ios_prepare(const NgbConversionHost *api){@autoreleasepool{
     for(NSUInteger i=0;i<names.count;i++){NSString *p=[documents stringByAppendingPathComponent:names[i]];if(![fm createDirectoryAtPath:p withIntermediateDirectories:YES attributes:nil error:nil])return 0;setenv(variables[i],p.fileSystemRepresentation,1);}
     NSString *game=[documents stringByAppendingPathComponent:@"game"];setenv("NGB_GAME_DIR",game.fileSystemRepresentation,1);
     if(ngb_check_xbe(game.fileSystemRepresentation)!=0){NGBImport *importer=[NGBImport new];importer.destination=game;if(![importer run])return 0;}
+    request_frame_cadence();
     fprintf(stderr,"[Startup] game data validated; configuring audio session\n");
     [AVAudioSession.sharedInstance setCategory:AVAudioSessionCategoryAmbient error:nil];
     [AVAudioSession.sharedInstance setPreferredSampleRate:48000 error:nil];
@@ -403,8 +429,8 @@ int ngb_macos_on_ios_prepare(const NgbConversionHost *api){@autoreleasepool{
         }
     });
     NSNotificationCenter *nc=NSNotificationCenter.defaultCenter;
-    [nc addObserverForName:UIApplicationWillResignActiveNotification object:nil queue:NSOperationQueue.mainQueue usingBlock:^(NSNotification *n){(void)n;__atomic_store_n(&active,0,__ATOMIC_RELEASE);[touchControls releaseInputs];ngb_ios_haptics_active(0);previousAudioPause=host.audio_paused();host.audio_pause(1);}];
-    [nc addObserverForName:UIApplicationDidBecomeActiveNotification object:nil queue:NSOperationQueue.mainQueue usingBlock:^(NSNotification *n){(void)n;__atomic_store_n(&active,1,__ATOMIC_RELEASE);ngb_ios_haptics_active(1);host.audio_pause(previousAudioPause);}];
+    [nc addObserverForName:UIApplicationWillResignActiveNotification object:nil queue:NSOperationQueue.mainQueue usingBlock:^(NSNotification *n){(void)n;__atomic_store_n(&active,0,__ATOMIC_RELEASE);frameCadence.link.paused=YES;[touchControls releaseInputs];ngb_ios_haptics_active(0);previousAudioPause=host.audio_paused();host.audio_pause(1);}];
+    [nc addObserverForName:UIApplicationDidBecomeActiveNotification object:nil queue:NSOperationQueue.mainQueue usingBlock:^(NSNotification *n){(void)n;__atomic_store_n(&active,1,__ATOMIC_RELEASE);frameCadence.link.paused=NO;ngb_ios_haptics_active(1);host.audio_pause(previousAudioPause);}];
     for(NSNotificationName name in @[GCControllerDidConnectNotification,GCControllerDidDisconnectNotification])
       [nc addObserverForName:name object:nil queue:NSOperationQueue.mainQueue usingBlock:^(NSNotification *n){(void)n;[touchControls refresh];for(unsigned i=0;i<4;i++)ngb_ios_haptics_prepare(i);}];
     fprintf(stderr,"[Startup] preparing controller haptics\n");

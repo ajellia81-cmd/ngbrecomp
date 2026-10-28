@@ -27,3 +27,22 @@ the disposable runner. User passwords and disc URLs are never printed.
 An IPA compiling successfully does not establish device compatibility or fix
 stutter. The owner will compare the automatic real-time demo first; performance
 investigation and Smooth Motion follow that baseline, as explicitly requested.
+
+
+## Corrections after the first device comparison
+
+The 3.0.12 Korean boot trace stopped at the DirectSound effects-image wait:
+command 3 was at the relocated mailbox, not the original fixed-address probe.
+The language adapter now services only the two verified title wait sites,
+checks the actual operand and mapped range, and preserves explicit off/manual
+policies. No guest scheduler or kernel timing changes are needed.
+
+The English comparison ran near 30 FPS even in menus. Both boot-thread samples
+were blocked in CAMetalDrawable acquisition during synchronous vkQueueSubmit.
+The converted frontend now selects MoltenVK's supported asynchronous submission
+policy, keeps a spare swapchain image within driver limits, and explicitly
+requests the base game's 60 Hz UIKit cadence. The native Mac path keeps its
+original image policy. Shader generation, compilation, seed/cache and prewarm
+functions remain identical to the Mac baseline; this is presentation work.
+The packaged driver configuration is read back in CI without creating a window
+or playing sound. Device throughput must still be measured after installation.
