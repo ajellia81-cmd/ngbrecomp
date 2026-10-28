@@ -12,3 +12,4 @@ target_link_libraries(universal_gpu PRIVATE Vulkan::Vulkan glslang::glslang
     glslang::SPIRV glslang::glslang-default-resource-limits)
 enable_testing()
 add_test(NAME universal_gpu COMMAND universal_gpu)
+set_tests_properties(universal_gpu PROPERTIES TIMEOUT 600)

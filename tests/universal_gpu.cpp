@@ -26,9 +26,9 @@ public:
  static constexpr unsigned W=48,H=48;
  std::vector<Buffer> allocations;std::vector<Image> images;
  Buffer vc,dc,uc,vertices,scene,readback;
- Image tex2d,tex3d,cube,depth;
+ Image tex2d,tex3d,cube,depth,depth_target;
  VkShaderModule universal_vs{},universal_ps{},fetch_ps{};
- std::array<VkPipeline,2> universal_pipelines{};
+ std::array<VkPipeline,6> universal_pipelines{};
  static VKAPI_ATTR VkBool32 VKAPI_CALL validation(VkDebugUtilsMessageSeverityFlagBitsEXT severity,VkDebugUtilsMessageTypeFlagsEXT,const VkDebugUtilsMessengerCallbackDataEXT* data,void* user){
   if(severity&VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT)static_cast<GPU*>(user)->validation_errors++;
   std::cerr<<data->pMessage<<'\n';return VK_FALSE;
@@ -36,15 +36,17 @@ public:
  GPU(){
   VkApplicationInfo app{VK_STRUCTURE_TYPE_APPLICATION_INFO};app.apiVersion=VK_API_VERSION_1_3;
   VkDebugUtilsMessengerCreateInfoEXT debug{VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT};debug.messageSeverity=VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT|VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT;debug.messageType=VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT|VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT;debug.pfnUserCallback=validation;debug.pUserData=this;
-  const char* instance_extensions[]={VK_EXT_DEBUG_UTILS_EXTENSION_NAME,
-#ifdef __APPLE__
-   VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME,
-#endif
-  };
-  VkInstanceCreateInfo ici{VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO};ici.pApplicationInfo=&app;ici.pNext=&debug;ici.enabledExtensionCount=sizeof(instance_extensions)/sizeof(instance_extensions[0]);ici.ppEnabledExtensionNames=instance_extensions;
-#ifdef __APPLE__
-  ici.flags|=VK_INSTANCE_CREATE_ENUMERATE_PORTABILITY_BIT_KHR;
-#endif
+  uint32_t instance_count=0;vk(vkEnumerateInstanceExtensionProperties(nullptr,&instance_count,nullptr));
+  std::vector<VkExtensionProperties> instance_available(instance_count);vk(vkEnumerateInstanceExtensionProperties(nullptr,&instance_count,instance_available.data()));
+  auto instance_has=[&](const char* name){return std::any_of(instance_available.begin(),instance_available.end(),[&](const auto& e){return !std::strcmp(name,e.extensionName);});};
+  std::vector<const char*> instance_extensions{VK_EXT_DEBUG_UTILS_EXTENSION_NAME};
+  VkInstanceCreateInfo ici{VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO};ici.pApplicationInfo=&app;ici.pNext=&debug;
+  // Enumeration belongs to the Vulkan loader; a direct MoltenVK ICD need not expose it.
+  if(instance_has(VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME)) {
+      instance_extensions.push_back(VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME);
+      ici.flags|=VK_INSTANCE_CREATE_ENUMERATE_PORTABILITY_BIT_KHR;
+  }
+  ici.enabledExtensionCount=instance_extensions.size();ici.ppEnabledExtensionNames=instance_extensions.data();
   vk(vkCreateInstance(&ici,nullptr,&instance));
   auto create_debug=(PFN_vkCreateDebugUtilsMessengerEXT)vkGetInstanceProcAddr(instance,"vkCreateDebugUtilsMessengerEXT");check(create_debug!=nullptr,"validation debug callback unavailable");vk(create_debug(instance,&debug,nullptr,&messenger));
   uint32_t count=0;vk(vkEnumeratePhysicalDevices(instance,&count,nullptr));check(count>0,"no headless Vulkan device");
@@ -81,6 +83,7 @@ public:
   tex3d=image(VK_IMAGE_TYPE_3D,VK_IMAGE_VIEW_TYPE_3D,VK_FORMAT_B8G8R8A8_UNORM,1,VK_IMAGE_USAGE_SAMPLED_BIT|VK_IMAGE_USAGE_TRANSFER_DST_BIT);
   cube=image(VK_IMAGE_TYPE_2D,VK_IMAGE_VIEW_TYPE_CUBE,VK_FORMAT_B8G8R8A8_UNORM,6,VK_IMAGE_USAGE_SAMPLED_BIT|VK_IMAGE_USAGE_TRANSFER_DST_BIT);
   depth=image(VK_IMAGE_TYPE_2D,VK_IMAGE_VIEW_TYPE_2D,VK_FORMAT_D32_SFLOAT,1,VK_IMAGE_USAGE_SAMPLED_BIT|VK_IMAGE_USAGE_TRANSFER_DST_BIT,true);
+  depth_target=image(VK_IMAGE_TYPE_2D,VK_IMAGE_VIEW_TYPE_2D,VK_FORMAT_D32_SFLOAT,1,VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT,true);
   begin();for(auto *i:{&tex2d,&tex3d,&cube}){barrier(*i,VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);VkClearColorValue color{{.2f,.4f,.6f,.8f}};VkImageSubresourceRange range{VK_IMAGE_ASPECT_COLOR_BIT,0,1,0,i==&cube?6u:1u};vkCmdClearColorImage(cmd,i->image,i->layout,&color,1,&range);barrier(*i,VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);}
   barrier(depth,VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,true);VkClearDepthStencilValue value{.5f,0};VkImageSubresourceRange range{VK_IMAGE_ASPECT_DEPTH_BIT,0,1,0,1};vkCmdClearDepthStencilImage(cmd,depth.image,depth.layout,&value,1,&range);barrier(depth,VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,true);submit();
   universal_vs=module(UniversalVertexHlsl(),true);universal_ps=module(UniversalPixelHlsl(false,false,false),false);fetch_ps=module(UniversalPixelHlsl(false,false,true),false);
@@ -103,7 +106,7 @@ public:
  else if((generic&&i<18)||(!generic&&i<6)){Image im=tex2d;if(generic){if(i>=14)im=depth;else if(i>=10)im=cube;else if(i>=6)im=tex3d;}else{auto& t=pixel.tex[i-2];im=t.shadow?depth:t.kind==kTexCube?cube:t.kind==kTex3D?tex3d:tex2d;}image[i]={VK_NULL_HANDLE,im.view,VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL};w.descriptorType=VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE;w.pImageInfo=&image[i];}
  else {image[i]={generic?(i>=22?comparison:sampler):(pixel.tex[i-6].shadow?comparison:sampler),VK_NULL_HANDLE,VK_IMAGE_LAYOUT_UNDEFINED};w.descriptorType=VK_DESCRIPTOR_TYPE_SAMPLER;w.pImageInfo=&image[i];}
  }vkUpdateDescriptorSets(device,generic?30:11,writes.data(),0,nullptr);return set;}
- VkPipeline pipeline(bool generic,VkShaderModule vs,VkShaderModule ps,const Assembled& a,bool blend,bool fetch){
+ VkPipeline pipeline(bool generic,VkShaderModule vs,VkShaderModule ps,const Assembled& a,bool blend,bool fetch,bool depth_write=false,bool depth_equal=false){
  VkPipelineShaderStageCreateInfo stages[2]={{VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO},{VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO}};stages[0].stage=VK_SHADER_STAGE_VERTEX_BIT;stages[1].stage=VK_SHADER_STAGE_FRAGMENT_BIT;stages[0].module=vs;stages[1].module=ps;stages[0].pName=stages[1].pName="main";
  VkVertexInputBindingDescription binding{0,sizeof(Vertex),VK_VERTEX_INPUT_RATE_VERTEX};std::vector<VkVertexInputAttributeDescription> attributes;for(unsigned r=0;r<16;r++)if(a.regs&(1u<<r))attributes.push_back({r,0,VK_FORMAT_R32G32B32A32_SFLOAT,a.elements[r].offset});
  VkPipelineVertexInputStateCreateInfo vi{VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO};if(!generic){vi.vertexBindingDescriptionCount=1;vi.pVertexBindingDescriptions=&binding;vi.vertexAttributeDescriptionCount=attributes.size();vi.pVertexAttributeDescriptions=attributes.data();}
@@ -115,19 +118,22 @@ public:
  VkPipelineColorBlendStateCreateInfo cb{VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO};cb.attachmentCount=1;cb.pAttachments=&attachment;cb.blendConstants[0]=.2f;cb.blendConstants[1]=.4f;cb.blendConstants[2]=.6f;cb.blendConstants[3]=.8f;cb.flags=fetch&&ordered?VK_PIPELINE_COLOR_BLEND_STATE_CREATE_RASTERIZATION_ORDER_ATTACHMENT_ACCESS_BIT_EXT:0;
  VkDynamicState dynamic[]={VK_DYNAMIC_STATE_VIEWPORT,VK_DYNAMIC_STATE_SCISSOR};VkPipelineDynamicStateCreateInfo dy{VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO};dy.dynamicStateCount=2;dy.pDynamicStates=dynamic;
  VkFormat format=VK_FORMAT_B8G8R8A8_UNORM;uint32_t index=0;VkRenderingInputAttachmentIndexInfoKHR input{VK_STRUCTURE_TYPE_RENDERING_INPUT_ATTACHMENT_INDEX_INFO_KHR};input.colorAttachmentCount=1;input.pColorAttachmentInputIndices=&index;
- VkPipelineRenderingCreateInfo rendering{VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO};rendering.colorAttachmentCount=1;rendering.pColorAttachmentFormats=&format;rendering.pNext=fetch?&input:nullptr;
- VkGraphicsPipelineCreateInfo ci{VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO};ci.pNext=&rendering;ci.stageCount=2;ci.pStages=stages;ci.pVertexInputState=&vi;ci.pInputAssemblyState=&ia;ci.pViewportState=&vp;ci.pRasterizationState=&rs;ci.pMultisampleState=&ms;ci.pColorBlendState=&cb;ci.pDynamicState=&dy;ci.layout=generic?universal_pipeline_layout:special_pipeline_layout;VkPipeline p;vk(vkCreateGraphicsPipelines(device,VK_NULL_HANDLE,1,&ci,nullptr,&p));return p;}
- std::vector<uint8_t> draw(const State& s,const Assembled& a,const PixelKey& pixel,DrawConstants constants,bool generic,bool fetch,bool blend,unsigned repetitions=1){
+ VkPipelineRenderingCreateInfo rendering{VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO};rendering.colorAttachmentCount=1;rendering.pColorAttachmentFormats=&format;rendering.depthAttachmentFormat=depth_write||depth_equal?VK_FORMAT_D32_SFLOAT:VK_FORMAT_UNDEFINED;rendering.pNext=fetch?&input:nullptr;
+ VkPipelineDepthStencilStateCreateInfo depth_state{VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO};depth_state.depthTestEnable=depth_write||depth_equal;depth_state.depthWriteEnable=depth_write;depth_state.depthCompareOp=depth_equal?VK_COMPARE_OP_EQUAL:VK_COMPARE_OP_ALWAYS;
+ VkGraphicsPipelineCreateInfo ci{VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO};ci.pDepthStencilState=&depth_state;ci.pNext=&rendering;ci.stageCount=2;ci.pStages=stages;ci.pVertexInputState=&vi;ci.pInputAssemblyState=&ia;ci.pViewportState=&vp;ci.pRasterizationState=&rs;ci.pMultisampleState=&ms;ci.pColorBlendState=&cb;ci.pDynamicState=&dy;ci.layout=generic?universal_pipeline_layout:special_pipeline_layout;VkPipeline p;vk(vkCreateGraphicsPipelines(device,VK_NULL_HANDLE,1,&ci,nullptr,&p));return p;}
+ std::vector<uint8_t> draw(const State& s,const Assembled& a,const PixelKey& pixel,DrawConstants constants,bool generic,bool fetch,bool blend,unsigned repetitions=1,bool depth_write=false,bool depth_equal=false){
   Image target=image(VK_IMAGE_TYPE_2D,VK_IMAGE_VIEW_TYPE_2D,VK_FORMAT_B8G8R8A8_UNORM,1,VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT|VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT|VK_IMAGE_USAGE_TRANSFER_SRC_BIT);
   uint32_t flags=a.pretransformed?uPretransformed:0;if(s.vs&&!s.vs->program.empty())flags|=uProgrammableVertex;if(blend)flags|=uBlending;
   auto universal=MakeUniversalConstants(s,a,pixel,flags);uint64_t offsets[16]{};UniversalVertexOffsets(universal,a,offsets);universal[uBlend]=src_factor;universal[uBlend+1]=dst_factor;universal[uBlend+2]=blend_op;universal[uBlend+3]=write_mask;float bf[]={.2f,.4f,.6f,.8f};std::memcpy(&universal.words[uBlendConstant/4],bf,sizeof bf);
   std::memcpy(vc.mapped,s.vsc.data(),vc.size);std::memcpy(dc.mapped,&constants,sizeof constants);std::memcpy(uc.mapped,&universal,sizeof universal);
   VkShaderModule vs=generic?universal_vs:module(s.vs&&!s.vs->program.empty()?VertexProgramHlsl(s.vs->program,a.regs,a.decode):FixedVertexHlsl(a.regs,a.pretransformed,a.decode,MakeFixedKey(s)),true);
   VkShaderModule ps=generic?(fetch?fetch_ps:universal_ps):module(PixelHlsl(pixel),false);
-  VkPipeline p;if(generic){auto& cached=universal_pipelines[fetch?1:0];if(!cached)cached=pipeline(true,vs,ps,a,blend,fetch);p=cached;}else p=pipeline(false,vs,ps,a,blend,fetch);auto set=descriptors(generic,pixel,target,fetch);
+  VkPipeline p;if(generic){auto& cached=universal_pipelines[(fetch?1:0)+(depth_write?2:depth_equal?4:0)];if(!cached)cached=pipeline(true,vs,ps,a,blend,fetch,depth_write,depth_equal);p=cached;}else p=pipeline(false,vs,ps,a,blend,fetch,depth_write,depth_equal);auto set=descriptors(generic,pixel,target,fetch);
   begin();barrier(target,fetch?VK_IMAGE_LAYOUT_RENDERING_LOCAL_READ_KHR:VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
   VkRenderingAttachmentInfo color{VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO};color.imageView=target.view;color.imageLayout=target.layout;color.loadOp=VK_ATTACHMENT_LOAD_OP_CLEAR;color.storeOp=VK_ATTACHMENT_STORE_OP_STORE;color.clearValue.color={{.05f,.1f,.15f,.2f}};
-  VkRenderingInfo info{VK_STRUCTURE_TYPE_RENDERING_INFO};info.renderArea={{0,0},{W,H}};info.layerCount=1;info.colorAttachmentCount=1;info.pColorAttachments=&color;vkCmdBeginRendering(cmd,&info);
+  VkRenderingAttachmentInfo z{VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO};
+  if(depth_write||depth_equal){barrier(depth_target,VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,true);z.imageView=depth_target.view;z.imageLayout=depth_target.layout;z.loadOp=depth_write?VK_ATTACHMENT_LOAD_OP_CLEAR:VK_ATTACHMENT_LOAD_OP_LOAD;z.storeOp=VK_ATTACHMENT_STORE_OP_STORE;z.clearValue.depthStencil={1,0};}
+  VkRenderingInfo info{VK_STRUCTURE_TYPE_RENDERING_INFO};if(depth_write||depth_equal)info.pDepthAttachment=&z;info.renderArea={{0,0},{W,H}};info.layerCount=1;info.colorAttachmentCount=1;info.pColorAttachments=&color;vkCmdBeginRendering(cmd,&info);
   if(fetch){uint32_t index=0;VkRenderingInputAttachmentIndexInfoKHR indices{VK_STRUCTURE_TYPE_RENDERING_INPUT_ATTACHMENT_INDEX_INFO_KHR};indices.colorAttachmentCount=1;indices.pColorAttachmentInputIndices=&index;auto function=(PFN_vkCmdSetRenderingInputAttachmentIndicesKHR)vkGetDeviceProcAddr(device,"vkCmdSetRenderingInputAttachmentIndicesKHR");check(function!=nullptr,"local read command unavailable");function(cmd,&indices);}
   vkCmdBindPipeline(cmd,VK_PIPELINE_BIND_POINT_GRAPHICS,p);vkCmdBindDescriptorSets(cmd,VK_PIPELINE_BIND_POINT_GRAPHICS,generic?universal_pipeline_layout:special_pipeline_layout,0,1,&set,0,nullptr);
   VkViewport viewport{0,float(H),float(W),-float(H),0,1};VkRect2D scissor{{0,0},{W,H}};vkCmdSetViewport(cmd,0,1,&viewport);vkCmdSetScissor(cmd,0,1,&scissor);
@@ -188,6 +194,32 @@ int main(){try{
  for(auto instruction:{move(0,0,false),move(3,3,false),move(9,9,true)})program->program.insert(program->program.end(),instruction.begin(),instruction.end());
  key=MakePixelKey(state,textures);reference=gpu.draw(state,a,key,dc,false,false,false);universal=gpu.draw(state,a,key,dc,true,false,false);compare(reference,universal,"NV2A vertex instruction interpretation");cases++;
  state.vs=nullptr;state.vs_handle=0x44;
+ // Fixed transforms, all NV2A skin modes and directional/point/spot lighting.
+ float ndc[3][4]={{-.8f,-.8f,.4f,1},{.8f,-.8f,.4f,1},{-.8f,.8f,.4f,1}};
+ for(unsigned i=0;i<12;i++){std::copy(ndc[i%3],ndc[i%3]+4,triangle[i].position);float weights[]={.2f,.3f,.1f,.4f};std::copy(weights,weights+4,triangle[i].weights);}
+ std::memcpy(gpu.vertices.mapped,triangle,sizeof triangle);a.pretransformed=false;
+ auto identity=[](float* matrix){std::fill(matrix,matrix+16,0.f);for(unsigned i=0;i<4;i++)matrix[i*5]=1;};
+ identity(dc.wvp);identity(dc.wv);identity(dc.wvn);identity(dc.pv);
+ for(unsigned m=0;m<4;m++){identity(dc.wvb[m]);identity(dc.wvbn[m]);dc.wvb[m][12]=float(m)*.03f;identity(dc.tm[m]);}
+ state.tss[0][kTssColorOp]=state.tss[0][kTssAlphaOp]=2;state.tss[0][kTssColorArg1]=state.tss[0][kTssAlphaArg1]=0;
+ for(unsigned material=0;material<4;material++)for(unsigned c=0;c<4;c++)dc.mat[material][c]=material==0?1.f:material==1?.2f:material==2?.3f:.05f;
+ dc.mat[4][0]=4;for(unsigned c=0;c<3;c++)dc.amb[c]=.2f;
+ for(unsigned c=0;c<4;c++){dc.lt[0][0][c]=.3f;dc.lt[0][1][c]=.2f;dc.lt[0][2][c]=.1f;}
+ dc.lt[0][3][2]=2;dc.lt[0][3][3]=10;dc.lt[0][4][2]=-1;dc.lt[0][4][3]=1;
+ dc.lt[0][5][0]=1;dc.lt[0][6][0]=.9f;dc.lt[0][6][1]=.2f;
+ textures[0]={};
+ for(unsigned skin=0;skin<=6;skin++)for(unsigned lighting=0;lighting<4;lighting++){
+  state.rs[kRsVertexBlend]=skin;state.rs[kRsLighting]=lighting!=0;state.light_enable=lighting?1:0;state.lights[0][0]=lighting;
+  state.rs[kRsSpecularEnable]=state.rs[kRsNormalizeNormals]=state.rs[kRsLocalViewer]=1;
+  key=MakePixelKey(state,textures);reference=gpu.draw(state,a,key,dc,false,false,false);universal=gpu.draw(state,a,key,dc,true,false,false);
+  compare(reference,universal,("fixed transform/skin/light "+std::to_string(skin)+"/"+std::to_string(lighting)).c_str());cases++;
+  reference=gpu.draw(state,a,key,dc,false,false,false,1,true,false);
+  universal=gpu.draw(state,a,key,dc,true,false,false,1,false,true);
+  compare(reference,universal,("specialized depth -> generic EQUAL "+std::to_string(skin)+"/"+std::to_string(lighting)).c_str());cases++;
+  universal=gpu.draw(state,a,key,dc,true,false,false,1,true,false);
+  reference=gpu.draw(state,a,key,dc,false,false,false,1,false,true);
+  compare(reference,universal,("generic depth -> specialized EQUAL "+std::to_string(skin)+"/"+std::to_string(lighting)).c_str());cases++;
+ }
  check(gpu.validation_errors==0,"Vulkan validation reported errors");
  std::cout<<"PASS: "<<cases<<" uncached synthetic GPU image comparisons, including same-draw overlapping blend primitives\n";
  return 0;
