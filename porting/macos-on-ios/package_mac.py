@@ -11,7 +11,7 @@ def main():
  root=Path(__file__).resolve().parents[2];prefix=Path(run('brew','--prefix').strip());res=o.app/'Contents/Resources';libs=o.app/'Contents/Frameworks';mac=o.app/'Contents/MacOS'
  for p in (res,libs,mac):p.mkdir(parents=True)
  binary=mac/'NinjaGaidenBlack';shutil.copy2(o.binary,binary)
- queue=[(binary,o.binary)];seen={};requested=['libvulkan.1.dylib','libMoltenVK.dylib']
+ queue=[(binary,o.binary)];seen={};requested=['libvulkan.1.dylib','libMoltenVK.dylib','libSDL3.0.dylib']
  for name in requested:
   src=prefix/'lib'/name;dst=libs/name;shutil.copy2(src.resolve(),dst);seen[name]=src;queue.append((dst,src))
  while queue:

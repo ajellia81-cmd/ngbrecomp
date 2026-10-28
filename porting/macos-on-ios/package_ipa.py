@@ -20,6 +20,9 @@ def main():
  if 'platform IOS' not in run('vtool','-show-build',converted):raise SystemExit('Converted platform tag is not iOS')
  if code_section(mac)!=code_section(converted):raise SystemExit('Game machine instructions changed during conversion')
  resources=o.app/'Mac/Contents/Resources'
+ runtime=resources.parent/'Frameworks/libSDL3.0.dylib'
+ if not runtime.is_file() or 'platform IOS' not in run('vtool','-show-build',runtime):raise SystemExit('The converted SDL3 runtime is missing or has the wrong platform')
+ print('SDL3 runtime: bundled and converted for iOS')
  for name in ('SettingsTab-Korean.png','KoreanPatch/manifest.json','share/NinjaGaidenBlack/d3d-seed.bin'):
   if (resources/name).read_bytes()!=(o.mac_app/'Contents/Resources'/name).read_bytes():raise SystemExit('Required feature resource changed: '+name)
  for p in o.app.rglob('*'):
