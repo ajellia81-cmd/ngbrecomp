@@ -34,8 +34,7 @@ def main():
   actual={'libvulkan.dylib':'libvulkan.1.dylib','libSDL3.dylib':'libSDL3.0.dylib'}[name]
   if (libs/actual).exists() and not (libs/name).exists():(libs/name).symlink_to(actual)
  share=res/'share/NinjaGaidenBlack';(share/'shader-seed').mkdir(parents=True)
- shutil.copy2(root/'porting/macos-on-ios/assets/d3d-seed.bin',share/'d3d-seed.bin')
- shutil.copy2(root/'porting/macos-on-ios/assets/d3d-seed.json',share/'d3d-seed.json')
+ shutil.copy2(root/'packaging/d3d-seed.bin',share/'d3d-seed.bin')
  for name in ('states.bin','pipelines.bin'):shutil.copy2(root/'packaging/shader-seed'/name,share/'shader-seed'/name)
  icd=res/'vulkan/icd.d';icd.mkdir(parents=True)
  (icd/'MoltenVK_icd.json').write_text(json.dumps({'file_format_version':'1.0.0','ICD':{'library_path':'../../../Frameworks/libMoltenVK.dylib','api_version':'1.3.0','is_portability_driver':True}}))

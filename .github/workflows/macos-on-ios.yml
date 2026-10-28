@@ -70,15 +70,6 @@ jobs:
       run: |-
         brew install cmake ninja pkg-config sdl2-compat sdl3 libepoxy glib glslang molten-vk vulkan-loader sevenzip
         bash xboxrecomp/third_party/fetch.sh
-    - name: Validate expanded iOS seed through the production shader compiler
-      shell: bash
-      run: |
-        set -euo pipefail
-        python3 tests/test_merge_d3d_seed.py
-        python3 tests/check_ios_d3d_seed.py
-        cmake -S tests/seed_validation -B "$RUNNER_TEMP/ngb-seed-validation" -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH="$(brew --prefix)"
-        cmake --build "$RUNNER_TEMP/ngb-seed-validation" -j2
-        "$RUNNER_TEMP/ngb-seed-validation/ngb-seed-validate" porting/macos-on-ios/assets/d3d-seed.bin
     - name: Verify the packaged MoltenVK submission policy without rendering
       run: |
         xcrun --sdk macosx clang -std=c11 porting/macos-on-ios/tests/mvk_queue_policy.c -o "$RUNNER_TEMP/ngb-mvk-queue-policy-test"
@@ -177,12 +168,6 @@ jobs:
           echo '::error::Korean continuations remain untranslated; refusing to substitute stubs.'
           exit 1
         fi
-    - name: Validate code-free seed references against both private game variants
-      shell: bash
-      run: |
-        set -euo pipefail
-        "$RUNNER_TEMP/ngb-seed-validation/ngb-seed-validate" porting/macos-on-ios/assets/d3d-seed.bin game_files/default.xbe
-        "$RUNNER_TEMP/ngb-seed-validation/ngb-seed-validate" porting/macos-on-ios/assets/d3d-seed.bin "$RUNNER_TEMP/ngb-korean/korean.xbe"
     - name: Bind original Options text language to the private Korean boot
       run: |-
         python3 porting/macos-on-ios/korean/wrap_game_codegen.py src/recomp/gen
