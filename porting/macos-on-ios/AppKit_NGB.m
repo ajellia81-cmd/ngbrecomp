@@ -376,7 +376,11 @@ static void attach_controls(UIWindow *window)
 }
 
 
-// The comparison build renders the original 60 Hz game, without interpolation.
+static int displayMilliHz=60000,motionEnabled;
+static unsigned motionEpoch;
+double ngb_macos_on_ios_display_hz(void){return __atomic_load_n(&displayMilliHz,__ATOMIC_RELAXED)/1000.0;}
+unsigned ngb_macos_on_ios_motion_epoch(void){return __atomic_load_n(&motionEpoch,__ATOMIC_RELAXED);}
+// Cadence is display-only: the game and audio still run at their original rate.
 @interface NgbFrameCadence : NSObject
 @property(nonatomic,strong) CADisplayLink *link;
 @property CFTimeInterval lastReport;
@@ -384,8 +388,9 @@ static void attach_controls(UIWindow *window)
 @implementation NgbFrameCadence
 - (void)tick:(CADisplayLink *)link {
     CFTimeInterval duration=link.targetTimestamp-link.timestamp;
+    if(duration>0 && duration<1)__atomic_store_n(&displayMilliHz,(int)lrint(1000.0/duration),__ATOMIC_RELAXED);
     if(link.timestamp-self.lastReport>=5 && duration>0){
-        fprintf(stderr,"[Display] UIKit cadence %.1f Hz (requested 60)\n",1.0/duration);
+        fprintf(stderr,"[Display] UIKit cadence %.1f Hz (Smooth Motion %s)\n",1.0/duration,motionEnabled ? "on" : "off");
         self.lastReport=link.timestamp;
     }
 }
@@ -401,12 +406,22 @@ static void request_frame_cadence(void){
     fprintf(stderr,"[Display] requested %.0f Hz; screen maximum %ld; low power %d; thermal %ld\n",rate,(long)UIScreen.mainScreen.maximumFramesPerSecond,NSProcessInfo.processInfo.lowPowerModeEnabled,(long)NSProcessInfo.processInfo.thermalState);
 }
 
+void ngb_macos_on_ios_motion_enabled(int enabled){
+    enabled=!!enabled;if(enabled==motionEnabled)return;motionEnabled=enabled;
+    if(host.motion_cancel)host.motion_cancel();
+    __atomic_add_fetch(&motionEpoch,1,__ATOMIC_RELAXED);
+    float maximum=(float)UIScreen.mainScreen.maximumFramesPerSecond;
+    float rate=enabled && maximum>=100 ? maximum : MIN(60.0f,maximum);
+    frameCadence.link.preferredFrameRateRange=CAFrameRateRangeMake(rate,rate,rate);
+    fprintf(stderr,"[Display] requested %.0f Hz; Smooth Motion %s\n",rate,enabled ? "on" : "off");
+}
 static int active=1,previousAudioPause;
+int ngb_macos_on_ios_is_foreground(void){return __atomic_load_n(&active,__ATOMIC_ACQUIRE);}
 void ngb_macos_on_ios_screen_size(int *w,int *h){CGSize p=UIScreen.mainScreen.nativeBounds.size;*w=(int)MAX(p.width,p.height);*h=(int)MIN(p.width,p.height);}
 void ngb_macos_on_ios_tick(void){for(UIWindow *window in UIApplication.sharedApplication.windows)if(window.isKeyWindow)attach_controls(window);[touchControls refresh];}
 void ngb_macos_on_ios_wait_foreground(void){while(!__atomic_load_n(&active,__ATOMIC_ACQUIRE))@autoreleasepool{if(NSThread.isMainThread)[NSRunLoop.currentRunLoop runUntilDate:[NSDate dateWithTimeIntervalSinceNow:0.05]];else usleep(50000);}}
 int ngb_macos_on_ios_prepare(const NgbConversionHost *api){@autoreleasepool{
-    if(!api || api->version!=1 || api->size!=sizeof(host))return 0;host=*api;
+    if(!api || api->version!=2 || api->size!=sizeof(host))return 0;host=*api;
     NSString *documents=NSSearchPathForDirectoriesInDomains(NSDocumentDirectory,NSUserDomainMask,YES).firstObject;
     if(!documents)return 0;NSFileManager *fm=NSFileManager.defaultManager;
     NSArray *names=@[@"saves",@"config",@"shaders-macos-on-ios"];
@@ -429,7 +444,7 @@ int ngb_macos_on_ios_prepare(const NgbConversionHost *api){@autoreleasepool{
         }
     });
     NSNotificationCenter *nc=NSNotificationCenter.defaultCenter;
-    [nc addObserverForName:UIApplicationWillResignActiveNotification object:nil queue:NSOperationQueue.mainQueue usingBlock:^(NSNotification *n){(void)n;__atomic_store_n(&active,0,__ATOMIC_RELEASE);frameCadence.link.paused=YES;[touchControls releaseInputs];ngb_ios_haptics_active(0);previousAudioPause=host.audio_paused();host.audio_pause(1);}];
+    [nc addObserverForName:UIApplicationWillResignActiveNotification object:nil queue:NSOperationQueue.mainQueue usingBlock:^(NSNotification *n){(void)n;__atomic_store_n(&active,0,__ATOMIC_RELEASE);if(host.motion_cancel)host.motion_cancel();__atomic_add_fetch(&motionEpoch,1,__ATOMIC_RELAXED);frameCadence.link.paused=YES;[touchControls releaseInputs];ngb_ios_haptics_active(0);previousAudioPause=host.audio_paused();host.audio_pause(1);}];
     [nc addObserverForName:UIApplicationDidBecomeActiveNotification object:nil queue:NSOperationQueue.mainQueue usingBlock:^(NSNotification *n){(void)n;__atomic_store_n(&active,1,__ATOMIC_RELEASE);frameCadence.link.paused=NO;ngb_ios_haptics_active(1);host.audio_pause(previousAudioPause);}];
     for(NSNotificationName name in @[GCControllerDidConnectNotification,GCControllerDidDisconnectNotification])
       [nc addObserverForName:name object:nil queue:NSOperationQueue.mainQueue usingBlock:^(NSNotification *n){(void)n;[touchControls refresh];for(unsigned i=0;i<4;i++)ngb_ios_haptics_prepare(i);}];

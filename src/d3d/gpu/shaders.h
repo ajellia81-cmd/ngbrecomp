@@ -44,6 +44,7 @@ PixelKey MakePixelKey(const State& s, const TexInfo tex[4]);
 
 // vertex program microcode to HLSL, regs is the bit mask of v registers the draw supplies
 // decode: VertexDecode per register, 4 bits each, for elements the input assembler hands over raw
+std::array<uint8_t,192> VertexProgramConstants(const std::vector<uint32_t>& program);
 std::string VertexProgramHlsl(const std::vector<uint32_t>& program, uint16_t regs, uint64_t decode = 0);
 // fixed function vertex state a shader is built for
 struct FixedKey {
@@ -112,6 +113,9 @@ struct DrawConstants {
     float uvc[4][4];
     float uvg[4][4];
     float qsnap[4];
+#ifdef NGB_SMOOTH_MOTION
+    float motion[4]; // x: use owned VF3 scene vertex positions (replay only)
+#endif
 };
 
 }  // namespace gpu

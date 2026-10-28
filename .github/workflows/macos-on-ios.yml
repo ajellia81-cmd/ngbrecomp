@@ -1,4 +1,4 @@
-name: macOS-on-iOS clean 60fps comparison IPA
+name: macOS-on-iOS VF3 Smooth Motion IPA
 'on':
   push:
     branches:
@@ -66,6 +66,24 @@ jobs:
         xcrun --sdk macosx clang -std=c11 porting/macos-on-ios/tests/mvk_queue_policy.c -o "$RUNNER_TEMP/ngb-mvk-queue-policy-test"
         MVK_CONFIG_SYNCHRONOUS_QUEUE_SUBMITS=1 "$RUNNER_TEMP/ngb-mvk-queue-policy-test" "$(brew --prefix)/lib/libMoltenVK.dylib" 1
         MVK_CONFIG_SYNCHRONOUS_QUEUE_SUBMITS=0 "$RUNNER_TEMP/ngb-mvk-queue-policy-test" "$(brew --prefix)/lib/libMoltenVK.dylib" 0
+    - name: Check unchanged VF3 interpolation and original endpoints without game data
+      shell: bash
+      run: |
+        set -euo pipefail
+        python3 tests/check_vf3_reference.py
+        python3 tests/endpoint_shader_compat.py
+        python3 ios/presenter_descriptor_test.py
+        python3 ios/fps_counter_test.py
+        xcrun --sdk macosx clang++ -std=c++20 -O2 tests/vf3_effect_flipbook.cpp -o "$RUNNER_TEMP/ngb-vf3-effects"
+        "$RUNNER_TEMP/ngb-vf3-effects"
+        xcrun --sdk macosx clang++ -std=c++20 -O2 tests/vf3_scene_test.cpp third_party/vf3_scene/interpolate.cpp -o "$RUNNER_TEMP/ngb-vf3-scene"
+        "$RUNNER_TEMP/ngb-vf3-scene"
+        xcrun --sdk macosx clang++ -std=c++20 -O2 -DNGB_SMOOTH_MOTION=1 -ffp-contract=off -Isrc/d3d ios/motion_test.cpp src/d3d/gpu/shaders.cpp src/d3d/gpu/scene_motion.cpp third_party/vf3_scene/interpolate.cpp -o "$RUNNER_TEMP/ngb-scene-motion"
+        mkdir -p "$RUNNER_TEMP/ngb-motion-shaders"
+        "$RUNNER_TEMP/ngb-scene-motion" "$RUNNER_TEMP/ngb-motion-shaders"
+        for shader in "$RUNNER_TEMP/ngb-motion-shaders/"*.vert.hlsl; do
+          glslangValidator -D -V --target-env vulkan1.1 --auto-map-locations -S vert -e main "$shader" -o "$shader.spv"
+        done
     - name: Require private disc input
       env:
         NGB_DISC_URL: ${{ secrets.NGB_DISC_URL }}
@@ -194,7 +212,7 @@ jobs:
       if: steps.delivery.outputs.ready == 'true'
       uses: actions/upload-artifact@v4
       with:
-        name: NinjaGaidenBlack-macOS-on-iOS-60fps-encrypted-IPA
+        name: NinjaGaidenBlack-macOS-on-iOS-SmoothMotion-encrypted-IPA
         path: build/private-delivery/*.ipa.7z
         if-no-files-found: error
         retention-days: 7

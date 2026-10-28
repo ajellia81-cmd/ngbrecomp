@@ -29,10 +29,7 @@
   ],
   "pending_preference": null,
   "unknowns": [
-    "macOS-on-iOS compatibility and actual attract-demo stutter need device validation",
-    "Original macOS launcher execv and separate Qt installer require conversion-safe entry/import handling",
-    "Korean hooks must be rebuilt into the macOS app; a binary-only conversion does not carry them",
-    "Smooth Motion is absent in pristine baseline and requires a separate implementation decision"
+    "Actual Smooth Motion device visuals and sustained high-refresh throughput require owner testing"
   ],
   "source_safety": "Never commit private game files, generated C, device logs or credentials. Do not delete or overwrite existing saves/cache to test.",
   "first_ipa": "60fps, no Smooth Motion, no stutter tuning before device baseline",
@@ -42,5 +39,18 @@
     "Shader compiler/cache/prewarm and shader source identity check passed",
     "Language hooks and layout compile passed",
     "Workflow shell syntax passed"
-  ]
+  ],
+  "smooth_motion": {
+    "baseline": "8803ebeb3961ea5c0e2d1e28f5bdeef8530df317",
+    "vf3_reference": "842151aaf97a4bf5e59709004a385ae5735c5a05",
+    "default": "Off",
+    "guest_hz": 60,
+    "target_display_hz": 120,
+    "loading_policy": "unchanged macOS prewarm/cache",
+    "excluded": [
+      "old NGB loading acceleration and cache-producer gates",
+      "additional motion prewarm",
+      "old NGB adaptive cooldown"
+    ]
+  }
 }

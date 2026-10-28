@@ -112,7 +112,7 @@ int ngb_pc_setting(int which)
     switch (which) {
     case 0:  return s_running.scale;
     case 25: return s_running.text_language;
-    case 26: return 0;
+    case 26: return s_running.smooth_motion;
     case 1:  return s_running.anisotropy;
     case 2:  return s_running.shadow_scale;
     case 3:  return s_running.fullscreen;
@@ -143,7 +143,7 @@ void ngb_pc_set_setting(int which, int value)
     ngb_pc_setting(0);
     switch (which) {
     case 25: s_running.text_language=value<0?0:value>2?2:value; s_running.text_language_options=1; break;
-    case 26: return;
+    case 26: s_running.smooth_motion=!!value; break;
     case 14: s_running.all_difficulties = value; ngb_set_all_difficulties(value); break;
     case 16: s_running.all_costumes = value; ngb_set_all_costumes(value); break;
     case 17: s_running.movie_43 = !!value; break;   /* the next movie (src/pc_menu.c) */

@@ -41,9 +41,9 @@ def main():
  shutil.copytree(o.korean,res/'KoreanPatch')
  shutil.copy2(root/'porting/macos-on-ios/assets/settings-ko.png',res/'SettingsTab-Korean.png')
  licenses=res/'licenses';licenses.mkdir()
- for f in [root/'LICENSE',root/'THIRD_PARTY.md',root/'xboxrecomp/LICENSE',root/'xboxrecomp/NOTICE',root/'src/d3d/NOTICE',*root.glob('assets/fonts/OFL-*.txt')]:
+ for f in [root/'LICENSE',root/'THIRD_PARTY.md',root/'xboxrecomp/LICENSE',root/'xboxrecomp/NOTICE',root/'src/d3d/NOTICE',root/'third_party/vf3_scene/LICENSE',*root.glob('assets/fonts/OFL-*.txt')]:
   if f.exists():shutil.copy2(f,licenses/(f.parent.name+'-'+f.name))
- info={'CFBundleName':'Ninja Gaiden Black','CFBundleDisplayName':'Ninja Gaiden Black','CFBundleExecutable':'NinjaGaidenBlack','CFBundleIdentifier':'com.ngbrecomp.game','CFBundleVersion':'3.0','CFBundleShortVersionString':'3.0','CFBundlePackageType':'APPL','NSHighResolutionCapable':True,'LSMinimumSystemVersion':'26.0'}
+ info={'CFBundleName':'Ninja Gaiden Black','CFBundleDisplayName':'Ninja Gaiden Black','CFBundleExecutable':'NinjaGaidenBlack','CFBundleIdentifier':'com.ngbrecomp.game','CFBundleVersion':'3.1','CFBundleShortVersionString':'3.1','CFBundlePackageType':'APPL','NSHighResolutionCapable':True,'LSMinimumSystemVersion':'26.0'}
  (o.app/'Contents/Info.plist').write_bytes(plistlib.dumps(info))
  for p in [*libs.iterdir(),binary]:
   if not p.is_symlink():run('codesign','--force','--sign','-',p)

@@ -1168,7 +1168,7 @@ int main(int argc, char **argv)
      * same meaning still win, for testing. */
     NgbSettings cfg;
     ngb_settings_load(&cfg);
-        cfg.show_launcher=0; cfg.smooth_motion=0;
+        cfg.show_launcher=0;
     if (s_use_gpu && !s_headless && s_show_settings &&
         !getenv("NGB_NO_SETTINGS")) {
         if (!ngb_launcher_run(&cfg))

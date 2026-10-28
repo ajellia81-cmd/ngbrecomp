@@ -20,6 +20,7 @@ typedef struct NgbConversionHost {
     int (*detach_virtual)(int);
     void (*audio_pause)(int);
     int (*audio_paused)(void);
+    void (*motion_cancel)(void);
 } NgbConversionHost;
 typedef int (*NgbConversionPrepare)(const NgbConversionHost *);
 int ngb_conversion_startup(void);

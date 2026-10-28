@@ -1,15 +1,17 @@
-# Clean macOS-on-iOS comparison build
+# macOS-on-iOS port with VF3 Smooth Motion
 
 The game engine is compiled for macOS ARM64 from master 5fc57d84 (0.9.29),
 then converted by macos-on-ios c2562a333d4de4c08da4ceb4a4f1485bddb84e04.
 The iPhoneOS SDK builds compatibility UI/haptic libraries only. It does not
 build the game engine. See migration.json for included and excluded features.
 
-This first device comparison deliberately has no Smooth Motion and no stutter
-fixes. The original Mac shader generator, compiler, cache and prewarm functions
-are checked against their original source. Original shader seed resources are
-bundled through the normal Mac resource layout. No forced compilation policy,
-loading acceleration, shader-ready gate or demo-delay gate is installed.
+3.0.14 was confirmed on-device to fix Korean startup, slowdown and stutter.
+Smooth Motion now uses the unchanged latest VF3 production interpolation core,
+with an NGB scene/replay bridge and a display-only 120 Hz cadence. It defaults
+to Off. The original Mac shader compiler, cache and prewarm methods remain
+unchanged. No loading acceleration, shader-ready gates, extra motion prewarm,
+demo-delay gates or old NGB adaptive cooldown are included. See
+../../docs/SMOOTH_MOTION_PORTING.md for exact boundaries and verification.
 
 Portable Korean data/code hooks and the accepted text/sprite layout changes are
 carried separately from the old iOS runtime. Native screen dimensions and the
@@ -24,9 +26,9 @@ folder prevents reuse of shaders from the old port. Only encrypted IPA artifacts
 are uploaded. Private disc input, generated C and compiler diagnostics stay on
 the disposable runner. User passwords and disc URLs are never printed.
 
-An IPA compiling successfully does not establish device compatibility or fix
-stutter. The owner will compare the automatic real-time demo first; performance
-investigation and Smooth Motion follow that baseline, as explicitly requested.
+An IPA compiling successfully does not establish device Smooth Motion correctness
+or sustained 120 FPS. Compare Off and On after installation using actual gameplay
+and the submitted-picture FPS counter, not display-link callbacks alone.
 
 
 ## Corrections after the first device comparison

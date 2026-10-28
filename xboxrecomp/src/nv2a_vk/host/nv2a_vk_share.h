@@ -32,6 +32,9 @@ int nv2a_vk_share(nv2a_vk_shared *out);
  * are on the PFIFO thread, a sharer's on its own. */
 void nv2a_vk_queue_lock(void);
 void nv2a_vk_queue_unlock(void);
+/* Pixel size of the drawable's aspect-fitted content area, cached by the UI
+ * thread. Returns false until a window drawable is available. */
+bool nv2a_present_native_size(uint32_t *width, uint32_t *height);
 
 /* While set, the renderer executes the pushbuffer without drawing: no
  * draws, clears, blits or surface traffic (the sharer draws instead). */
@@ -47,6 +50,17 @@ void nv2a_quality_get(int *render_scale, int *anisotropy, int *shadow_scale, int
  * a 2D BGRA colour image in TRANSFER_SRC_OPTIMAL, rows top down, left valid
  * until the next call. VK_NULL_HANDLE goes back to the renderer's picture. */
 void nv2a_present_set_external(VkImage image, uint32_t width, uint32_t height);
+/* Ordered intermediate scenes: wait up to 50 ms for a swapchain image instead
+ * of immediately dropping it. Returns whether a presentation was submitted. */
+bool nv2a_present_set_external_wait(VkImage image, uint32_t width, uint32_t height);
+/* Latest-frame pair submission never waits for display cadence on the guest.
+ * Do not overwrite a busy image. Cancel pending work before backgrounding;
+ * drain active work before destroying renderer-owned display images. */
+bool nv2a_present_queue_pair(VkImage midpoint,VkImage endpoint,uint32_t width,uint32_t height);
+bool nv2a_present_external_image_busy(VkImage image);
+void nv2a_present_cancel_pairs(void);
+void nv2a_present_drain_pairs(void);
+void nv2a_present_pair_counts(uint64_t *midpoints,uint64_t *endpoints,uint64_t *superseded);
 
 #ifdef __cplusplus
 }

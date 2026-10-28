@@ -78,7 +78,7 @@ static const uint8_t s_rows_disp[] = { ROW_ASPECT,
 #ifndef NGB_CONVERTED_DISPLAY
                                        ROW_WINDOW, ROW_DISPLAY, ROW_VSYNC,
 #endif
-                                       ROW_FPS, ROW_HUD, ROW_POSAUDIO,
+                                       ROW_FPS, ROW_HUD, ROW_POSAUDIO, ROW_SMOOTH,
                                        ROW_BACK };
 static const uint8_t s_rows_start[] = { ROW_SKIP,
     ROW_ALLDIFF, ROW_ALLCOST, ROW_BACK };

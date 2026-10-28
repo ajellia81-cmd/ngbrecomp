@@ -8,4 +8,5 @@ static inline unsigned ngb_output_image_count(unsigned requested,unsigned maximu
     return maximum && count>maximum ? maximum : count;
 }
 int ngb_conversion_is_ios(void);
+int ngb_conversion_is_foreground(void);
 #endif

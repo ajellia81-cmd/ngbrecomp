@@ -11,7 +11,7 @@ def code_section(binary):
 def main():
  a=argparse.ArgumentParser();a.add_argument('mac_app',type=Path);a.add_argument('app',type=Path);a.add_argument('ipa',type=Path);o=a.parse_args()
  root=Path(__file__).resolve().parent;info_path=o.app/'Info.plist';info=plistlib.loads(info_path.read_bytes())
- info.update(CFBundleName='Ninja Gaiden Black',CFBundleDisplayName='Ninja Gaiden Black',CFBundleVersion='3.0.'+os.environ.get('GITHUB_RUN_NUMBER','0'),CFBundleShortVersionString='3.0',NGBBuildConfiguration='Release',NGBPortMethod='macOS-on-iOS',NGBSmoothMotionEnabled=False,NGBShaderCompilerPolicy='unmodified macOS baseline',NGBSourceCommit=os.environ.get('GITHUB_SHA','local'),UIFileSharingEnabled=True,LSSupportsOpeningDocumentsInPlace=True,UIRequiresFullScreen=True,UIDeviceFamily=[1],UISupportedInterfaceOrientations=['UIInterfaceOrientationLandscapeLeft','UIInterfaceOrientationLandscapeRight'],CADisableMinimumFrameDurationOnPhone=True,MetalHudEnabled=False)
+ info.update(CFBundleName='Ninja Gaiden Black',CFBundleDisplayName='Ninja Gaiden Black',CFBundleVersion='3.1.'+os.environ.get('GITHUB_RUN_NUMBER','0'),CFBundleShortVersionString='3.1',NGBBuildConfiguration='Release',NGBPortMethod='macOS-on-iOS',NGBSmoothMotionEnabled=True,NGBSmoothMotionDefault=False,NGBSmoothMotionReference='vf3-recomp@842151aaf97a4bf5e59709004a385ae5735c5a05',NGBShaderCompilerPolicy='unmodified macOS baseline',NGBSourceCommit=os.environ.get('GITHUB_SHA','local'),UIFileSharingEnabled=True,LSSupportsOpeningDocumentsInPlace=True,UIRequiresFullScreen=True,UIDeviceFamily=[1],UISupportedInterfaceOrientations=['UIInterfaceOrientationLandscapeLeft','UIInterfaceOrientationLandscapeRight'],CADisableMinimumFrameDurationOnPhone=True,MetalHudEnabled=False)
  info.pop('CFBundleIconFile',None)
  info_path.write_bytes(plistlib.dumps(info))
  run('xcrun','--sdk','macosx','swift',root/'korean/build_icons.swift',root/'assets/app-icon-source.jpg',o.app,o.app.parent/'icon-work')
@@ -28,7 +28,9 @@ def main():
  for p in o.app.rglob('*'):
   if p.is_symlink():continue
   if p.is_file() and (p.suffix.lower() in ('.c','.cpp','.m','.mm','.py','.log','.xbe','.afs','.iso') or p.name in ('build-info.txt','ui-layout.log','movie-subtitles.log')):raise SystemExit('Non-runtime file in app: '+p.name)
- licenses=resources/'licenses';shutil.copy2(root.parent.parent/'LICENSE',licenses/'LICENSE-ngbrecomp-conversion.txt')
+ licenses=resources/'licenses';
+ if not (licenses/'vf3_scene-LICENSE').is_file():raise SystemExit('Missing VF3 interpolation license')
+ shutil.copy2(root.parent.parent/'LICENSE',licenses/'LICENSE-ngbrecomp-conversion.txt')
  run('codesign','--force','--deep','--sign','-',o.app);run('codesign','--verify','--deep','--strict',o.app)
  o.ipa.parent.mkdir(parents=True,exist_ok=True)
  with tempfile.TemporaryDirectory(dir=o.ipa.parent) as temp:
@@ -41,7 +43,7 @@ def main():
  digest=hashlib.sha256(o.ipa.read_bytes()).hexdigest()
  print('macOS engine instructions: preserved through conversion')
  print('Shader compiler policy: unchanged Mac generation/cache/prewarm')
- print('Smooth Motion: absent from first comparison build')
+ print('Smooth Motion: VF3 production core 842151aa; available, default off; game clock remains 60 Hz')
  print('Packaged runtime build:',info['CFBundleVersion'])
  print('Unsigned game IPA bytes:',o.ipa.stat().st_size)
  print('Unsigned game IPA SHA-256:',digest)

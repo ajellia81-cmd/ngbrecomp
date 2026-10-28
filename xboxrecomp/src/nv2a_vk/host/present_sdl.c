@@ -14,11 +14,20 @@
  * so presenting never blocks the thread that executes the pushbuffer: the
  * game's frame rate is paced by vblank interrupts, not by the swapchain.
  */
+#ifdef __APPLE__
+#include <TargetConditionals.h>
+#if TARGET_OS_IPHONE
+extern void ngb_ios_safe_area(float *,float *,float *,float *) __attribute__((weak_import));
+#endif
+#endif
 #include "hw/xbox/nv2a/nv2a_int.h"
 #include "hw/xbox/nv2a/pgraph/vk/renderer.h"
 #include "nv2a_host_vk.h"
 #include "nv2a_window.h"
 #include "nv2a_vk_share.h"
+#include "native_viewport.h"
+#include "pair_mailbox.h"
+#include "platform/ios_port_diagnostics.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -33,9 +42,40 @@
 #define MAX_SWAP_IMAGES 8
 
 static SDL_Window *s_window;
+static uint64_t s_drawable_pixels;
 static double s_aspect = 4.0 / 3.0;
 static int s_vsync;                /* 0 off, 1 mailbox, 2 adaptive, 3 FIFO */
-static volatile bool s_resized;
+static bool s_resized;
+#if defined(__APPLE__) && TARGET_OS_IPHONE
+extern void ngb_ios_sync_drawable(SDL_Window *) __attribute__((weak_import));
+#endif
+
+static void cache_drawable_size(void)
+{
+    int w = 0, h = 0;
+#if defined(__APPLE__) && TARGET_OS_IPHONE
+    if (s_window && ngb_ios_sync_drawable) ngb_ios_sync_drawable(s_window);
+#endif
+    if (s_window) SDL_Vulkan_GetDrawableSize(s_window, &w, &h);
+    if (w > 0 && h > 0) {
+        uint64_t size=(uint64_t)(uint32_t)w << 32 | (uint32_t)h;
+        uint64_t previous=__atomic_exchange_n(&s_drawable_pixels,size,__ATOMIC_ACQ_REL);
+        // UIKit/LiveContainer can finish rotation without an SDL size event or
+        // VK_ERROR_OUT_OF_DATE. Rebuild for the actual Metal drawable anyway.
+        if (previous!=size) __atomic_store_n(&s_resized,true,__ATOMIC_RELEASE);
+    }
+}
+
+bool nv2a_present_native_size(uint32_t *width, uint32_t *height)
+{
+    uint64_t packed = __atomic_load_n(&s_drawable_pixels, __ATOMIC_ACQUIRE);
+    uint32_t w = (uint32_t)(packed >> 32), h = (uint32_t)packed;
+    if (!w || !h) return false;
+    ngb_native_viewport(w, h, s_aspect, &w, &h);
+    *width = w ? w : 1;
+    *height = h ? h : 1;
+    return true;
+}
 
 static VkInstance s_instance;
 #ifdef __APPLE__
@@ -65,19 +105,17 @@ volatile int64_t nv2a_ext_set_us;   /* when the newest one came */
 /* How many pictures the other renderer has handed over, and the count when
  * the one presented last came (nv2a_host.c's vblank thread paces them). */
 volatile unsigned nv2a_ext_pictures, nv2a_ext_presented;
-static bool present_external_now(void);
 static volatile int s_quality_set;
+
+static bool set_external(VkImage image, uint32_t width, uint32_t height, bool wait_image);
 
 void nv2a_present_set_external(VkImage image, uint32_t width, uint32_t height)
 {
-    __atomic_store_n(&s_ext_set_us, g_get_monotonic_time(), __ATOMIC_RELAXED);
-    __atomic_store_n(&s_ext_w, width, __ATOMIC_RELAXED);
-    __atomic_store_n(&s_ext_h, height, __ATOMIC_RELAXED);
-    __atomic_store_n(&s_ext_image, image, __ATOMIC_RELEASE);
-    if (image) {
-        __atomic_add_fetch(&nv2a_ext_pictures, 1, __ATOMIC_RELEASE);
-        present_external_now();
-    }
+    (void)set_external(image,width,height,false);
+}
+bool nv2a_present_set_external_wait(VkImage image, uint32_t width, uint32_t height)
+{
+    return set_external(image,width,height,true);
 }
 
 /* The picture to show or read: the external one when set (top down, BGRA,
@@ -229,8 +267,23 @@ static void fps_track(void)
         double secs = (now - window_ns) / 1e9;
         unsigned frames_logged = frames;
         double fps = frames / secs;
+#if defined(NGB_CONVERTED_DISPLAY)
+        // Guest flips remain 60 Hz. Count only successfully submitted midpoint
+        // and endpoint pictures when the motion worker is presenting pairs.
+        extern void nv2a_present_pair_counts(uint64_t *, uint64_t *, uint64_t *);
+        static uint64_t previous_mid, previous_end;
+        uint64_t mid, end, superseded;
+        nv2a_present_pair_counts(&mid, &end, &superseded);
+        uint64_t pictures=(mid-previous_mid)+(end-previous_end);
+        if (mid>previous_mid)
+            snprintf(s_fps_text,sizeof s_fps_text,"%.0f FPS  game %.0f",pictures/secs,fps);
+        else
+#endif
         snprintf(s_fps_text, sizeof s_fps_text, "%.0f FPS  %.1f ms  max %.1f",
                  fps, frames ? secs * 1000.0 / frames : 0.0, max_ms);
+#if defined(NGB_CONVERTED_DISPLAY)
+        previous_mid=mid; previous_end=end;
+#endif
         /* NV2A_FPS_LOG=1: to stderr; NV2A_FPS_LOG=<path>: appended to that
          * file (where stderr is hard to reach, e.g. a Steam launch). */
         const char *fl = getenv("NV2A_FPS_LOG");
@@ -386,6 +439,9 @@ int nv2a_window_create(const char *title, int width, int height,
         return -1;
     }
     fprintf(stderr, "nv2a: window on %s\n", SDL_GetCurrentVideoDriver());
+#ifndef NGB_CONVERTED_DISPLAY
+    cache_drawable_size();
+#endif
     if (fullscreen == 2)
         borderless_apply(s_window);
     if (aspect > 0)
@@ -436,7 +492,7 @@ void nv2a_present_set_vsync(int vsync)
 {
     if (vsync != s_vsync) {
         s_vsync = vsync;
-        s_resized = true;            /* a new swapchain, in the new mode */
+        __atomic_store_n(&s_resized,true,__ATOMIC_RELEASE);            /* a new swapchain, in the new mode */
     }
 }
 
@@ -460,6 +516,9 @@ __attribute__((weak)) void xbox_InputHotplugPoll(void) {}
 
 bool nv2a_window_pump(void)
 {
+#ifndef NGB_CONVERTED_DISPLAY
+    cache_drawable_size();
+#endif
 #ifdef __APPLE__
     /* SDL's Vulkan surface creates and attaches a Cocoa Metal view. AppKit
      * changes must run on this thread, even though Vulkan runs on PFIFO. */
@@ -490,7 +549,7 @@ bool nv2a_window_pump(void)
             borderless_apply(s_window);
         if (s_win_fs == 1 && !fs)
             SDL_SetWindowFullscreen(s_window, SDL_WINDOW_FULLSCREEN_DESKTOP);
-        s_resized = true;
+        __atomic_store_n(&s_resized,true,__ATOMIC_RELEASE);
     }
 
     while (SDL_PollEvent(&ev)) {
@@ -499,7 +558,7 @@ bool nv2a_window_pump(void)
             return false;
         case SDL_WINDOWEVENT:
             if (ev.window.event == SDL_WINDOWEVENT_SIZE_CHANGED)
-                s_resized = true;
+                __atomic_store_n(&s_resized,true,__ATOMIC_RELEASE);
             break;
         case SDL_KEYDOWN:
             if (ev.key.keysym.sym == SDLK_F10 && !ev.key.repeat)
@@ -716,7 +775,13 @@ static bool create_swapchain(PGRAPHVkState *r)
         /* Mailbox needs a spare image to replace; a FIFO queue is kept short. */
         uint32_t want = caps.minImageCount + (mode == VK_PRESENT_MODE_MAILBOX_KHR ? 1 : 0);
 #ifdef NGB_CONVERTED_DISPLAY
-        want = ngb_output_image_count(want, caps.maxImageCount, ngb_conversion_is_ios());
+        want = ngb_output_image_count(want,caps.maxImageCount,ngb_conversion_is_ios());
+#endif
+#if defined(__APPLE__) && TARGET_OS_IPHONE
+        // Two drawable slots couple a 120 Hz pair to display retirement.
+        // A third lets the worker submit the next distinct picture while the
+        // previous drawable is scanned out. Keep the driver's maximum below.
+        if (want < 3) want = 3;
 #endif
         if (want < 2)
             want = 2;
@@ -1075,10 +1140,12 @@ static void present_pixels(PGRAPHVkState *r, VkBuffer buf, int w, int h)
     VkResult res;
 
     vkWaitForFences(r->device, 1, &s_fence[f], VK_TRUE, UINT64_MAX);
+    nv2a_vk_queue_lock();
     res = vkAcquireNextImageKHR(r->device, s_swapchain, 100000000ull,
                                 s_acquired[f], VK_NULL_HANDLE, &idx);
+    nv2a_vk_queue_unlock();
     if (res == VK_ERROR_OUT_OF_DATE_KHR) {
-        s_resized = true;
+        __atomic_store_n(&s_resized,true,__ATOMIC_RELEASE);
         return;
     }
     if (res != VK_SUCCESS && res != VK_SUBOPTIMAL_KHR)
@@ -1129,7 +1196,7 @@ static void present_pixels(PGRAPHVkState *r, VkBuffer buf, int w, int h)
     res = vkQueuePresentKHR(r->queue, &pi);
     nv2a_vk_queue_unlock();
     if (res == VK_ERROR_OUT_OF_DATE_KHR || res == VK_SUBOPTIMAL_KHR)
-        s_resized = true;
+        __atomic_store_n(&s_resized,true,__ATOMIC_RELEASE);
 }
 
 /* The overlay, over the frame the game is held at: the renderer's thread
@@ -1147,8 +1214,7 @@ static void overlay_run(PGRAPHState *pg)
 
     while (open) {
         int64_t t0 = g_get_monotonic_time();
-        if (s_resized || !s_swapchain) {
-            s_resized = false;
+        if (__atomic_exchange_n(&s_resized,false,__ATOMIC_ACQ_REL) || !s_swapchain) {
             if (!create_swapchain(r)) {
                 g_usleep(16000);
                 continue;
@@ -1266,6 +1332,88 @@ static void present_locked(PGRAPHState *pg, bool on_pfifo);
  * own picture) and from the other renderer's thread (its picture, the moment
  * it hands it over: nv2a_present_set_external) -- one at a time. */
 static pthread_mutex_t s_present_mu = PTHREAD_MUTEX_INITIALIZER;
+static bool s_external_wait; /* protected by s_present_mu */
+static bool s_pair_render;   /* the worker never enters a blocking host menu */
+static VkDevice s_pair_copy_device; /* protected by s_present_mu */
+static VkFence s_pair_copy_fence;
+static uint64_t s_pair_acquire_us,s_pair_lock_us,s_pair_submit_us,s_pair_present_us;
+
+static pthread_mutex_t s_pair_mu=PTHREAD_MUTEX_INITIALIZER;
+static pthread_cond_t s_pair_cv=PTHREAD_COND_INITIALIZER;
+static NgbPairMailbox s_pairs;
+static bool s_pair_started;
+static uint64_t s_pair_mids,s_pair_ends;
+static bool pair_present(const NgbPresentPair *pair,bool midpoint);
+static void *pair_worker(void *unused) {
+    (void)unused;
+    int64_t report_at=0; uint64_t pair_us=0,wait_us=0,pair_n=0;
+    for (;;) {
+        NgbPresentPair pair;
+        pthread_mutex_lock(&s_pair_mu);
+        while (!ngb_pair_take(&s_pairs,&pair)) pthread_cond_wait(&s_pair_cv,&s_pair_mu);
+        pthread_mutex_unlock(&s_pair_mu);
+        int64_t started=g_get_monotonic_time();
+        bool mid=pair_present(&pair,true);
+        int64_t remaining=started+8333-g_get_monotonic_time();
+        if (mid && remaining>0) g_usleep((unsigned long)remaining);
+        bool end=pair_present(&pair,false);
+        // The last copy fence orders both midpoint and endpoint. Wait once,
+        // including when endpoint acquisition failed after a midpoint copy.
+        pthread_mutex_lock(&s_present_mu);
+        int64_t copy_wait_started=g_get_monotonic_time();
+        if (s_pair_copy_fence) {
+            vkWaitForFences(s_pair_copy_device,1,&s_pair_copy_fence,VK_TRUE,UINT64_MAX);
+            s_pair_copy_fence=VK_NULL_HANDLE;
+        }
+        int64_t completed=g_get_monotonic_time();
+        wait_us+=(uint64_t)(completed-copy_wait_started);
+        pair_us+=(uint64_t)(completed-started);pair_n++;
+        if (!report_at) report_at=started;
+        if (completed-report_at>=5000000) {
+            fprintf(stderr,"[Smooth Motion pacing] %llu pairs; mean pair %.2f ms, drawable acquire %.2f ms, final copy wait %.2f ms; presenter lock %.2f ms, queue submit %.2f ms, queue present %.2f ms\n",
+                (unsigned long long)pair_n,pair_us/1000.0/pair_n,s_pair_acquire_us/1000.0/pair_n,wait_us/1000.0/pair_n,s_pair_lock_us/1000.0/pair_n,s_pair_submit_us/1000.0/pair_n,s_pair_present_us/1000.0/pair_n);
+            report_at=completed;pair_us=wait_us=pair_n=s_pair_acquire_us=s_pair_lock_us=s_pair_submit_us=s_pair_present_us=0;
+        }
+        pthread_mutex_unlock(&s_present_mu);
+        pthread_mutex_lock(&s_pair_mu);
+        s_pair_mids+=mid; s_pair_ends+=end;
+        ngb_pair_complete(&s_pairs); pthread_cond_broadcast(&s_pair_cv);
+        pthread_mutex_unlock(&s_pair_mu);
+    }
+    return NULL;
+}
+bool nv2a_present_queue_pair(VkImage midpoint,VkImage endpoint,uint32_t width,uint32_t height) {
+    pthread_mutex_lock(&s_pair_mu);
+    if (!s_pair_started) {
+        pthread_t thread;
+        if (pthread_create(&thread,NULL,pair_worker,NULL)) { pthread_mutex_unlock(&s_pair_mu); return false; }
+        pthread_detach(thread); s_pair_started=true;
+    }
+    NgbPresentPair pair={.mid=(uint64_t)(uintptr_t)midpoint,.end=(uint64_t)(uintptr_t)endpoint,.w=width,.h=height};
+    bool ok=ngb_pair_offer(&s_pairs,pair);
+    if (ok) pthread_cond_signal(&s_pair_cv);
+    pthread_mutex_unlock(&s_pair_mu); return ok;
+}
+bool nv2a_present_external_image_busy(VkImage image) {
+    if (!image) return false;
+    pthread_mutex_lock(&s_pair_mu);
+    bool busy=ngb_pair_busy(&s_pairs,(uint64_t)(uintptr_t)image) ||
+        image==__atomic_load_n(&s_ext_image,__ATOMIC_ACQUIRE);
+    pthread_mutex_unlock(&s_pair_mu); return busy;
+}
+void nv2a_present_cancel_pairs(void) {
+    pthread_mutex_lock(&s_pair_mu); ngb_pair_cancel(&s_pairs);
+    pthread_cond_broadcast(&s_pair_cv); pthread_mutex_unlock(&s_pair_mu);
+}
+void nv2a_present_drain_pairs(void) {
+    pthread_mutex_lock(&s_pair_mu); ngb_pair_cancel(&s_pairs);
+    while (s_pairs.has_active) pthread_cond_wait(&s_pair_cv,&s_pair_mu);
+    pthread_mutex_unlock(&s_pair_mu);
+}
+void nv2a_present_pair_counts(uint64_t *mid,uint64_t *end,uint64_t *superseded) {
+    pthread_mutex_lock(&s_pair_mu); *mid=s_pair_mids; *end=s_pair_ends; *superseded=s_pairs.superseded;
+    pthread_mutex_unlock(&s_pair_mu);
+}
 static PGRAPHState *volatile s_pg;
 
 void nv2a_host_vk_present(PGRAPHState *pg)
@@ -1281,25 +1429,70 @@ void nv2a_host_vk_present(PGRAPHState *pg)
  * no wait for the PFIFO thread, which is busy with the next frame's
  * commands by then (presented through it, they came out unevenly, and at
  * the tick a whole refresh late). False to leave it to the tick. */
-static bool present_external_now(void)
+/* Publish image and dimensions under the same lock used by the pair worker.
+ * Atomics on the individual fields do not make a coherent image descriptor:
+ * a 640x480 movie and a native-sized frame can otherwise be mixed mid-blit. */
+static bool set_external(VkImage image, uint32_t width, uint32_t height, bool wait_image)
 {
     static int on = -1;
-    PGRAPHState *pg = s_pg;
-    if (on < 0)
-        on = !(getenv("NV2A_PACE") && !strcmp(getenv("NV2A_PACE"), "tick"));
-    if (!on || !pg || __atomic_load_n(&s_quality_set, __ATOMIC_ACQUIRE))
-        return false;   /* (quality changes are the renderer's, applied on its thread) */
-    /* claimed first: the tick must not present it again meanwhile */
-    __atomic_store_n(&nv2a_ext_presented, __atomic_load_n(&nv2a_ext_pictures, __ATOMIC_ACQUIRE),
-                     __ATOMIC_RELEASE);
     pthread_mutex_lock(&s_present_mu);
-    present_locked(pg, false);
+    __atomic_store_n(&s_ext_set_us,g_get_monotonic_time(),__ATOMIC_RELAXED);
+    __atomic_store_n(&s_ext_w,width,__ATOMIC_RELAXED);
+    __atomic_store_n(&s_ext_h,height,__ATOMIC_RELAXED);
+    __atomic_store_n(&s_ext_image,image,__ATOMIC_RELEASE);
+    if (!image) { pthread_mutex_unlock(&s_present_mu); return false; }
+    unsigned pictures=__atomic_add_fetch(&nv2a_ext_pictures,1,__ATOMIC_RELEASE);
+    PGRAPHState *pg=s_pg;
+    if (on < 0) on=!(getenv("NV2A_PACE") && !strcmp(getenv("NV2A_PACE"),"tick"));
+    if (!on || !pg || __atomic_load_n(&s_quality_set,__ATOMIC_ACQUIRE)) {
+        pthread_mutex_unlock(&s_present_mu); return false;
+    }
+    __atomic_store_n(&nv2a_ext_presented,pictures,__ATOMIC_RELEASE);
+    unsigned long before=nv2a_host_presents;
+    s_external_wait=wait_image;
+    present_locked(pg,false);
+    s_external_wait=false;
+    bool submitted=nv2a_host_presents!=before;
     pthread_mutex_unlock(&s_present_mu);
-    return true;
+    return submitted;
+}
+
+static bool pair_present(const NgbPresentPair *pair,bool midpoint) {
+#ifdef NGB_CONVERTED_DISPLAY
+    if (!ngb_conversion_is_foreground()) return false;
+#endif
+    int64_t lock_started=g_get_monotonic_time();
+    pthread_mutex_lock(&s_present_mu);
+    s_pair_lock_us+=(uint64_t)(g_get_monotonic_time()-lock_started);
+    pthread_mutex_lock(&s_pair_mu);
+    bool valid=pair->epoch==s_pairs.epoch;
+    pthread_mutex_unlock(&s_pair_mu);
+    PGRAPHState *pg=s_pg;
+    if (!valid || !pg) { pthread_mutex_unlock(&s_present_mu); return false; }
+    VkImage image=(VkImage)(uintptr_t)(midpoint ? pair->mid : pair->end);
+    __atomic_store_n(&s_ext_set_us,g_get_monotonic_time(),__ATOMIC_RELAXED);
+    __atomic_store_n(&s_ext_w,pair->w,__ATOMIC_RELAXED);
+    __atomic_store_n(&s_ext_h,pair->h,__ATOMIC_RELAXED);
+    __atomic_store_n(&s_ext_image,image,__ATOMIC_RELEASE);
+    unsigned pictures=__atomic_add_fetch(&nv2a_ext_pictures,1,__ATOMIC_RELEASE);
+    __atomic_store_n(&nv2a_ext_presented,pictures,__ATOMIC_RELEASE);
+    unsigned long before=nv2a_host_presents;
+    s_external_wait=s_pair_render=true;
+    present_locked(pg,false);
+    s_external_wait=s_pair_render=false;
+    bool shown=nv2a_host_presents!=before;
+    pthread_mutex_unlock(&s_present_mu); return shown;
 }
 
 static void present_locked(PGRAPHState *pg, bool on_pfifo)
 {
+    /* An external producer claims its picture before taking this lock. A tick
+     * which was already queued must not scan out that same picture again. */
+    if (on_pfifo && nv2a_vk_draws_off() && !nv2a_overlay_wanted() && !__atomic_load_n(&s_quality_set,__ATOMIC_ACQUIRE) &&
+        __atomic_load_n(&s_ext_image,__ATOMIC_ACQUIRE)!=VK_NULL_HANDLE &&
+        __atomic_load_n(&nv2a_ext_presented,__ATOMIC_ACQUIRE)==__atomic_load_n(&nv2a_ext_pictures,__ATOMIC_ACQUIRE))
+        return;
+
     PGRAPHVkState *r = pg->vk_renderer_state;
     VkCommandBuffer cmd;
     uint32_t idx;
@@ -1345,22 +1538,20 @@ static void present_locked(PGRAPHState *pg, bool on_pfifo)
         fps_init(r);
     }
     fps_track();
-    if (s_resized || !s_swapchain) {
-        s_resized = false;
+    if (__atomic_exchange_n(&s_resized,false,__ATOMIC_ACQ_REL) || !s_swapchain) {
         if (!create_swapchain(r))
             return;
     }
     /* Asked every frame (the host's per-frame work runs there: the mouse's
      * presses, input for its menus), whichever renderer has the picture. */
     bool overlay = nv2a_overlay_wanted();
-    if (overlay && (r->display.image != VK_NULL_HANDLE ||
+    if (!s_pair_render && overlay && (r->display.image != VK_NULL_HANDLE ||
                     __atomic_load_n(&s_ext_image, __ATOMIC_ACQUIRE) != VK_NULL_HANDLE)) {
         extern volatile int nv2a_vblank_hold;
         nv2a_vblank_hold = 1;
         overlay_run(pg);
         nv2a_vblank_hold = 0;
-        if (s_resized || !s_swapchain) {
-            s_resized = false;
+        if (__atomic_exchange_n(&s_resized,false,__ATOMIC_ACQ_REL) || !s_swapchain) {
             if (!create_swapchain(r))
                 return;
         }
@@ -1373,10 +1564,15 @@ static void present_locked(PGRAPHState *pg, bool on_pfifo)
     f = s_frame++ % FRAMES_IN_FLIGHT;
     vkWaitForFences(r->device, 1, &s_fence[f], VK_TRUE, UINT64_MAX);
 
-    res = vkAcquireNextImageKHR(r->device, s_swapchain, 0, s_acquired[f],
+    // Acquire synchronizes the swapchain, not VkQueue. s_present_mu already
+    // serializes this path. Holding the shared GPU queue here blocks the game
+    // producer while waiting for the display to release a drawable.
+    int64_t acquire_started=s_pair_render ? g_get_monotonic_time() : 0;
+    res = vkAcquireNextImageKHR(r->device, s_swapchain, s_external_wait ? 50000000 : 0, s_acquired[f],
                                 VK_NULL_HANDLE, &idx);
+    if (s_pair_render) s_pair_acquire_us+=(uint64_t)(g_get_monotonic_time()-acquire_started);
     if (res == VK_ERROR_OUT_OF_DATE_KHR) {
-        s_resized = true;
+        __atomic_store_n(&s_resized,true,__ATOMIC_RELEASE);
         return;
     }
     if (res == VK_NOT_READY || res == VK_TIMEOUT) {
@@ -1433,6 +1629,14 @@ static void present_locked(PGRAPHState *pg, bool on_pfifo)
             dw = (int32_t)(wh * s_aspect);
         }
         int32_t x0 = (ww - dw) / 2, y0 = (wh - dh) / 2;
+#if defined(__APPLE__) && TARGET_OS_IPHONE
+        static unsigned fit_logs;
+        if (fit_logs<4 || nv2a_host_presents%300==0) {
+            fit_logs++;
+            NGB_IOS_PORT_DIAG("[iOS Fit] source %dx%d; drawable %dx%d; destination %d,%d %dx%d; aspect %.6f; external %d\n",
+                pw,ph,ww,wh,x0,y0,dw,dh,s_aspect,(int)ext);
+        }
+#endif
         VkImageBlit blit = {
             .srcSubresource = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1 },
             /* Bottom-up: xemu's display shader writes GL row order (its GL
@@ -1508,13 +1712,20 @@ static void present_locked(PGRAPHState *pg, bool on_pfifo)
                 VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_ACCESS_TRANSFER_WRITE_BIT,
                 VK_ACCESS_TRANSFER_WRITE_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT,
                 VK_PIPELINE_STAGE_TRANSFER_BIT);
+        uint32_t overlay_x=0,overlay_y=0,copy_w=w,copy_h=h;
+#if defined(__APPLE__) && TARGET_OS_IPHONE
+        float left=0.08f,top=0.03f,right=0.08f,bottom=0.02f;
+        if (ngb_ios_safe_area) ngb_ios_safe_area(&left,&top,&right,&bottom);
+        ngb_safe_overlay(s_extent.width,s_extent.height,s_aspect,left,top,right,bottom,w,h,
+            &overlay_x,&overlay_y,&copy_w,&copy_h);
+#endif
         VkBufferImageCopy region = {
             .bufferRowLength = w,
             .imageSubresource = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1 },
-            .imageOffset = { 0, 0, 0 },
-            .imageExtent = { w, h, 1 },
+            .imageOffset = { overlay_x, overlay_y, 0 },
+            .imageExtent = { copy_w, copy_h, 1 },
         };
-        vkCmdCopyBufferToImage(cmd, s_ovl_buf[f], s_images[idx],
+        if (copy_w && copy_h) vkCmdCopyBufferToImage(cmd, s_ovl_buf[f], s_images[idx],
                                VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region);
     }
 
@@ -1535,8 +1746,10 @@ static void present_locked(PGRAPHState *pg, bool on_pfifo)
             .signalSemaphoreCount = 1,
             .pSignalSemaphores = &s_render_done[idx],
         };
+        int64_t submit_started=s_pair_render ? g_get_monotonic_time() : 0;
         nv2a_vk_queue_lock();
         VK_CHECK(vkQueueSubmit(r->queue, 1, &si, s_fence[f]));
+        if (s_pair_render) s_pair_submit_us+=(uint64_t)(g_get_monotonic_time()-submit_started);
     }
     {
         VkPresentInfoKHR pi = {
@@ -1547,16 +1760,22 @@ static void present_locked(PGRAPHState *pg, bool on_pfifo)
             .pSwapchains = &s_swapchain,
             .pImageIndices = &idx,
         };
+        int64_t present_started=s_pair_render ? g_get_monotonic_time() : 0;
         res = vkQueuePresentKHR(r->queue, &pi);
+        if (s_pair_render) s_pair_present_us+=(uint64_t)(g_get_monotonic_time()-present_started);
         nv2a_vk_queue_unlock();
         if (res == VK_ERROR_OUT_OF_DATE_KHR || res == VK_SUBOPTIMAL_KHR)
-            s_resized = true;
+            __atomic_store_n(&s_resized,true,__ATOMIC_RELEASE);
     }
+    // Keep both source leases until the worker waits the last successful copy.
+    if (s_pair_render) { s_pair_copy_device=r->device; s_pair_copy_fence=s_fence[f]; }
     lat_note(ext);
 }
 
 void nv2a_host_vk_finalize(PGRAPHState *pg)
 {
+    s_pg=NULL;
+    nv2a_present_drain_pairs();
     PGRAPHVkState *r = pg->vk_renderer_state;
 
     nv2a_vk_queue_lock();

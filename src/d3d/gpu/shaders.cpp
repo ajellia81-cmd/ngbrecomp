@@ -1,4 +1,6 @@
 #include "gpu/shaders.h"
+#include "gpu/scene_motion.h"
+#include <regex>
 #include "gpu/vertex.h"
 
 #include <algorithm>
@@ -64,7 +66,6 @@ const char* kCommonTail = R"(    float4 spread[4];
     float4 uvc[4];
     float4 uvg[4];
     float4 qsnap;
-};
 )";
 
 const ShaderHooks& Hooks() {
@@ -72,7 +73,13 @@ const ShaderHooks& Hooks() {
     return g_shader_hooks ? *g_shader_hooks : plain;
 }
 
-std::string Common() { return kCommonHead + Hooks().Constants() + kCommonTail; }
+std::string Common() {
+    std::string s=kCommonHead + Hooks().Constants() + kCommonTail;
+#ifdef NGB_SMOOTH_MOTION
+    s += "    float4 motion;\n";
+#endif
+    return s+"};\n";
+}
 
 // vertex programs
 
@@ -672,6 +679,29 @@ PixelKey MakePixelKey(const State& s, const TexInfo tex[4]) {
     return k;
 }
 
+// Constants actually referenced by the same operand encoding as Src().
+// Relative addressing can select any register, so retain the full bank then.
+std::array<uint8_t,192> VertexProgramConstants(const std::vector<uint32_t>& program) {
+    std::array<uint8_t,192> used{};
+    for(size_t n=0;n+4<=program.size();n+=4) {
+        Tok k{&program[n]};
+        unsigned mac=k.f(1,21,4),ilu=k.f(1,25,3);
+        bool a=mac>=1 && mac<=13;
+        bool b=(mac==2 || (mac>=4 && mac<=12));
+        bool c=ilu || mac==3 || mac==4;
+        auto constant=[](unsigned mux) { return mux!=1 && mux!=2; };
+        bool reads=(a && constant(k.f(2,26,2))) || (b && constant(k.f(2,11,2))) ||
+                   (c && constant(k.f(3,28,2)));
+        if(reads) {
+            if(k.f(3,1,1)) { used.fill(1); return used; }
+            unsigned reg=k.f(1,13,8);
+            if(reg<used.size()) used[reg]=1;
+        }
+        if(k.f(3,0,1)) break;
+    }
+    return used;
+}
+
 std::string VertexProgramHlsl(const std::vector<uint32_t>& prog, uint16_t regs, uint64_t decode) {
     std::string s = Common();
     s += kVsHelpers;
@@ -1088,3 +1118,23 @@ std::string QuadHlsl(std::string s) {
     return s;
 }
 }  // namespace gpu
+
+#ifdef NGB_SMOOTH_MOTION
+namespace gpu {
+std::string MotionVertexHlsl(std::string s) {
+    // An extra read-only vertex buffer supplies the VF3 scene result. The
+    // original program still computes its colours, UVs and other varyings.
+    const std::string entry="VOut main(";
+    size_t start=s.find(entry), end=s.find(") {",start);
+    if(start==std::string::npos || end==std::string::npos) return {};
+    s.insert(end,", uint scene_vertex : SV_VertexID");
+    const std::string program="    precise float4 p = oPos;";
+    const std::string fixed="    o.pos = cp;";
+    size_t at=s.find(program);
+    if(at!=std::string::npos) s.insert(at,"    if (motion.x > 0) oPos = scene_positions[scene_vertex];\n");
+    else if((at=s.find(fixed))!=std::string::npos) s.insert(at,"    if (motion.x > 0) cp = scene_positions[scene_vertex];\n");
+    else return {};
+    return "[[vk::binding(10, 0)]] StructuredBuffer<float4> scene_positions;\n"+s;
+}
+}
+#endif

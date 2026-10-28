@@ -55,3 +55,9 @@ repository does include C translations of some of the game's functions, taken fr
 and modified for this port (the menus, the mouse, the cheats: `src/main_menu.c`, `src/pause_tab.c`,
 `src/menu_mouse.c` and others, listed in `src/manual_functions.json`), and the Direct3D functions of
 the Xbox SDK the game was built with (`src/d3d/d3d_orig.c`), behind the renderer's hooks.
+
+## VF3 Smooth Motion scene interpolation
+
+The unchanged MIT-licensed scene interpolation core comes from
+https://github.com/ajellia81-cmd/vf3-recomp at 842151aaf97a4bf5e59709004a385ae5735c5a05.
+See third_party/vf3_scene/LICENSE and README.md for the attribution and extraction.

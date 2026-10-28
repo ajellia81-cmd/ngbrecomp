@@ -24,8 +24,16 @@ void ngb_ios_language_changed(int language){
     SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_INFORMATION,"Restart required","Quit and reopen to apply the text language.",NULL);
 }
 void ngb_ios_screen_size(int *width,int *height){*width=w;*height=h;}
-static void (*bridge_tick)(void),(*bridge_wait)(void);
-void ngb_conversion_tick(void){if(bridge_tick)bridge_tick();}
+extern int ngb_pc_setting(int);
+static void (*bridge_tick)(void),(*bridge_wait)(void),(*bridge_motion)(int);
+static double (*bridge_hz)(void);
+static unsigned (*bridge_epoch)(void);
+static int (*bridge_foreground)(void);
+extern void nv2a_present_cancel_pairs(void);
+int ngb_conversion_is_foreground(void){return bridge_foreground ? bridge_foreground() : 1;}
+double ngb_ios_display_hz(void){return bridge_hz ? bridge_hz() : 60;}
+unsigned ngb_ios_motion_epoch(void){return bridge_epoch ? bridge_epoch() : 0;}
+void ngb_conversion_tick(void){if(bridge_motion)bridge_motion(ngb_pc_setting(26));if(bridge_tick)bridge_tick();}
 void ngb_conversion_wait_foreground(void){if(bridge_wait)bridge_wait();}
 int ngb_ios_settings_tab_mask(uint8_t *mask, int width, int height) {
     @autoreleasepool {
@@ -103,16 +111,20 @@ int ngb_conversion_startup(void){@autoreleasepool {
         setenv("RECOMP_DSP_ACK","auto",0);
         [NSApplication sharedApplication];
         [NSApp nextEventMatchingMask:NSEventMaskAny untilDate:[NSDate distantPast] inMode:NSDefaultRunLoopMode dequeue:YES];
-        NgbConversionHost api={1,sizeof(NgbConversionHost),ngb_check_xbe,ngb_install,ngb_install_set_progress,
+        NgbConversionHost api={2,sizeof(NgbConversionHost),ngb_check_xbe,ngb_install,ngb_install_set_progress,
             SDL_WasInit,SDL_InitSubSystem,(int(*)(int,int,int,int))SDL_JoystickAttachVirtual,(void *(*)(int))SDL_JoystickOpen,
             (int(*)(void*,int,int16_t))SDL_JoystickSetVirtualAxis,(int(*)(void*,int,uint8_t))SDL_JoystickSetVirtualButton,
             (int32_t(*)(void*))SDL_JoystickInstanceID,(void(*)(void*))SDL_JoystickClose,SDL_NumJoysticks,
-            SDL_JoystickGetDeviceInstanceID,SDL_JoystickDetachVirtual,apu_host_pause,audio_paused};
+            SDL_JoystickGetDeviceInstanceID,SDL_JoystickDetachVirtual,apu_host_pause,audio_paused,nv2a_present_cancel_pairs};
         fprintf(stderr,"[Startup] preparing import and device services\n");
         if(!prepare(&api)){fprintf(stderr,"[Startup] preparation failed or cancelled\n");return 0;}
         fprintf(stderr,"[Startup] import and device services complete\n");
         void (*screen)(int*,int*)=(void(*)(int*,int*))dlsym(RTLD_DEFAULT,"ngb_macos_on_ios_screen_size");
         if(screen)screen(&w,&h);
+        bridge_foreground=(int(*)(void))dlsym(RTLD_DEFAULT,"ngb_macos_on_ios_is_foreground");
+        bridge_motion=(void(*)(int))dlsym(RTLD_DEFAULT,"ngb_macos_on_ios_motion_enabled");
+        bridge_hz=(double(*)(void))dlsym(RTLD_DEFAULT,"ngb_macos_on_ios_display_hz");
+        bridge_epoch=(unsigned(*)(void))dlsym(RTLD_DEFAULT,"ngb_macos_on_ios_motion_epoch");
         bridge_tick=(void(*)(void))dlsym(RTLD_DEFAULT,"ngb_macos_on_ios_tick");
         bridge_wait=(void(*)(void))dlsym(RTLD_DEFAULT,"ngb_macos_on_ios_wait_foreground");
     }
@@ -125,6 +137,7 @@ int ngb_conversion_startup(void){@autoreleasepool {
     setenv("VK_DRIVER_FILES",icd.fileSystemRepresentation,0);setenv("SDL_VULKAN_LIBRARY",loader.fileSystemRepresentation,0);
     fprintf(stderr,"[Startup] loading settings\n");
     NgbSettings settings;ngb_settings_load(&settings);
+    if(bridge_motion)bridge_motion(settings.smooth_motion);
     override=settings.text_language_options ? (settings.text_language==1 ? 1 : 0) : -1;
     setenv("NGB_TEXT_LANGUAGE",settings.text_language==1 ? "English" : "Japanese",1);
     if(settings.text_language!=2){fprintf(stderr,"[Startup] entering original Mac engine\n");return 1;}

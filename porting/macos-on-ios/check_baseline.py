@@ -15,11 +15,16 @@ path='src/d3d/vk/backend.cpp';before=original(path);after=(root/path).read_text(
 for name in ('void VulkanBackend::CacheOpen(', 'void VulkanBackend::Prewarm(', 'void VulkanBackend::CacheRecord(', 'void VulkanBackend::WarmSamples('):
  if name not in before:continue
  assert function(before,name)==function(after,name),name+' changed'
-for path in ('src/d3d/gpu/shaders.cpp','src/d3d/gpu/shaders.h','src/d3d/hle.cpp','xboxrecomp/src/platform/vcpu.c','xboxrecomp/src/kernel/kernel_hal.c'):
+for path in ('xboxrecomp/src/platform/vcpu.c','xboxrecomp/src/kernel/kernel_hal.c'):
  assert (root/path).read_text()==original(path),path+' changed'
 for path in ('porting/macos-on-ios/bootstrap.m','porting/macos-on-ios/AppKit_NGB.m','porting/macos-on-ios/korean/game_hooks.c','porting/macos-on-ios/korean/wrap_game_codegen.py'):
  s=(root/path).read_text()
  for forbidden in ('NGB_D3D_SYNC_COMPILE','shader_prewarm_ready','cache_producer_fast','cache_copy_delay'):
   assert forbidden not in s,(path,forbidden)
-assert 'ROW_SMOOTH,' not in function((root/'src/pc_menu.c').read_text(),'static const uint8_t s_rows_disp[]')
-print('Mac shader compiler/prewarm/cache, shader sources, guest scheduler and kernel preserved; iOS presentation submits and drawable buffering are separate from shader policy')
+assert 'ROW_SMOOTH,' in function((root/'src/pc_menu.c').read_text(),'static const uint8_t s_rows_disp[]')
+for name in ('std::string VertexProgramHlsl(', 'std::string FixedVertexHlsl(', 'std::string PixelHlsl('):
+ path='src/d3d/gpu/shaders.cpp'
+ assert function(original(path),name)==function((root/path).read_text(),name),name+' changed'
+for forbidden in ('MotionPrewarm(', 'motion_budget_', 'shader_prewarm_ready', 'cache_producer_fast'):
+ assert forbidden not in after,forbidden
+print('Original Mac prewarm/cache, endpoint shader generators and CPU timing preserved; no old loading workarounds or adaptive cooldown')
