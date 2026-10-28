@@ -10,15 +10,21 @@ head=r'''
 #include <vulkan/vulkan.h>
 #include <array>
 #include <cassert>
+#include <vector>
 struct Capabilities {bool isAppleGPU=true;};
 struct Physical {Capabilities caps; const Capabilities& getMTLDeviceCapabilities(){return caps;}};
-struct Configuration {struct {struct {bool use_framebuffer_fetch_subpasses=false;} mslOptions;} options;};
+namespace spv {enum ExecutionModel {ExecutionModelFragment,ExecutionModelVertex};}
+struct Resource {struct {spv::ExecutionModel stage=spv::ExecutionModelFragment;uint32_t desc_set=0,binding=28,msl_texture=29;} resourceBinding;};
+struct Descriptor {VkDescriptorType descriptorType=VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT;};
+struct Layout {Descriptor descriptor;size_t getDescriptorSetCount(){return 1;}Layout* getDescriptorSetLayout(uint32_t){return this;}Descriptor* getBinding(uint32_t){return &descriptor;}};
+struct Configuration {struct {struct {bool use_framebuffer_fetch_subpasses=false;} mslOptions;} options;std::vector<Resource> resourceBindings{Resource{}};};
 struct Harness {
- Physical physical;bool _inputAttachmentIsDSAttachment=false,_usesNativeColorFetch=false;
+ Layout layout;Layout* _layout=&layout;uint32_t remapped=29;Physical physical;bool _inputAttachmentIsDSAttachment=false,_usesNativeColorFetch=false;
  Physical* getPhysicalDevice(){return &physical;}
  bool convert(const VkGraphicsPipelineCreateInfo* pCreateInfo){Configuration shaderConfig;
 '''
 middle=r'''
+ remapped=shaderConfig.resourceBindings[0].resourceBinding.msl_texture;
  return shaderConfig.options.mslOptions.use_framebuffer_fetch_subpasses;
  }
 };
@@ -47,7 +53,8 @@ int main(){Harness h;VkGraphicsPipelineCreateInfo pipeline{VK_STRUCTURE_TYPE_GRA
  assert(!h.convert(&pipeline));
  uint32_t index=0;VkRenderingInputAttachmentIndexInfoKHR local{VK_STRUCTURE_TYPE_RENDERING_INPUT_ATTACHMENT_INDEX_INFO_KHR};local.colorAttachmentCount=1;local.pColorAttachmentInputIndices=&index;
  VkPipelineRenderingCreateInfo rendering{VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO};rendering.pNext=&local;pipeline.pNext=&rendering;
- assert(h.convert(&pipeline));
+ assert(h.convert(&pipeline));assert(h.remapped==0);
+ h.layout.descriptor.descriptorType=VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE;assert(h.convert(&pipeline));assert(h.remapped==29);h.layout.descriptor.descriptorType=VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT;
  h._inputAttachmentIsDSAttachment=true;assert(!h.convert(&pipeline));h._inputAttachmentIsDSAttachment=false;
  h.physical.caps.isAppleGPU=false;assert(!h.convert(&pipeline));h.physical.caps.isAppleGPU=true;
  index=VK_ATTACHMENT_UNUSED;assert(!h.convert(&pipeline));index=1;assert(!h.convert(&pipeline));index=0;

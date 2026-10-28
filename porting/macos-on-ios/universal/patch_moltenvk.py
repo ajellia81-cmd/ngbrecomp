@@ -32,6 +32,16 @@ patch='''
         if (nativeColorInput && !_inputAttachmentIsDSAttachment &&
             getPhysicalDevice()->getMTLDeviceCapabilities().isAppleGPU) {
             shaderConfig.options.mslOptions.use_framebuffer_fetch_subpasses = true;
+            // SPIRV-Cross honors explicit resource remaps before the input
+            // attachment index. Native fetch needs color0, not a texture slot.
+            for (auto& resource : shaderConfig.resourceBindings) {
+                auto& binding = resource.resourceBinding;
+                if (binding.stage == spv::ExecutionModelFragment &&
+                    binding.desc_set < _layout->getDescriptorSetCount() &&
+                    _layout->getDescriptorSetLayout(binding.desc_set)->getBinding(binding.binding)->descriptorType == VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT) {
+                    binding.msl_texture = 0;
+                }
+            }
             _usesNativeColorFetch = true;
         }
 '''
