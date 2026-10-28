@@ -21,6 +21,7 @@ endif()
 # opt into Smooth Motion; the CPU scheduler and shader compiler stay unchanged.
 if(TARGET ngb_d3d)
     target_compile_definitions(ngb_d3d PRIVATE NGB_SMOOTH_MOTION=1 NGB_CONVERTED_DISPLAY=1)
+    target_include_directories(ngb_d3d PRIVATE "${XBOXRECOMP_DIR}/src")
     target_sources(ngb_d3d PRIVATE src/d3d/gpu/scene_motion.cpp third_party/vf3_scene/interpolate.cpp)
     set_source_files_properties(src/d3d/gpu/scene_motion.cpp PROPERTIES COMPILE_OPTIONS "-ffp-contract=off")
 endif()
