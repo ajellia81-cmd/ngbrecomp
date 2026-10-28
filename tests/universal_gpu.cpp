@@ -169,13 +169,17 @@ int main(){try{
  // Generated legal register-combiner states, independent of gameplay recipes.
  uint32_t random=0x4e474255;
  auto next=[&](){random^=random<<13;random^=random>>17;random^=random<<5;return random;};
- for(unsigned trial=0;trial<96;trial++){
-  PixelKey synthetic{};synthetic.programmable=1;synthetic.count=1+next()%8;
+ // LSB mux converts r0.a*255 to uint: negative values are undefined in
+ // SPIR-V/Metal. Exercise signed stages with MSB mux, then LSB mux with
+ // nonnegative alpha registers. Both reference and generic stay unchanged.
+ for(unsigned trial=0;trial<120;trial++){
+  PixelKey synthetic{};synthetic.programmable=1;synthetic.count=(1+next()%8)|(trial<96?256u:0u);
   for(unsigned stage=0;stage<(synthetic.count&255);stage++){
    auto operand=[&](){const unsigned regs[]={0,1,2,3,4,5,8,9,10,11,12,13};return regs[next()%12]|((next()%2)<<4)|((next()%8)<<5);};
    auto inputs=[&](){uint32_t word=0;for(unsigned i=0;i<4;i++)word=(word<<8)|operand();return word;};
    auto outputs=[&](){const unsigned regs[]={0,4,5,8,9,10,11,12,13};return regs[next()%9]|(regs[next()%9]<<4)|(regs[next()%9]<<8)|((next()%64)<<12);};
    synthetic.rgb_in[stage]=inputs();synthetic.a_in[stage]=inputs();synthetic.rgb_out[stage]=outputs();synthetic.a_out[stage]=outputs();
+   if(trial>=96){synthetic.a_in[stage]=(synthetic.a_in[stage]&0x2f2f2f2fu)|0x10101010u;synthetic.a_out[stage]&=0x7fffu;}
   }
   if(trial&1){synthetic.final_abcd=0x04200c05;synthetic.final_efg=0x01021c00|((trial&7)<<5);}
   for(auto& constant:dc.pc)for(float& lane:constant)lane=float(next()%256)/255;

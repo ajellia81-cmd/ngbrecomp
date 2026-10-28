@@ -145,13 +145,24 @@ VOut main(uint vertex_id:SV_VertexID) {
             float4 rhw=Vertex(0,vertex_id);float w=rhw.w==0?1:1/rhw.w;
             temp[12]=float4(rhw.xy,rhw.z/surf.z,w);
         } else if(blend!=0) {
-            uint matrices=(blend&1)?(blend+3)/2:blend/2+1;
-            float4 weights=HasVertex(1)?Vertex(1,vertex_id):0;float last_weight=1;
-            for(uint m=0;m<matrices;m++) {
-                float weight=((blend&1)!=0 && m==matrices-1)?last_weight:weights[m];
-                if((blend&1)!=0 && m<matrices-1)last_weight-=weights[m];
-                vp+=mul(ip,wvb[m]).xyz*weight;vn+=mul(input_normal,wvbn[m]).xyz*weight;
-            }
+            float4 weights=HasVertex(1)?Vertex(1,vertex_id):0;
+            // Static arithmetic per mode matches the original unrolled shader,
+            // including Metal's depth rounding for EQUAL multipass rendering.
+            switch(blend) {
+)";
+    for(unsigned mode=1;mode<=6;mode++) {
+        bool mix=mode&1;unsigned count=mix?(mode+3)/2:mode/2+1;
+        s+=F("case %u: {\n",mode);
+        if(mix)s+="float wl=1;\n";
+        for(unsigned m=0;m<count;m++) {
+            std::string weight=!mix || m<count-1?F("weights[%u]",m):"wl";
+            if(mix && m<count-1)s+=F("wl-=weights[%u];\n",m);
+            s+=F("vp+=mul(ip,wvb[%u]).xyz*%s;\n",m,weight.c_str());
+            s+=F("vn+=mul(input_normal,wvbn[%u]).xyz*%s;\n",m,weight.c_str());
+        }
+        s+="break;}\n";
+    }
+    s+=R"(            }
             cp=mul(float4(vp,1),pv);
         } else {cp=mul(ip,wvp);vp=mul(ip,wv).xyz;vn=mul(input_normal,wvn).xyz;}
         if(Flag(32) && !Flag(1)) {
