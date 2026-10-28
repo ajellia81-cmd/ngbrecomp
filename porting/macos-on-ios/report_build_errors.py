@@ -10,7 +10,13 @@ def summaries(text):
             continue
         if "src/recomp/gen/" in line:
             if "error:" in line:
-                yield "Generated game C error (private diagnostic withheld)."
+                reason = line.split("error:", 1)[1].strip()
+                def public_name(match):
+                    name = match[0][1:-1]
+                    return match[0] if re.fullmatch(r"(?:ngb_\w+|SDL_\w+|g_\w+|[u]?int[0-9]+_t|[er]?(?:ax|bx|cx|dx|si|di|sp|bp)|xmm[0-9]+)", name) else "<symbol>"
+                reason = re.sub(r"'[^']*'", public_name, reason)
+                reason = re.sub(r'"[^"]*"', "<value>", reason)
+                yield "Generated C compiler error (source withheld): " + reason[:250]
             continue
         if re.search(r":\d+:\d+: (?:fatal )?error:", line):
             # Discard source context lines and redact quoted expressions/values.
