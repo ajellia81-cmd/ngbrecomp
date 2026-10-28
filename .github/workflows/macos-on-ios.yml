@@ -80,6 +80,8 @@ jobs:
       run: |
         set -euo pipefail
         xcrun --sdk macosx clang++ -std=c++20 -fsyntax-only -DNGB_SMOOTH_MOTION=1 -DNGB_CONVERTED_DISPLAY=1 -DVK_NO_PROTOTYPES -Isrc -Isrc/d3d -Isrc/d3d/compat -Ixboxrecomp/src -Ixboxrecomp/src/nv2a_vk/host -Ixboxrecomp/third_party/Vulkan-Headers/include -Ixboxrecomp/third_party/volk -Ixboxrecomp/third_party/VulkanMemoryAllocator/include src/d3d/vk/backend.cpp
+        xcrun --sdk macosx clang++ -std=c++20 -O2 tests/shadow_depth_test.cpp -o "$RUNNER_TEMP/ngb-shadow-depth-test"
+        "$RUNNER_TEMP/ngb-shadow-depth-test"
         python3 tests/check_vf3_reference.py
         python3 tests/endpoint_shader_compat.py
         python3 ios/presenter_descriptor_test.py

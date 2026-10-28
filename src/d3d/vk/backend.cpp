@@ -41,6 +41,7 @@
 #include "gpu/scene_motion.h"
 #include "platform/ios_port_diagnostics.h"
 #include "gpu/upload_ring.h"
+#include "gpu/shadow_depth.h"
 #include "kernel/kernel.h"
 #include "vk/spirv.h"
 #include "nv2a_vk_share.h"   // the NV2A renderer's device and presenter (NGB_RENDERER=d3d)
@@ -60,6 +61,9 @@ extern "C" double ngb_ios_display_hz(void);
 extern "C" unsigned ngb_ios_motion_epoch(void);
 extern "C" void ngb_conversion_wait_foreground(void);
 extern "C" void ngb_conversion_render_size(int *,int *);
+#endif
+#ifdef NGB_CONVERTED_DISPLAY
+extern "C" int ngb_conversion_is_ios(void);
 #endif
 namespace gpu {
 namespace {
@@ -369,7 +373,8 @@ private:
         float blend[4]{},line=1;
         uint32_t stencil=0,buffers=0,index_count=0,draw_count=0;
         int32_t base_vertex=0;
-        bool index16=false,lines=false;
+        bool index16=false,lines=false,depth_bias=false;
+        float bias_steps=0,bias_slope=0;
     };
     struct MotionTarget { Target *source=nullptr; Target replay; uint32_t seen=0; };
     bool motion_capture_=false,motion_valid_=false,motion_endpoint_=false;
@@ -635,6 +640,7 @@ private:
     struct Stats { uint32_t draws, noasm, notarget, nopipe, drawn, clears, copies; } st_{};
     std::unordered_map<uint32_t, uint32_t> rt_draws_;
     bool stats_ = false;
+    uint32_t shadow_pulled_=0,shadow_fallback_=0;
 
     // dumps
     std::string dump_dir_;
@@ -2336,7 +2342,7 @@ VkPipeline VulkanBackend::MakePipeline(const PipeKey& k, VkShaderModule vs, VkSh
         // Direct3D's winding is in its y-down screen space, Vulkan's in the framebuffer after the
         // viewport transform: with the flipped viewport the two agree, so no inversion
         rs.frontFace = k.ccw ? VK_FRONT_FACE_COUNTER_CLOCKWISE : VK_FRONT_FACE_CLOCKWISE;
-        rs.depthBiasEnable = k.zbias || k.zslope;
+        rs.depthBiasEnable = k.zbias || k.zslope || (k.has_ds&kDsDynamicBias);
         rs.depthBiasConstantFactor = float(k.zbias);
         rs.depthBiasSlopeFactor = k.zslope;
         rs.lineWidth = 1.0f;
@@ -2363,9 +2369,11 @@ VkPipeline VulkanBackend::MakePipeline(const PipeKey& k, VkShaderModule vs, VkSh
         cbs.pAttachments = &cb;
         // the line width only on the line pipelines: the others, nearly all, stay as the caches have them
         VkDynamicState dyn[] = {VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR, VK_DYNAMIC_STATE_BLEND_CONSTANTS,
-                                VK_DYNAMIC_STATE_STENCIL_REFERENCE, VK_DYNAMIC_STATE_LINE_WIDTH};
+                                VK_DYNAMIC_STATE_STENCIL_REFERENCE, VK_DYNAMIC_STATE_LINE_WIDTH, VK_DYNAMIC_STATE_DEPTH_BIAS};
         VkPipelineDynamicStateCreateInfo dy{VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO};
-        dy.dynamicStateCount = Lines(k) ? 5 : 4;
+        dy.dynamicStateCount = 4;
+        if (Lines(k)) dyn[dy.dynamicStateCount++]=VK_DYNAMIC_STATE_LINE_WIDTH;
+        if (k.has_ds&kDsDynamicBias) dyn[dy.dynamicStateCount++]=VK_DYNAMIC_STATE_DEPTH_BIAS;
         dy.pDynamicStates = dyn;
         VkFormat cf = kColorFormat;
         VkPipelineRenderingCreateInfo pr{VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO};
@@ -2671,6 +2679,7 @@ void VulkanBackend::Draw(const State& s, uint32_t prim, uint32_t start, uint32_t
 
     // the pipeline
     PipeKey k;
+    ShadowDepthPull shadow_pull;
     std::memset(&k, 0, sizeof(k));
     k.vs = vkey;
     k.ps = pkey;
@@ -2714,6 +2723,17 @@ void VulkanBackend::Draw(const State& s, uint32_t prim, uint32_t start, uint32_t
             k.zslope = Bits(SimpleState(s, kMSlopeScale));
         }
     }
+#ifdef NGB_CONVERTED_DISPLAY
+    // The original renderer's #106: a shadow receiver redraws the same wall
+    // through another vertex path. At high scale their depth values can tie.
+    static const bool allow_shadow_pull=[] {const char *v=std::getenv("NGB_D3D_SHADOW_PULL");return !v || *v!='0';}();
+    bool receiver=false;
+    for(int stage=0;stage<4;stage++) receiver|=from_target[stage] && info[stage].shadow!=0;
+    float shadow_scale=rt ? float(rt->img.w)/float(std::max<uint32_t>(rt->gw,1)) : 1.0f;
+    shadow_pull=ShadowReceiverPull(ngb_conversion_is_ios() && allow_shadow_pull,receiver,
+        a.topology==Topology::Triangles,k.has_ds!=0,k.zen!=0,k.zwrite!=0,shadow_scale);
+    if(shadow_pull.enabled) k.has_ds|=kDsDynamicBias;
+#endif
     // the console culls the CULLMODE winding (D3DCULL_CW 0x900, CCW 0x901); FRONTFACE says which
     // winding is the front, so the culled side is the front when the two agree
     uint32_t cull = s.rs[kRsCullMode], front = s.rs[kRsFrontFace];
@@ -2721,7 +2741,7 @@ void VulkanBackend::Draw(const State& s, uint32_t prim, uint32_t start, uint32_t
     k.ccw = front == 0x901;              // front faces counter clockwise (in Direct3D's y-down screen)
     k.cullfront = k.cull && cull == front;
     k.fill = s.rs[kRsFillMode];
-    if (spark_quad) { k.cull=0;k.fill=0x1B02;k.zbias=0;k.zslope=0; }
+    if (spark_quad) { k.cull=0;k.fill=0x1B02;k.zbias=0;k.zslope=0;k.has_ds&=~kDsDynamicBias; }
     static bool nocull = std::getenv("NGB_D3D_NOCULL") != nullptr;    // debugging
     static bool nodepth = std::getenv("NGB_D3D_NODEPTH") != nullptr;  // debugging
     static bool cullinv = std::getenv("NGB_D3D_CULLINV") != nullptr;  // debugging: the other side
@@ -2762,9 +2782,10 @@ void VulkanBackend::Draw(const State& s, uint32_t prim, uint32_t start, uint32_t
         pkey^=0x674C4F5753540001ull;k.ps=pkey;
         pmod=Module(pkey,[&] {return GlowStrengthHlsl(PixelHlsl(pk));},false);
     }
-    VkPipeline pipe = vmod && pmod ? Pipeline(k) : VK_NULL_HANDLE;
+    auto shadow_pipeline=[&] { return ShadowPipelineOrOriginal(k,[&](const PipeKey& key){return Pipeline(key);}); };
+    VkPipeline pipe = vmod && pmod ? shadow_pipeline() : VK_NULL_HANDLE;
 #ifdef NGB_SMOOTH_MOTION
-    if (!pipe && motion_shader) { original_vertex(); k.vs=vkey; pipe=vmod && pmod ? Pipeline(k) : VK_NULL_HANDLE; }
+    if (!pipe && motion_shader) { original_vertex(); k.vs=vkey; pipe=vmod && pmod ? shadow_pipeline() : VK_NULL_HANDLE; }
 #endif
     async_now_ = false;
     if (!pipe) {
@@ -3131,6 +3152,11 @@ void VulkanBackend::Draw(const State& s, uint32_t prim, uint32_t start, uint32_t
     // record: the uploads above may have submitted, so everything is set after them
     BeginRendering(rt, ds);
     d_.vkCmdBindPipeline(cmd_, VK_PIPELINE_BIND_POINT_GRAPHICS, pipe);
+    if(k.has_ds&kDsDynamicBias) {
+        d_.vkCmdSetDepthBias(cmd_,float(k.zbias)+shadow_pull.steps,0,k.zslope+shadow_pull.slope);
+        shadow_pulled_++;
+    } else if(shadow_pull.enabled) shadow_fallback_++;
+
     VkDescriptorBufferInfo bvc{ring_, vc, sizeof(s.vsc)}, bdc{ring_, dc, sizeof(c)};
     VkDescriptorImageInfo img[4], smp[4];
     for (int i = 0; i < 4; i++) {
@@ -3260,6 +3286,8 @@ void VulkanBackend::Draw(const State& s, uint32_t prim, uint32_t start, uint32_t
     if (motion_capture_ && motion_valid_) {
         auto packet=std::make_shared<MotionDraw>();
         packet->rt=rt; packet->ds=ds; packet->pipeline=pipe;
+        packet->depth_bias=(k.has_ds&kDsDynamicBias)!=0;
+        packet->bias_steps=float(k.zbias)+shadow_pull.steps;packet->bias_slope=k.zslope+shadow_pull.slope;
         if (motion_shader && k.zen && k.zfunc==0x202) motion_equal_++;
         packet->vc=motion_vc; packet->dc=c; packet->viewport=vpt; packet->scissor=sc;
         packet->buffers=a.buffer_count; packet->index_count=a.index_count;
@@ -3789,6 +3817,8 @@ void VulkanBackend::Present(const Surface& front) {
     if (rate_now-rate_start>=5000000000LL) {
         std::fprintf(stderr,"[iOS FPS] guest Swap rate %.2f/s; simulation target 60 Hz; native target %u x %u\n",
             double(presents_-rate_frame)*1e9/double(rate_now-rate_start),native_w_,native_h_);
+        std::fprintf(stderr,"[Shadow depth] corrected receiver draws %u; original-pipeline fallback %u/5s\n",shadow_pulled_,shadow_fallback_);
+        shadow_pulled_=shadow_fallback_=0;
         rate_start=rate_now; rate_frame=presents_;
     }
 #endif

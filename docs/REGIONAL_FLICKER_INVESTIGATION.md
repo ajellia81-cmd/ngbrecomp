@@ -30,3 +30,28 @@ camera for 20-30 seconds. Export the startup log before reopening the app
 (which replaces that log). Correlate HITCH/deferred events and D3D nopipe
 counts with the flicker. If those counts stay zero, inspect the actual depth
 passes/position invariance rather than altering shader-loading policy.
+
+## Targeted upstream correction found during diagnosis
+
+Upstream commit: https://github.com/gamboozino/ngbrecomp/commit/7caa75a8199300c85a0117c90885c32230663540
+Issue #106: a shadow receiver redraws a wall through a different vertex path.
+At high rendering scales its depth can disagree with the base surface, causing
+visible breakup/flicker. iPhone Native on the reported device is about 4.48x.
+This matches a known upstream condition, but identity with the device symptom
+still needs the owner's visual test.
+
+The backport keeps the upstream receiver predicate: triangle draws sampling a
+shadow render target, testing depth, and not writing depth. It adds -2 depth
+steps and -0.5 times at least 1x rendering scale to the game's existing bias.
+Only converted iOS enables this predicate. Normal colour, depth-writing and
+non-shadow passes retain their original depth state. Shader programs and the
+VF3 common interpolation code are unchanged. The existing has_ds field carries
+the dynamic-bias bit without changing pipeline key layout. Until a new biased
+pipeline is ready, the original cached pipeline draws the surface; there is no
+additional synchronous compile, prewarm, gate or loading-policy change.
+
+NGB's replay adapter records and reapplies the same dynamic bias to midpoint
+draws. The correction therefore works with Smooth Motion both Off and On.
+The log reports corrected receiver draws and temporary original-pipeline
+fallback counts. Existing HITCH/frame reports remain enabled for comparison.
+No other upstream rendering/threading/stale-target changes are imported.

@@ -96,6 +96,7 @@ void VulkanBackend::MotionReplay(const MotionDraw& p) {
     }
     BeginRendering(MotionTargetFor(p.rt),MotionTargetFor(p.ds));
     d_.vkCmdBindPipeline(cmd_,VK_PIPELINE_BIND_POINT_GRAPHICS,p.pipeline);
+    if(p.depth_bias) d_.vkCmdSetDepthBias(cmd_,p.bias_steps,0,p.bias_slope);
     VkDescriptorBufferInfo uniform[2]={{ring_,vc,sizeof p.vc},{ring_,dc,sizeof p.dc}};
     VkDescriptorBufferInfo scene_positions{ring_,positions,p.scene.positions.empty()?16:p.scene.positions.size()*sizeof(ScenePosition)};
     VkWriteDescriptorSet writes[11]{};
