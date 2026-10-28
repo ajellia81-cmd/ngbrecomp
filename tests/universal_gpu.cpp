@@ -144,7 +144,8 @@ public:
   if(!generic)vkDestroyPipeline(device,p,nullptr);vk(vkFreeDescriptorSets(device,descriptor_pool,1,&set));if(!generic){vkDestroyShaderModule(device,vs,nullptr);vkDestroyShaderModule(device,ps,nullptr);}return result;
  }
 };
-static void compare(const std::vector<uint8_t>& a,const std::vector<uint8_t>& b,const char* label){unsigned mismatch=0,maximum=0;for(size_t i=0;i<a.size();i++){unsigned error=unsigned(std::abs(int(a[i])-int(b[i])));maximum=std::max(maximum,error);if(error>1)mismatch++;}if(mismatch)throw std::runtime_error(std::string(label)+": "+std::to_string(mismatch)+" mismatched channels, max error "+std::to_string(maximum));std::cout<<"PASS: "<<label<<std::endl;}
+static unsigned failed_comparisons=0;
+static void compare(const std::vector<uint8_t>& a,const std::vector<uint8_t>& b,const char* label){unsigned mismatch=0,maximum=0;for(size_t i=0;i<a.size();i++){unsigned error=unsigned(std::abs(int(a[i])-int(b[i])));maximum=std::max(maximum,error);if(error>1)mismatch++;}if(mismatch){failed_comparisons++;std::cerr<<"MISMATCH: "<<label<<": "<<mismatch<<" channels, max error "<<maximum;unsigned shown=0;for(size_t i=0;i<a.size()&&shown<4;i++)if(std::abs(int(a[i])-int(b[i]))>1){std::cerr<<" ["<<i<<":"<<unsigned(a[i])<<"/"<<unsigned(b[i])<<"]";shown++;}std::cerr<<std::endl;return;}std::cout<<"PASS: "<<label<<std::endl;}
 int main(){try{
  GPU gpu;State state;state.vs_handle=0x44;state.tss[0][kTssColorOp]=2;state.tss[0][kTssColorArg1]=0;state.tss[0][kTssAlphaOp]=2;state.tss[0][kTssAlphaArg1]=0;state.tss[1][kTssColorOp]=1;
  Vertex triangle[12]{};float positions[3][4]={{2,2,.4f,1},{44,2,.4f,1},{2,44,.4f,1}};
@@ -243,6 +244,7 @@ int main(){try{
   compare(reference,universal,("NV2A DP4 generic -> specialized depth "+std::to_string(trial)).c_str());cases++;
  }
  check(gpu.validation_errors==0,"Vulkan validation reported errors");
+ check(failed_comparisons==0,"synthetic image comparisons differed; see MISMATCH diagnostics");
  std::cout<<"PASS: "<<cases<<" uncached synthetic GPU image comparisons, including same-draw overlapping blend primitives\n";
  return 0;
 }catch(const std::exception& e){std::cerr<<"FAIL: "<<e.what()<<'\n';return 1;}}
