@@ -1,4 +1,6 @@
 #include "gpu/shaders.h"
+#include "gpu/universal_shaders.h"
+#include <stdexcept>
 #include "gpu/scene_motion.h"
 #include <regex>
 #include "gpu/vertex.h"
@@ -1138,3 +1140,7 @@ std::string MotionVertexHlsl(std::string s) {
 }
 }
 #endif
+
+namespace gpu {
+#include "gpu/universal_shaders.inc"
+}

@@ -74,7 +74,7 @@ void VulkanBackend::MotionFeedback(Target *target) {
 void VulkanBackend::MotionReplay(const MotionDraw& p) {
     // Upload can submit/reset the ring. All following bindings are rebuilt from
     // this owned packet, exactly as the original draw rebuilds its bindings.
-    uint64_t required=sizeof p.vc+sizeof p.dc+ringAlign_*3+16*16+4+p.indices.size()+p.scene.positions.size()*sizeof(ScenePosition);
+    uint64_t required=sizeof p.vc+sizeof p.dc+(p.universal?sizeof(UniversalConstants)+ringAlign_:0)+ringAlign_*3+16*16+4+p.indices.size()+p.scene.positions.size()*sizeof(ScenePosition);
     for (uint32_t i=0;i<p.buffers;i++) required+=p.vertices[i].size();
     if (required>kUploadSlotBytes) { motion_valid_=false; return; }
     if (!UploadRingFits(ring_pos_,required)) Submit();
@@ -94,9 +94,17 @@ void VulkanBackend::MotionReplay(const MotionDraw& p) {
         if (!image || !image->image) return;
         Barrier(*image,images[i].imageLayout); images[i].imageView=image->view;
     }
-    BeginRendering(MotionTargetFor(p.rt),MotionTargetFor(p.ds));
+    VkDeviceSize universal_offset=0;
+    if(p.universal) {
+        auto data=p.universal->constants;
+        for(unsigned r=0;r<16;r++)if(data[uRegisters]&(1u<<r))data[uVertex+r*4]+=uint32_t(offsets[p.universal->buffers[r]]);
+        universal_offset=Upload(&data,sizeof data,ringAlign_);
+    }
+    auto replay_rt=MotionTargetFor(p.rt);
+    BeginRendering(replay_rt,MotionTargetFor(p.ds),bool(p.universal));
     d_.vkCmdBindPipeline(cmd_,VK_PIPELINE_BIND_POINT_GRAPHICS,p.pipeline);
-    if(p.depth_bias) d_.vkCmdSetDepthBias(cmd_,p.bias_steps,0,p.bias_slope);
+    if(p.universal)UniversalDynamic(p.universal->key,p.bias_steps,p.bias_slope);
+    else if(p.depth_bias) d_.vkCmdSetDepthBias(cmd_,p.bias_steps,0,p.bias_slope);
     VkDescriptorBufferInfo uniform[2]={{ring_,vc,sizeof p.vc},{ring_,dc,sizeof p.dc}};
     VkDescriptorBufferInfo scene_positions{ring_,positions,p.scene.positions.empty()?16:p.scene.positions.size()*sizeof(ScenePosition)};
     VkWriteDescriptorSet writes[11]{};
@@ -108,7 +116,8 @@ void VulkanBackend::MotionReplay(const MotionDraw& p) {
         else { w.descriptorType=i<6 ? VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE : VK_DESCRIPTOR_TYPE_SAMPLER;
             w.pImageInfo=i<6 ? &images[i-2] : &p.samplers[i-6]; }
     }
-    d_.vkCmdPushDescriptorSetKHR(cmd_,VK_PIPELINE_BIND_POINT_GRAPHICS,pipe_layout_,0,11,writes);
+    if(p.universal)UniversalBindings(p.universal->textures.data(),images.data(),p.samplers.data(),replay_rt,vc,dc,universal_offset,scene_positions);
+    else d_.vkCmdPushDescriptorSetKHR(cmd_,VK_PIPELINE_BIND_POINT_GRAPHICS,pipe_layout_,0,11,writes);
     d_.vkCmdSetViewport(cmd_,0,1,&p.viewport); d_.vkCmdSetScissor(cmd_,0,1,&p.scissor);
     d_.vkCmdSetBlendConstants(cmd_,p.blend);
     d_.vkCmdSetStencilReference(cmd_,VK_STENCIL_FACE_FRONT_AND_BACK,p.stencil);

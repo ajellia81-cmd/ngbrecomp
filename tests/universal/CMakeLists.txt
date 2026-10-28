@@ -1,0 +1,14 @@
+cmake_minimum_required(VERSION 3.20)
+project(ngb_universal_gpu_tests LANGUAGES CXX)
+find_package(Vulkan REQUIRED)
+find_package(glslang 16 CONFIG REQUIRED)
+set(ROOT "${CMAKE_CURRENT_LIST_DIR}/../..")
+add_executable(universal_gpu ../universal_gpu.cpp
+    ${ROOT}/src/d3d/gpu/shaders.cpp ${ROOT}/src/d3d/vk/spirv.cpp)
+target_compile_features(universal_gpu PRIVATE cxx_std_20)
+target_compile_definitions(universal_gpu PRIVATE NGB_SMOOTH_MOTION=1)
+target_include_directories(universal_gpu PRIVATE ${ROOT}/src/d3d)
+target_link_libraries(universal_gpu PRIVATE Vulkan::Vulkan glslang::glslang
+    glslang::SPIRV glslang::glslang-default-resource-limits)
+enable_testing()
+add_test(NAME universal_gpu COMMAND universal_gpu)

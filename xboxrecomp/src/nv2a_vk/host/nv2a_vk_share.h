@@ -22,6 +22,8 @@ typedef struct nv2a_vk_shared {
     /* Vulkan 1.3 with dynamic rendering and synchronization2 on, and
      * VK_KHR_push_descriptor: what the Direct3D renderer needs. */
     bool features13;
+    /* Enabled at device creation, not merely advertised by the driver. */
+    bool universal_local_read, universal_dynamic_state, universal_ordered_access;
 } nv2a_vk_shared;
 
 /* 1 and filled in once the device exists, 0 before, -1 when there is none

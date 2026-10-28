@@ -33,6 +33,7 @@ static bool enable_validation = false;
 static nv2a_vk_shared s_shared;
 static int s_shared_state;          /* 0 not yet, 1 up, -1 none */
 static bool s_push_descriptor_enabled;
+static bool s_universal_extensions, s_universal_ordered;
 static GMutex s_queue_lock;
 
 int nv2a_vk_share(nv2a_vk_shared *out)
@@ -390,6 +391,19 @@ static void add_optional_device_extension_names(
     s_push_descriptor_enabled = add_extension_if_available(
         available_extensions, enabled_extension_names,
         VK_KHR_PUSH_DESCRIPTOR_EXTENSION_NAME);
+    const char *universal = getenv("NGB_D3D_UNIVERSAL");
+    s_universal_extensions = false;
+    s_universal_ordered = false;
+    if (universal && !strcmp(universal, "1")) {
+        bool local = add_extension_if_available(available_extensions, enabled_extension_names,
+                                                VK_KHR_DYNAMIC_RENDERING_LOCAL_READ_EXTENSION_NAME);
+        bool dynamic = add_extension_if_available(available_extensions, enabled_extension_names,
+                                                  VK_EXT_EXTENDED_DYNAMIC_STATE_EXTENSION_NAME);
+        s_universal_extensions = local && dynamic;
+        if (s_universal_extensions)
+            s_universal_ordered = add_extension_if_available(available_extensions, enabled_extension_names,
+                                        VK_EXT_RASTERIZATION_ORDER_ATTACHMENT_ACCESS_EXTENSION_NAME);
+    }
 }
 
 static bool check_device_support_required_extensions(VkPhysicalDevice device)
@@ -624,6 +638,37 @@ static bool create_logical_device(PGRAPHState *pg, Error **errp)
         next_struct = &features13;
     }
     s_shared.features13 = have13 && s_push_descriptor_enabled;
+
+    VkPhysicalDeviceRasterizationOrderAttachmentAccessFeaturesEXT ordered = {
+        .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RASTERIZATION_ORDER_ATTACHMENT_ACCESS_FEATURES_EXT,
+    };
+    VkPhysicalDeviceExtendedDynamicStateFeaturesEXT dynamic = {
+        .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_EXTENDED_DYNAMIC_STATE_FEATURES_EXT,
+    };
+    VkPhysicalDeviceDynamicRenderingLocalReadFeaturesKHR local = {
+        .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DYNAMIC_RENDERING_LOCAL_READ_FEATURES_KHR,
+    };
+    s_shared.universal_local_read = s_shared.universal_dynamic_state = false;
+    s_shared.universal_ordered_access = false;
+    if (s_universal_extensions && have13) {
+        local.pNext = &dynamic;
+        dynamic.pNext = s_universal_ordered ? &ordered : NULL;
+        VkPhysicalDeviceFeatures2 query = {
+            .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2,
+            .pNext = &local,
+        };
+        vkGetPhysicalDeviceFeatures2(r->physical_device, &query);
+        if (local.dynamicRenderingLocalRead && dynamic.extendedDynamicState) {
+            ordered.pNext = next_struct;
+            if (!s_universal_ordered) dynamic.pNext = next_struct;
+            next_struct = &local;
+            s_shared.universal_local_read = true;
+            s_shared.universal_dynamic_state = true;
+            s_shared.universal_ordered_access = ordered.rasterizationOrderColorAttachmentAccess;
+            r->enabled_physical_device_features.sampleRateShading = query.features.sampleRateShading;
+        }
+    }
+
 
     VkPhysicalDeviceCustomBorderColorFeaturesEXT custom_border_features;
     if (r->custom_border_color_extension_enabled) {

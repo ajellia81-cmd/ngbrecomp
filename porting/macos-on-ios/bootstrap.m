@@ -110,6 +110,8 @@ int ngb_conversion_startup(void){@autoreleasepool {
         // from visible surfaces disagreeing in depth. No capture or sync policy.
         setenv("NGB_D3D_HITCHLOG","1",0);
         setenv("NGB_D3D_STATS","1",0);
+        setenv("NGB_D3D_UNIVERSAL","1",0);
+        fprintf(stderr,"[Universal shaders] experimental fallback requested; original guest loading/cache-copy behavior retained\n");
         fprintf(stderr,"[Graphics diagnostics] existing missing-draw/compiler log and renderer counts enabled; rendering policy unchanged\n");
         // Presentation may wait for UIKit to retire a drawable. Keep that
         // wait on MoltenVK's submission worker, outside the game thread.

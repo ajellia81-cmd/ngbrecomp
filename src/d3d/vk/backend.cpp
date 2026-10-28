@@ -36,6 +36,7 @@
 
 #include "gpu/backend.h"
 #include "gpu/shaders.h"
+#include "gpu/universal_shaders.h"
 #include "gpu/texture.h"
 #include "gpu/vertex.h"
 #include "gpu/scene_motion.h"
@@ -358,7 +359,14 @@ public:
 
 private:
 #ifdef NGB_SMOOTH_MOTION
+    struct UniversalReplay {
+        UniversalConstants constants;
+        PipeKey key{};
+        std::array<TexInfo,4> textures{};
+        std::array<uint32_t,16> buffers{};
+    };
     struct MotionDraw {
+        std::unique_ptr<UniversalReplay> universal;
         Target *rt=nullptr,*ds=nullptr;
         VkPipeline pipeline=VK_NULL_HANDLE;
         std::array<std::array<float,4>,192> vc{};
@@ -553,7 +561,7 @@ private:
 
     // images
     bool CreateImage(Image& img, VkFormat fmt, uint32_t w, uint32_t h, uint32_t layers, uint32_t levels, bool depth,
-                     bool cube, VkImageUsageFlags usage, uint32_t samples = 1, bool mutable_format = false);
+                     bool cube, VkImageUsageFlags usage, uint32_t samples = 1, bool mutable_format = false, bool volume = false);
     void DestroyImage(Image& img);
     void Barrier(Image& img, VkImageLayout to);
 
@@ -565,8 +573,8 @@ private:
     Target* bound_rt_ = nullptr;
     Target* draw_rt_ = nullptr;      // the colour target of the draw whose textures are being bound
     Target* bound_ds_ = nullptr;
-    bool rendering_ = false;
-    void BeginRendering(Target* rt, Target* ds);
+    bool rendering_ = false,rendering_universal_=false;
+    void BeginRendering(Target* rt, Target* ds, bool universal=false);
     void EndRendering();
     void FillMs(Target& t);    // MSAA image from the plain one (a picture kept across a setting change)
     VkSampler fill_sampler_ = VK_NULL_HANDLE;
@@ -586,6 +594,20 @@ private:
     VkShaderModule Module(uint64_t key, const std::function<std::string()>& src, bool vertex);
     VkPipeline Pipeline(const PipeKey& k);
 
+    bool universal_capable_=false,universal_ordered_=false,universal_ready_=false;
+    VkDescriptorSetLayout universal_set_=VK_NULL_HANDLE;
+    VkPipelineLayout universal_layout_=VK_NULL_HANDLE;
+    VkShaderModule universal_vs_=VK_NULL_HANDLE,universal_ps_[3]{};
+    std::unordered_map<uint32_t,VkPipeline> universal_pipes_;
+    Image universal_null3d_,universal_depth_;
+    VkSampler universal_normal_=VK_NULL_HANDLE,universal_comparison_=VK_NULL_HANDLE;
+    void UniversalDynamic(const PipeKey&,float,float);
+    void UniversalBindings(const TexInfo*,const VkDescriptorImageInfo*,const VkDescriptorImageInfo*,Target*,VkDeviceSize,VkDeviceSize,VkDeviceSize,const VkDescriptorBufferInfo&);
+    bool UniversalInit();
+    void UniversalDestroy();
+    VkPipeline MakeUniversalPipeline(const PipeKey&,VkShaderModule,VkShaderModule);
+    VkShaderModule RequestModule(uint64_t,std::function<std::string()>,bool);
+    VkPipeline RequestPipeline(const PipeKey&);
     Assembled asm_;
     // the shader cache (ShaderCache below): how each module was made, its SPIR-V, the pipelines
     std::recursive_mutex cache_mu_;   // modules_ and pipelines_ (the prewarm thread fills them too)
@@ -603,7 +625,7 @@ private:
     // shaders and pipelines a draw needs and nothing has made yet: made on a thread of their own while the
     // draw is left out (a frame or two), instead of the frame waiting for them (a hitch). NGB_D3D_SYNC_COMPILE=1
     // makes them at once instead.
-    struct Job { bool pipeline; uint64_t key; std::string hlsl; bool vertex; PipeKey pk; };
+    struct Job { bool pipeline; uint64_t key; std::string hlsl; bool vertex; PipeKey pk; std::function<std::string()> factory; };
     std::thread compiler_;
     std::mutex job_mu_;
     std::condition_variable job_cv_;
@@ -726,17 +748,39 @@ bool VulkanBackend::CreateDevice() {
         f2.features.wideLines = have.wideLines;
         f2.features.largePoints = have.largePoints;
     }
-    const char* exts[] = {VK_KHR_PUSH_DESCRIPTOR_EXTENSION_NAME,
+    std::vector<const char*> exts{VK_KHR_PUSH_DESCRIPTOR_EXTENSION_NAME,
 #ifdef __APPLE__
-                          "VK_KHR_portability_subset",
+        "VK_KHR_portability_subset",
 #endif
     };
+    VkPhysicalDeviceDynamicRenderingLocalReadFeaturesKHR local{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DYNAMIC_RENDERING_LOCAL_READ_FEATURES_KHR};
+    VkPhysicalDeviceExtendedDynamicStateFeaturesEXT dynamic{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_EXTENDED_DYNAMIC_STATE_FEATURES_EXT};
+    VkPhysicalDeviceRasterizationOrderAttachmentAccessFeaturesEXT ordered{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RASTERIZATION_ORDER_ATTACHMENT_ACCESS_FEATURES_EXT};
+    const char* universal=std::getenv("NGB_D3D_UNIVERSAL");
+    if(universal && !std::strcmp(universal,"1")) {
+        uint32_t count=0;vkEnumerateDeviceExtensionProperties(phys_,nullptr,&count,nullptr);
+        std::vector<VkExtensionProperties> available(count);vkEnumerateDeviceExtensionProperties(phys_,nullptr,&count,available.data());
+        auto has=[&](const char* name){for(const auto& extension:available)if(!std::strcmp(name,extension.extensionName))return true;return false;};
+        if(has(VK_KHR_DYNAMIC_RENDERING_LOCAL_READ_EXTENSION_NAME) && has(VK_EXT_EXTENDED_DYNAMIC_STATE_EXTENSION_NAME)) {
+            bool order=has(VK_EXT_RASTERIZATION_ORDER_ATTACHMENT_ACCESS_EXTENSION_NAME);
+            local.pNext=&dynamic;dynamic.pNext=order?&ordered:nullptr;
+            VkPhysicalDeviceFeatures2 query{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2};query.pNext=&local;
+            vkGetPhysicalDeviceFeatures2(phys_,&query);
+            if(local.dynamicRenderingLocalRead && dynamic.extendedDynamicState) {
+                exts.push_back(VK_KHR_DYNAMIC_RENDERING_LOCAL_READ_EXTENSION_NAME);
+                exts.push_back(VK_EXT_EXTENDED_DYNAMIC_STATE_EXTENSION_NAME);
+                if(order)exts.push_back(VK_EXT_RASTERIZATION_ORDER_ATTACHMENT_ACCESS_EXTENSION_NAME);
+                f13.pNext=&local;f2.features.sampleRateShading=query.features.sampleRateShading;
+                universal_capable_=true;universal_ordered_=ordered.rasterizationOrderColorAttachmentAccess;
+            }
+        }
+    }
     VkDeviceCreateInfo dci{VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO};
     dci.pNext = &f2;
     dci.queueCreateInfoCount = 1;
     dci.pQueueCreateInfos = &qci;
-    dci.enabledExtensionCount = sizeof(exts) / sizeof(exts[0]);
-    dci.ppEnabledExtensionNames = exts;
+    dci.enabledExtensionCount = uint32_t(exts.size());
+    dci.ppEnabledExtensionNames = exts.data();
     VKCHECK(vkCreateDevice(phys_, &dci, nullptr, &dev_));
     volkLoadDeviceTable(&d_, dev_);
     d_.vkGetDeviceQueue(dev_, qfam_, 0, &queue_);
@@ -753,6 +797,8 @@ bool VulkanBackend::AdoptDevice(const nv2a_vk_shared& sh) {
     if (!volkGetLoadedInstance()) volkLoadInstanceOnly(inst_);
     volkLoadDeviceTable(&d_, dev_);
     shared_ = true;
+    universal_capable_=sh.universal_local_read && sh.universal_dynamic_state;
+    universal_ordered_=sh.universal_ordered_access;
     return FinishDevice();
 }
 
@@ -905,7 +951,7 @@ bool VulkanBackend::Init(uint32_t, uint32_t) {
     VKCHECK(d_.vkCreatePipelineLayout(dev_, &plci, nullptr, &pipe_layout_));
 
     // stand-ins for stages without a texture, of each kind
-    VkImageUsageFlags u = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
+    VkImageUsageFlags u = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | (universal_capable_?VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT:0);
     if (!CreateImage(null2d_, kColorFormat, 1, 1, 1, 1, false, false, u) ||
         !CreateImage(nullcube_, kColorFormat, 1, 1, 6, 1, false, true, u) ||
         !CreateImage(null3d_, kColorFormat, 1, 1, 1, 1, false, false, u))
@@ -927,6 +973,9 @@ bool VulkanBackend::Init(uint32_t, uint32_t) {
     Barrier(nullcube_, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
     Barrier(null3d_, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
     CacheOpen();
+    const char* universal=std::getenv("NGB_D3D_UNIVERSAL");
+    if(universal && !std::strcmp(universal,"1") && !universal_capable_)ngb_renderer_fatal("This Vulkan device did not enable the universal shader features.");
+    if(universal_capable_ && !UniversalInit())ngb_renderer_fatal("The experimental universal pipeline bank could not be prepared.");
     return true;
 }
 
@@ -953,6 +1002,7 @@ VulkanBackend::~VulkanBackend() {
         d_.vkDeviceWaitIdle(dev_);
     }
     if (dev_) {
+        UniversalDestroy();
 #ifdef NGB_SMOOTH_MOTION
         for (auto& [key,target]:motion_targets_) { DestroyImage(target.replay.img); DestroyImage(target.replay.fb); }
         for (auto& image:motion_display_) DestroyImage(image);
@@ -1142,23 +1192,23 @@ VkDeviceSize VulkanBackend::Upload(const void* data, VkDeviceSize bytes, VkDevic
 }
 
 bool VulkanBackend::CreateImage(Image& img, VkFormat fmt, uint32_t w, uint32_t h, uint32_t layers, uint32_t levels,
-                                bool depth, bool cube, VkImageUsageFlags usage, uint32_t samples, bool mutable_format) {
+                                bool depth, bool cube, VkImageUsageFlags usage, uint32_t samples, bool mutable_format, bool volume) {
     VkImageCreateInfo ci{VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO};
     ci.flags = (cube ? VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT : 0) | (mutable_format ? VK_IMAGE_CREATE_MUTABLE_FORMAT_BIT : 0);
-    ci.imageType = VK_IMAGE_TYPE_2D;
+    ci.imageType = volume ? VK_IMAGE_TYPE_3D : VK_IMAGE_TYPE_2D;
     ci.format = fmt;
     ci.extent = {w, h, 1};
     ci.mipLevels = levels;
     ci.arrayLayers = layers;
     ci.samples = VkSampleCountFlagBits(samples);
     ci.tiling = VK_IMAGE_TILING_OPTIMAL;
-    ci.usage = usage;
+    ci.usage = usage | (universal_capable_ && !depth && (usage&VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT) ? VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT : 0);
     VmaAllocationCreateInfo aci{};
     aci.usage = VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE;
     VKCHECK(vmaCreateImage(vma_, &ci, &aci, &img.image, &img.mem, nullptr));
     VkImageViewCreateInfo vci{VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO};
     vci.image = img.image;
-    vci.viewType = cube ? VK_IMAGE_VIEW_TYPE_CUBE : VK_IMAGE_VIEW_TYPE_2D;
+    vci.viewType = volume ? VK_IMAGE_VIEW_TYPE_3D : cube ? VK_IMAGE_VIEW_TYPE_CUBE : VK_IMAGE_VIEW_TYPE_2D;
     vci.format = fmt;
     vci.subresourceRange = {VkImageAspectFlags(depth ? VK_IMAGE_ASPECT_DEPTH_BIT : VK_IMAGE_ASPECT_COLOR_BIT), 0,
                             levels, 0, layers};
@@ -1641,21 +1691,23 @@ void VulkanBackend::EndRendering() {
     rendering_ = false;
 }
 
-void VulkanBackend::BeginRendering(Target* rt, Target* ds) {
+void VulkanBackend::BeginRendering(Target* rt, Target* ds,bool universal) {
     // a colour and a depth target of different sizes cannot share a pass (one scaled, one not):
     // the depth goes without, as the title's picture is in the colour
     if (rt && ds && (rt->img.w != ds->img.w || rt->img.h != ds->img.h || rt->samples != ds->samples)) ds = nullptr;
-    if (rendering_ && rt == bound_rt_ && ds == bound_ds_) return;
+    if (rendering_ && rt == bound_rt_ && ds == bound_ds_ && universal==rendering_universal_) return;
     EndRendering();
     if (rt && rt->ms_stale) {
         if (rt->drawn) FillMs(*rt);
         rt->ms_stale = false;
     }
+    rendering_universal_=universal;
+    auto color_layout=universal?VK_IMAGE_LAYOUT_RENDERING_LOCAL_READ_KHR:VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
     bound_rt_ = rt;
     bound_ds_ = ds;
-    if (rt) Barrier(rt->img, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+    if (rt) Barrier(rt->img, rt->samples>1?VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL:color_layout);
     if (ds) Barrier(ds->img, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL);
-    if (rt && rt->samples > 1) Barrier(rt->ms, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+    if (rt && rt->samples > 1) Barrier(rt->ms, color_layout);
     if (ds && ds->samples > 1) Barrier(ds->ms, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL);
     {   // The pass before, on the same targets in the same layout, got no barrier above (Barrier skips an
         // unchanged layout), and Vulkan orders attachment writes only within a pass: its depth and colour
@@ -1666,8 +1718,8 @@ void VulkanBackend::BeginRendering(Target* rt, Target* ds) {
         mb.srcStageMask = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT |
                           VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT;
         mb.srcAccessMask = VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
-        mb.dstStageMask = mb.srcStageMask;
-        mb.dstAccessMask = VK_ACCESS_2_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT |
+        mb.dstStageMask = mb.srcStageMask | (universal?VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT:0);
+        mb.dstAccessMask = (universal?VK_ACCESS_2_INPUT_ATTACHMENT_READ_BIT:0) | VK_ACCESS_2_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT |
                            VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_READ_BIT |
                            VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
         VkDependencyInfo di{VK_STRUCTURE_TYPE_DEPENDENCY_INFO};
@@ -1680,7 +1732,7 @@ void VulkanBackend::BeginRendering(Target* rt, Target* ds) {
     VkRenderingAttachmentInfo da{VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO};
     if (rt) {
         ca.imageView = rt->img.view;
-        ca.imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+        ca.imageLayout = color_layout;
         ca.loadOp = rt->drawn ? VK_ATTACHMENT_LOAD_OP_LOAD : VK_ATTACHMENT_LOAD_OP_CLEAR;
         ca.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
         if (rt->samples > 1) {                       // drawn multisampled, resolved as the pass ends
@@ -1714,6 +1766,10 @@ void VulkanBackend::BeginRendering(Target* rt, Target* ds) {
     ri.pDepthAttachment = ds ? &da : nullptr;
     ri.pStencilAttachment = ds ? &da : nullptr;
     d_.vkCmdBeginRendering(cmd_, &ri);
+    if(universal && rt) {
+        uint32_t index=0;VkRenderingInputAttachmentIndexInfoKHR local{VK_STRUCTURE_TYPE_RENDERING_INPUT_ATTACHMENT_INDEX_INFO_KHR};
+        local.colorAttachmentCount=1;local.pColorAttachmentInputIndices=&index;d_.vkCmdSetRenderingInputAttachmentIndicesKHR(cmd_,&local);
+    }
     rendering_ = true;
 }
 
@@ -2399,6 +2455,8 @@ VkPipeline VulkanBackend::MakePipeline(const PipeKey& k, VkShaderModule vs, VkSh
     return pipe;
 }
 
+#include "universal_backend.inc"
+
 // D3DLIGHT8 as floats: Type, Diffuse[4], Specular[4], Ambient[4], Position[3], Direction[3], Range,
 // Falloff, Attenuation0 to 2, Theta, Phi; to view space for the fixed function shader
 void LightToView(const std::array<uint32_t, 26>& l, const float* vm, float (&o)[7][4]) {
@@ -2536,14 +2594,14 @@ void VulkanBackend::Draw(const State& s, uint32_t prim, uint32_t start, uint32_t
     if (motion_shader) vkey ^= 0x5646335343454E45ull;
 #endif
     async_now_ = async_;
-    auto vertex_source = [&](bool use_motion) {
-        std::string src = prog ? VertexProgramHlsl(s.vs->program, a.regs, a.decode)
-                               : FixedVertexHlsl(a.regs, a.pretransformed, a.decode, fk);
+    auto vertex_source = [program=s.vs,regs=a.regs,decode=a.decode,pre=a.pretransformed,fk,quad,points,spark_quad,vkey,prog](bool use_motion) {
+        std::string src = prog ? VertexProgramHlsl(program->program,regs,decode)
+                               : FixedVertexHlsl(regs,pre,decode,fk);
         if (spark_quad) src = SparkStrokeHlsl(std::move(src));
         // the quad step for a screen quad -- and for every pretransformed fixed-function draw, as the shader cache
         // rebuilds those (its record has no quad flag; the step does nothing unless QuadSnap turns it on)
-        if (quad || (!prog && a.pretransformed)) src = QuadHlsl(std::move(src));
-        if (points) src = PointHlsl(std::move(src), prog ? 0 : a.pretransformed ? 2 : 1);
+        if (quad || (!prog && pre)) src = QuadHlsl(std::move(src));
+        if (points) src = PointHlsl(std::move(src), prog ? 0 : pre ? 2 : 1);
         static const char* dump = std::getenv("NGB_D3D_SHADERDUMP");
         if (dump) {
             char path[512];
@@ -2555,20 +2613,19 @@ void VulkanBackend::Draw(const State& s, uint32_t prim, uint32_t start, uint32_t
 #endif
         return src;
     };
-    VkShaderModule vmod=Module(vkey,[&] { return vertex_source(
+    bool use_motion=false;
 #ifdef NGB_SMOOTH_MOTION
-        motion_shader
-#else
-        false
+    use_motion=motion_shader;
 #endif
-    ); },true);
+    auto vertex_factory=[vertex_source,use_motion]{return vertex_source(use_motion);};
+    VkShaderModule vmod=universal_ready_?RequestModule(vkey,vertex_factory,true):Module(vkey,vertex_factory,true);
 #ifdef NGB_SMOOTH_MOTION
     auto original_vertex=[&] {
         if (!motion_shader) return;
         motion_shader=false; motion_valid_=false; vkey^=0x5646335343454E45ull;
         vmod=Module(vkey,[&] { return vertex_source(false); },true);
     };
-    if (!vmod) original_vertex();
+    if (!vmod && !universal_ready_) original_vertex();
 #endif
 
     // textures, then the pixel shader made for them
@@ -2621,7 +2678,7 @@ void VulkanBackend::Draw(const State& s, uint32_t prim, uint32_t start, uint32_t
         }
         if (pnew) CacheRecord('P', pkey, &pk, sizeof(pk));
     }
-    VkShaderModule pmod = Module(pkey, [&] {
+    auto pixel_factory = [pk,sprite,pkey] {
         std::string src = PixelHlsl(pk);
         if (sprite) src = SpriteHlsl(std::move(src));
         // NGB_D3D_PSDEBUG=bump | duv | copy: the water's draws only (a bump map in stage 0 displacing stage
@@ -2675,7 +2732,8 @@ void VulkanBackend::Draw(const State& s, uint32_t prim, uint32_t start, uint32_t
             if (FILE* f = std::fopen(path, "w")) { std::fputs(src.c_str(), f); std::fclose(f); }
         }
         return src;
-    }, false);
+    };
+    VkShaderModule pmod=universal_ready_?RequestModule(pkey,pixel_factory,false):Module(pkey,pixel_factory,false);
 
     // the pipeline
     PipeKey k;
@@ -2780,13 +2838,20 @@ void VulkanBackend::Draw(const State& s, uint32_t prim, uint32_t start, uint32_t
     if (glow_pass && GlowStrength()<1.0f) {
         async_now_=false;
         pkey^=0x674C4F5753540001ull;k.ps=pkey;
-        pmod=Module(pkey,[&] {return GlowStrengthHlsl(PixelHlsl(pk));},false);
+        auto factory=[pk]{return GlowStrengthHlsl(PixelHlsl(pk));};
+        pmod=universal_ready_?RequestModule(pkey,factory,false):Module(pkey,factory,false);
     }
-    auto shadow_pipeline=[&] { return ShadowPipelineOrOriginal(k,[&](const PipeKey& key){return Pipeline(key);}); };
+    auto shadow_pipeline=[&] { return ShadowPipelineOrOriginal(k,[&](const PipeKey& key){return universal_ready_?RequestPipeline(key):Pipeline(key);}); };
     VkPipeline pipe = vmod && pmod ? shadow_pipeline() : VK_NULL_HANDLE;
 #ifdef NGB_SMOOTH_MOTION
-    if (!pipe && motion_shader) { original_vertex(); k.vs=vkey; pipe=vmod && pmod ? shadow_pipeline() : VK_NULL_HANDLE; }
+    if (!pipe && motion_shader && !universal_ready_) { original_vertex(); k.vs=vkey; pipe=vmod && pmod ? shadow_pipeline() : VK_NULL_HANDLE; }
 #endif
+    bool universal_draw=universal_ready_ && !pipe;
+    if(universal_draw) {
+        auto family=universal_pipes_.find(UniversalFamily(k));
+        if(family==universal_pipes_.end())ngb_renderer_fatal("No prepared universal pipeline for this draw state.");
+        pipe=family->second;
+    }
     async_now_ = false;
     if (!pipe) {
         st_.nopipe++;
@@ -3117,7 +3182,7 @@ void VulkanBackend::Draw(const State& s, uint32_t prim, uint32_t start, uint32_t
 #ifdef NGB_SMOOTH_MOTION
     // Uniforms and this draw's geometry must stay in the same ring generation.
     // A wrap between their uploads would replace uniforms before the draw used them.
-    uint64_t required=sizeof(s.vsc)+sizeof(c)+ringAlign_*2+16*16+4;
+    uint64_t required=sizeof(s.vsc)+sizeof(c)+sizeof(UniversalConstants)+ringAlign_*3+16*16+4;
     for (uint32_t b=0;b<a.buffer_count;b++) required+=a.buffers[b].bytes;
     required+=uint64_t(a.index_count)*(a.index16 ? 2 : 4);
     if (required>kUploadSlotBytes) ngb_renderer_fatal("One draw exceeds the GPU upload frame slot.");
@@ -3149,10 +3214,24 @@ void VulkanBackend::Draw(const State& s, uint32_t prim, uint32_t start, uint32_t
     uint32_t ibytes = a.index_count * (a.index16 ? 2 : 4);
     if (a.index_count) ioff = Upload(a.index_src, ibytes, 4);
 
+    UniversalConstants universal_constants;
+    VkDeviceSize universal_offset=0;
+    if(universal_draw) {
+        uint32_t flags=(a.pretransformed?uPretransformed:0)|(prog?uProgrammableVertex:0)|(points?uPoints:0)|
+            (sprite?uSprite:0)|(quad?uQuad:0)|(spark_quad?uSpark:0)|(k.blend?uBlending:0)|(glow_pass?128:0);
+        universal_constants=MakeUniversalConstants(s,a,pk,flags);
+        UniversalVertexOffsets(universal_constants,a,voff);
+        universal_constants[uBlend]=Blend(k.src,false);universal_constants[uBlend+1]=Blend(k.dst,false);
+        universal_constants[uBlend+2]=BlendOp(k.op);universal_constants[uBlend+3]=k.wmask;
+        float color[4];Color(SimpleState(s,kMBlendColor),color);
+        std::memcpy(&universal_constants.words[uBlendConstant/4],color,sizeof color);
+        universal_offset=Upload(&universal_constants,sizeof universal_constants,ringAlign_);
+    }
     // record: the uploads above may have submitted, so everything is set after them
-    BeginRendering(rt, ds);
+    BeginRendering(rt, ds,universal_draw);
     d_.vkCmdBindPipeline(cmd_, VK_PIPELINE_BIND_POINT_GRAPHICS, pipe);
-    if(k.has_ds&kDsDynamicBias) {
+    if(universal_draw)UniversalDynamic(k,float(k.zbias)+shadow_pull.steps,k.zslope+shadow_pull.slope);
+    else if(k.has_ds&kDsDynamicBias) {
         d_.vkCmdSetDepthBias(cmd_,float(k.zbias)+shadow_pull.steps,0,k.zslope+shadow_pull.slope);
         shadow_pulled_++;
     } else if(shadow_pull.enabled) shadow_fallback_++;
@@ -3184,7 +3263,10 @@ void VulkanBackend::Draw(const State& s, uint32_t prim, uint32_t start, uint32_t
             w[i].pImageInfo = &smp[i - 6];
         }
     }
-    d_.vkCmdPushDescriptorSetKHR(cmd_, VK_PIPELINE_BIND_POINT_GRAPHICS, pipe_layout_, 0, 10, w);
+    if(universal_draw) {
+        VkDescriptorBufferInfo scene{ring_,vc,16};
+        UniversalBindings(info,img,smp,rt,vc,dc,universal_offset,scene);
+    } else d_.vkCmdPushDescriptorSetKHR(cmd_, VK_PIPELINE_BIND_POINT_GRAPHICS, pipe_layout_, 0, 10, w);
 #ifdef NGB_SMOOTH_MOTION
     // The endpoint never enables the override, but Vulkan requires a valid
     // descriptor for every binding a dynamically branched shader can read.
@@ -3192,7 +3274,7 @@ void VulkanBackend::Draw(const State& s, uint32_t prim, uint32_t start, uint32_t
     VkWriteDescriptorSet scene_write{VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET};
     scene_write.dstBinding=10;scene_write.descriptorCount=1;
     scene_write.descriptorType=VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;scene_write.pBufferInfo=&scene_dummy;
-    d_.vkCmdPushDescriptorSetKHR(cmd_,VK_PIPELINE_BIND_POINT_GRAPHICS,pipe_layout_,0,1,&scene_write);
+    if(!universal_draw)d_.vkCmdPushDescriptorSetKHR(cmd_,VK_PIPELINE_BIND_POINT_GRAPHICS,pipe_layout_,0,1,&scene_write);
 #endif
 
     // the viewport covers the target (the title's viewport is in the shader), upside down for
@@ -3279,13 +3361,22 @@ void VulkanBackend::Draw(const State& s, uint32_t prim, uint32_t start, uint32_t
     if (visq != ~0u) d_.vkCmdEndQuery(cmd_, vis_pool_[slot_], visq);
 #ifdef NGB_SMOOTH_MOTION
     if (motion_capture_ && motion_valid_) {
-        uint64_t estimate=sizeof(MotionDraw)+ibytes;
+        uint64_t estimate=sizeof(MotionDraw)+ibytes+(universal_draw?sizeof(UniversalReplay):0);
         for (uint32_t b=0;b<a.buffer_count;b++) estimate+=a.buffers[b].bytes;
         if (estimate+motion_cpu_bytes_>96u*1024u*1024u || required>kUploadSlotBytes) motion_valid_=false;
     }
     if (motion_capture_ && motion_valid_) {
         auto packet=std::make_shared<MotionDraw>();
         packet->rt=rt; packet->ds=ds; packet->pipeline=pipe;
+        if(universal_draw) {
+            packet->universal=std::make_unique<UniversalReplay>();
+            auto& saved=*packet->universal;saved.constants=universal_constants;saved.key=k;
+            std::copy(info,info+4,saved.textures.begin());
+            for(unsigned r=0;r<16;r++)if(a.regs&(1u<<r)) {
+                saved.buffers[r]=a.elements[r].buffer;
+                saved.constants[uVertex+r*4]-=uint32_t(voff[a.elements[r].buffer]);
+            }
+        }
         packet->depth_bias=(k.has_ds&kDsDynamicBias)!=0;
         packet->bias_steps=float(k.zbias)+shadow_pull.steps;packet->bias_slope=k.zslope+shadow_pull.slope;
         if (motion_shader && k.zen && k.zfunc==0x202) motion_equal_++;
@@ -3295,7 +3386,7 @@ void VulkanBackend::Draw(const State& s, uint32_t prim, uint32_t start, uint32_t
         packet->lines=Lines(k); packet->line=wide_lines_ ? std::clamp(Bits(s.rs[kRsLineWidth])*sx,1.0f,line_max_) : 1.0f;
         packet->stencil=SimpleState(s,kMStencilRef)&0xFF; std::memcpy(packet->blend,bf,sizeof bf);
 
-        size_t bytes=sizeof(MotionDraw);
+        size_t bytes=sizeof(MotionDraw)+(universal_draw?sizeof(UniversalReplay):0);
         for (uint32_t b=0;b<a.buffer_count;b++) {
             const auto& buffer=a.buffers[b];
             packet->vertices[b].assign(buffer.src,buffer.src+buffer.bytes);
@@ -4244,7 +4335,7 @@ void VulkanBackend::Compiler() {
         }
         if (!j.pipeline) {
             std::vector<uint32_t> spirv;
-            VkShaderModule m = Compile(j.hlsl, j.vertex, spirv) ? MakeModule(spirv) : VK_NULL_HANDLE;
+            VkShaderModule m = Compile(j.factory ? j.factory() : j.hlsl, j.vertex, spirv) ? MakeModule(spirv) : VK_NULL_HANDLE;
             {
                 std::lock_guard<std::recursive_mutex> g(cache_mu_);
                 if (modules_.count(j.key)) {
@@ -4496,4 +4587,3 @@ void VulkanBackend::WarmSamples(uint32_t samples) {
 std::unique_ptr<Backend> CreateBackend() { return std::make_unique<VulkanBackend>(); }
 
 }  // namespace gpu
-

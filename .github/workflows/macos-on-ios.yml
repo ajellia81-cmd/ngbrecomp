@@ -1,8 +1,9 @@
-name: macOS-on-iOS VF3 Smooth Motion IPA
+name: macOS-on-iOS Universal Shader experimental IPA
 'on':
   push:
     branches:
     - macos-on-ios-rebuild
+    - macos-on-ios-universal
   workflow_dispatch: null
 permissions:
   contents: read
@@ -96,6 +97,17 @@ jobs:
         for shader in "$RUNNER_TEMP/ngb-motion-shaders/"*.vert.hlsl; do
           glslangValidator -D -V --target-env vulkan1.1 --auto-map-locations -S vert -e main "$shader" -o "$shader.spv"
         done
+    - name: Compare generic shaders on the packaged Metal driver before private build
+      run: |
+        set -euo pipefail
+        cmake -S tests/universal -B "$RUNNER_TEMP/ngb-universal-tests" -G Ninja \
+          -DCMAKE_PREFIX_PATH="$(brew --prefix)" \
+          -DVulkan_INCLUDE_DIR="$PWD/xboxrecomp/third_party/Vulkan-Headers/include" \
+          -DVulkan_LIBRARY="$(brew --prefix molten-vk)/lib/libMoltenVK.dylib"
+        cmake --build "$RUNNER_TEMP/ngb-universal-tests" -j 3
+        mkdir -p "$RUNNER_TEMP/ngb-universal-cache"
+        XDG_CACHE_HOME="$RUNNER_TEMP/ngb-universal-cache" \
+          ctest --test-dir "$RUNNER_TEMP/ngb-universal-tests" --output-on-failure
     - name: Require private disc input
       env:
         NGB_DISC_URL: ${{ secrets.NGB_DISC_URL }}
