@@ -23,8 +23,11 @@ def main():
  runtime=resources.parent/'Frameworks/libSDL3.0.dylib'
  if not runtime.is_file() or 'platform IOS' not in run('vtool','-show-build',runtime):raise SystemExit('The converted SDL3 runtime is missing or has the wrong platform')
  print('SDL3 runtime: bundled and converted for iOS')
- for name in ('SettingsTab-Korean.png','KoreanPatch/manifest.json','share/NinjaGaidenBlack/d3d-seed.bin'):
+ for name in ('SettingsTab-Korean.png','KoreanPatch/manifest.json','share/NinjaGaidenBlack/d3d-seed.bin','share/NinjaGaidenBlack/d3d-seed.json'):
   if (resources/name).read_bytes()!=(o.mac_app/'Contents/Resources'/name).read_bytes():raise SystemExit('Required feature resource changed: '+name)
+ seed_manifest=json.loads((resources/'share/NinjaGaidenBlack/d3d-seed.json').read_text())
+ if hashlib.sha256((resources/'share/NinjaGaidenBlack/d3d-seed.bin').read_bytes()).hexdigest()!=seed_manifest['sha256']:raise SystemExit('Prepared seed checksum mismatch')
+ print('Prepared iOS seed: verified',seed_manifest['records']['K'],'pipeline recipes; no compile-policy change')
  for p in o.app.rglob('*'):
   if p.is_symlink():continue
   if p.is_file() and (p.suffix.lower() in ('.c','.cpp','.m','.mm','.py','.log','.xbe','.afs','.iso') or p.name in ('build-info.txt','ui-layout.log','movie-subtitles.log')):raise SystemExit('Non-runtime file in app: '+p.name)
