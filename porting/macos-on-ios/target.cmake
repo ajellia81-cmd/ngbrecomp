@@ -7,7 +7,7 @@ target_sources(${PROJECT_NAME} PRIVATE "${NGB_CONVERSION_DIR}/bootstrap.m" "${NG
 target_sources(ngb_gen PRIVATE "${NGB_CONVERSION_DIR}/korean/game_hooks.c" "${NGB_CONVERSION_DIR}/korean/korean_text_layout.c")
 foreach(t ${PROJECT_NAME} ngb_gen)
     target_compile_definitions(${t} PRIVATE NGB_IOS_KOREAN=1 NGB_CONVERTED_DISPLAY=1)
-    target_include_directories(${t} PRIVATE "${NGB_CONVERSION_DIR}" "${NGB_CONVERSION_DIR}/korean")
+    target_include_directories(${t} PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src" "${NGB_CONVERSION_DIR}" "${NGB_CONVERSION_DIR}/korean")
 endforeach()
 target_compile_options(${PROJECT_NAME} PRIVATE $<$<COMPILE_LANGUAGE:OBJC>:-fobjc-arc>)
 target_link_libraries(${PROJECT_NAME} PRIVATE "-framework Foundation" "-framework AppKit" "-framework ImageIO" "-framework CoreGraphics")
