@@ -16,7 +16,7 @@
  */
 #ifdef __APPLE__
 #include <TargetConditionals.h>
-#if TARGET_OS_IPHONE
+#if TARGET_OS_IPHONE || defined(NGB_CONVERTED_DISPLAY)
 extern void ngb_ios_safe_area(float *,float *,float *,float *) __attribute__((weak_import));
 #endif
 #endif
@@ -1713,11 +1713,17 @@ static void present_locked(PGRAPHState *pg, bool on_pfifo)
                 VK_ACCESS_TRANSFER_WRITE_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT,
                 VK_PIPELINE_STAGE_TRANSFER_BIT);
         uint32_t overlay_x=0,overlay_y=0,copy_w=w,copy_h=h;
-#if defined(__APPLE__) && TARGET_OS_IPHONE
+#if (defined(__APPLE__) && TARGET_OS_IPHONE) || defined(NGB_CONVERTED_DISPLAY)
+#ifdef NGB_CONVERTED_DISPLAY
+        if (ngb_conversion_is_ios()) {
+#endif
         float left=0.08f,top=0.03f,right=0.08f,bottom=0.02f;
         if (ngb_ios_safe_area) ngb_ios_safe_area(&left,&top,&right,&bottom);
         ngb_safe_overlay(s_extent.width,s_extent.height,s_aspect,left,top,right,bottom,w,h,
             &overlay_x,&overlay_y,&copy_w,&copy_h);
+#ifdef NGB_CONVERTED_DISPLAY
+        }
+#endif
 #endif
         VkBufferImageCopy region = {
             .bufferRowLength = w,

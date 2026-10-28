@@ -4,7 +4,9 @@
 #import <CoreHaptics/CoreHaptics.h>
 #include <time.h>
 #include "haptics.h"
-#define NGB_IOS_PORT_DIAG(...) ((void)0)
+#include <stdio.h>
+static unsigned hapticReports;
+#define NGB_IOS_PORT_DIAG(...) do { if (hapticReports++<32) fprintf(stderr,__VA_ARGS__); } while (0)
 #include "haptics_policy.h"
 static uint64_t commands[4];
 static int foreground=1;
@@ -20,7 +22,7 @@ static uint32_t haptic_ms(void) {
 @property(nonatomic,strong) GCController *controller;
 @property(nonatomic,copy) GCHapticsLocality locality;
 @property(nonatomic,strong) CHHapticEngine *engine;
-@property(nonatomic,strong) id<CHHapticPatternPlayer> player;
+@property(nonatomic,strong) id<CHHapticAdvancedPatternPlayer> player;
 @property(nonatomic) unsigned generation;
 @property(nonatomic) uint32_t retryAt;
 @property(nonatomic) BOOL retryPending;
@@ -36,8 +38,8 @@ static uint32_t haptic_ms(void) {
     self.intensity=-1;
 }
 - (void)failed:(NSString *)reason now:(uint32_t)now {
-    NGB_IOS_PORT_DIAG("[iOS Haptics] %s: %s; retry in 1s\n",self.controller.vendorName.UTF8String,reason.UTF8String);
-    [self stop];self.retryAt=now+1000;self.retryPending=YES;
+    NGB_IOS_PORT_DIAG("[iOS Haptics] %s: %s; retry in 100ms\n",self.controller.vendorName.UTF8String,reason.UTF8String);
+    [self stop];self.retryAt=now+100;self.retryPending=YES;
 }
 - (BOOL)prepare:(uint32_t)now {
     if (self.engine && self.player) return YES;
@@ -47,6 +49,7 @@ static uint32_t haptic_ms(void) {
     if (!engine || ![engine startAndReturnError:&error]) {
         [self failed:error.localizedDescription ?: @"engine unavailable" now:now];return NO;
     }
+    engine.autoShutdownEnabled=NO;
     self.engine=engine;
     unsigned token=++self.generation;
     __weak NGBHapticMotor *weakSelf=self;
@@ -66,7 +69,10 @@ static uint32_t haptic_ms(void) {
     CHHapticEventParameter *intensity=[[CHHapticEventParameter alloc] initWithParameterID:CHHapticEventParameterIDHapticIntensity value:1];
     CHHapticEvent *event=[[CHHapticEvent alloc] initWithEventType:CHHapticEventTypeHapticContinuous parameters:@[intensity] relativeTime:0 duration:GCHapticDurationInfinite];
     CHHapticPattern *pattern=[[CHHapticPattern alloc] initWithEvents:@[event] parameters:@[] error:&error];
-    id<CHHapticPatternPlayer> player=pattern ? [engine createPlayerWithPattern:pattern error:&error] : nil;
+    id<CHHapticAdvancedPatternPlayer> player=pattern ? [engine createAdvancedPlayerWithPattern:pattern error:&error] : nil;
+    player.completionHandler=^(NSError *failure) {
+        dispatch_async(hapticQueue,^{NGBHapticMotor *motor=weakSelf;if(motor && motor.generation==token)[motor failed:failure.localizedDescription ?: @"player completed" now:haptic_ms()];});
+    };
     CHHapticDynamicParameter *silent=[[CHHapticDynamicParameter alloc] initWithParameterID:CHHapticDynamicParameterIDHapticIntensityControl value:0 relativeTime:0];
     // Prepare the actual reusable player at zero intensity. No warmup pulse.
     if (!player || ![player sendParameters:@[silent] atTime:0 error:&error] || ![player startAtTime:0 error:&error]) {
@@ -108,9 +114,11 @@ static void haptic_tick(void) {
             GCController *controller=nil;
             for (GCController *candidate in controllers)
                 if (candidate.playerIndex==(GCControllerPlayerIndex)port) { controller=candidate;break; }
+            if (!controller && port==0 && controllers.count==1 && controllers.firstObject.playerIndex==GCControllerPlayerIndexUnset) controller=controllers.firstObject;
             NGBHapticPad *pad=pads[@(port)];
             if (pad && (pad.controller!=controller || !active)) {
                 [pad.low stop];[pad.high stop];[pads removeObjectForKey:@(port)];pad=nil;
+                __atomic_store_n(&commands[port],0,__ATOMIC_RELEASE);
             }
             if (!active || !controller.haptics) continue;
             if (!pad) {
@@ -151,7 +159,7 @@ void ngb_ios_haptics_set(unsigned port,uint16_t low,uint16_t high) {
     if (port<4) __atomic_store_n(&commands[port],ngb_haptic_command(low,high,haptic_ms()),__ATOMIC_RELEASE);
 }
 void ngb_ios_haptics_active(int active) {
-    __atomic_store_n(&foreground,active,__ATOMIC_RELEASE);
+    if (__atomic_exchange_n(&foreground,!!active,__ATOMIC_ACQ_REL)==!!active) return;
     for (unsigned port=0;port<4;port++) __atomic_store_n(&commands[port],0,__ATOMIC_RELEASE);
     if (__atomic_load_n(&hapticReady,__ATOMIC_ACQUIRE)) dispatch_async(hapticQueue,^{ haptic_tick(); });
 }

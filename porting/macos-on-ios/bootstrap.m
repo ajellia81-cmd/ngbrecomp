@@ -29,6 +29,8 @@ static void (*bridge_tick)(void),(*bridge_wait)(void),(*bridge_motion)(int);
 static double (*bridge_hz)(void);
 static unsigned (*bridge_epoch)(void);
 static int (*bridge_foreground)(void);
+static void (*bridge_safe_area)(float *,float *,float *,float *);
+void ngb_ios_safe_area(float *left,float *top,float *right,float *bottom){if(bridge_safe_area)bridge_safe_area(left,top,right,bottom);else{*left=*right=.08f;*top=.03f;*bottom=.02f;}}
 extern void nv2a_present_cancel_pairs(void);
 int ngb_conversion_is_foreground(void){return bridge_foreground ? bridge_foreground() : 1;}
 double ngb_ios_display_hz(void){return bridge_hz ? bridge_hz() : 60;}
@@ -121,6 +123,7 @@ int ngb_conversion_startup(void){@autoreleasepool {
         fprintf(stderr,"[Startup] import and device services complete\n");
         void (*screen)(int*,int*)=(void(*)(int*,int*))dlsym(RTLD_DEFAULT,"ngb_macos_on_ios_screen_size");
         if(screen)screen(&w,&h);
+        bridge_safe_area=(void(*)(float*,float*,float*,float*))dlsym(RTLD_DEFAULT,"ngb_macos_on_ios_safe_area");
         bridge_foreground=(int(*)(void))dlsym(RTLD_DEFAULT,"ngb_macos_on_ios_is_foreground");
         bridge_motion=(void(*)(int))dlsym(RTLD_DEFAULT,"ngb_macos_on_ios_motion_enabled");
         bridge_hz=(double(*)(void))dlsym(RTLD_DEFAULT,"ngb_macos_on_ios_display_hz");

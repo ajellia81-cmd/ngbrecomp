@@ -73,12 +73,12 @@ static int is_ours(int page) { return page >= PAGE_GFX && page < PAGE_GFX + N_OU
 /* (without the PC Settings row: the PC settings are in RECOMP SETTINGS only) */
 static const uint8_t s_rows_ws[] = { ROW_SCREEN, ROW_MOVIE, ROW_DEFAULT, ROW_EXIT };
 static const uint8_t s_rows_std[] = { ROW_SCREEN, ROW_EXIT };
-static const uint8_t s_rows_gfx[] = { ROW_RENDER, ROW_TEXTURE, ROW_MSAA, ROW_SHADOW, ROW_GLOW, ROW_BACK };
+static const uint8_t s_rows_gfx[] = { ROW_RENDER, ROW_TEXTURE, ROW_MSAA, ROW_SHADOW, ROW_GLOW, ROW_SMOOTH, ROW_BACK };
 static const uint8_t s_rows_disp[] = { ROW_ASPECT,
 #ifndef NGB_CONVERTED_DISPLAY
                                        ROW_WINDOW, ROW_DISPLAY, ROW_VSYNC,
 #endif
-                                       ROW_FPS, ROW_HUD, ROW_POSAUDIO, ROW_SMOOTH,
+                                       ROW_FPS, ROW_HUD, ROW_POSAUDIO,
                                        ROW_BACK };
 static const uint8_t s_rows_start[] = { ROW_SKIP,
     ROW_ALLDIFF, ROW_ALLCOST, ROW_BACK };

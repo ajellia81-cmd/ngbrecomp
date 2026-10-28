@@ -315,6 +315,11 @@ static void open_controllers(void)
         if (s == XBOX_MAX_CONTROLLERS)
             break;
         g_pads[s] = SDL_GameControllerOpen(i);
+#ifdef __APPLE__
+        /* Keep GameController haptic localities on the same Xbox/SDL port. */
+        if (g_pads[s] && dlsym(RTLD_DEFAULT,"ngb_macos_on_ios_haptics_set"))
+            SDL_GameControllerSetPlayerIndex(g_pads[s],s);
+#endif
         g_controller_connected[s] = g_pads[s] != NULL;
         if (g_pads[s])
             fprintf(stderr, "[INPUT] pad %d: %s\n", s + 1,

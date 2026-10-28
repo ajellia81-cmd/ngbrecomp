@@ -17,6 +17,10 @@
  */
 #include "hw/xbox/nv2a/nv2a_int.h"
 #include "nv2a_vk.h"
+#ifdef NGB_CONVERTED_DISPLAY
+#include "display_policy.h"
+#include "frame_clock.h"
+#endif
 
 #include <time.h>
 #include <unistd.h>
@@ -745,6 +749,18 @@ static void *vblank_thread(void *unused)
     (void)unused;
     clock_gettime(CLOCK_MONOTONIC, &next);
     for (;;) {
+#ifdef NGB_CONVERTED_DISPLAY
+        if (ngb_conversion_is_ios()) {
+            struct timespec now;
+            clock_gettime(CLOCK_MONOTONIC,&now);
+            int active=ngb_conversion_is_foreground();
+            int64_t base=(int64_t)next.tv_sec*1000000000LL+next.tv_nsec;
+            int64_t current=(int64_t)now.tv_sec*1000000000LL+now.tv_nsec;
+            base=ngb_frame_clock_rebase(base,current,period_ns,active);
+            next=(struct timespec){base/1000000000LL,base%1000000000LL};
+            if (!active) { vcpu_nap_us(10000); continue; }
+        }
+#endif
 #ifdef _WIN32
         if (display_vblank()) {
             clock_gettime(CLOCK_MONOTONIC, &next);   /* the timer resumes from here if it takes over */
@@ -758,6 +774,9 @@ static void *vblank_thread(void *unused)
             }
             sleep_until(&next);
         }
+#ifdef NGB_CONVERTED_DISPLAY
+        if (ngb_conversion_is_ios() && !ngb_conversion_is_foreground()) continue;
+#endif
         if (nv2a_vblank_hold) {
             clock_gettime(CLOCK_MONOTONIC, &next);   /* resume from now */
             continue;

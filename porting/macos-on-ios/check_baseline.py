@@ -21,7 +21,8 @@ for path in ('porting/macos-on-ios/bootstrap.m','porting/macos-on-ios/AppKit_NGB
  s=(root/path).read_text()
  for forbidden in ('NGB_D3D_SYNC_COMPILE','shader_prewarm_ready','cache_producer_fast','cache_copy_delay'):
   assert forbidden not in s,(path,forbidden)
-assert 'ROW_SMOOTH,' in function((root/'src/pc_menu.c').read_text(),'static const uint8_t s_rows_disp[]')
+assert 'ROW_SMOOTH,' in (root/'src/pc_menu.c').read_text().split('s_rows_gfx[] = {',1)[1].split('};',1)[0]
+assert 'ROW_SMOOTH,' not in (root/'src/pc_menu.c').read_text().split('s_rows_disp[] = {',1)[1].split('};',1)[0]
 for name in ('std::string VertexProgramHlsl(', 'std::string FixedVertexHlsl(', 'std::string PixelHlsl('):
  path='src/d3d/gpu/shaders.cpp'
  assert function(original(path),name)==function((root/path).read_text(),name),name+' changed'

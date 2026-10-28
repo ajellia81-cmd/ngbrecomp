@@ -33,7 +33,7 @@
 #include "usb/usb_gamepad.h"
 #include "apu/apu.h"
 
-enum { KEY_UP = 1, KEY_DOWN, KEY_LEFT, KEY_RIGHT, KEY_OK, KEY_BACK, KEY_CLEAR };
+enum { KEY_UP = 1, KEY_DOWN, KEY_LEFT, KEY_RIGHT, KEY_OK, KEY_BACK, KEY_CLEAR, KEY_ALT_OK };
 
 /* The settings the game runs with; what the menu starts from. */
 static NgbSettings s_running;
@@ -300,7 +300,7 @@ int ngb_pause_tab_key(int *focus)
     static const struct { uint32_t bit; int key; } map[] = {
         { XBOX_GAMEPAD_DPAD_UP, KEY_UP }, { XBOX_GAMEPAD_DPAD_DOWN, KEY_DOWN },
         { XBOX_GAMEPAD_DPAD_LEFT, KEY_LEFT }, { XBOX_GAMEPAD_DPAD_RIGHT, KEY_RIGHT },
-        { 1u << 16, KEY_OK }, { 1u << 17, KEY_BACK }, { XBOX_GAMEPAD_START, KEY_BACK }, { 1u << 20, KEY_CLEAR },
+        { 1u << 16, KEY_OK }, { 1u << 17, KEY_BACK }, { XBOX_GAMEPAD_START, KEY_BACK }, { 1u << 20, KEY_ALT_OK },
     };
     uint64_t now = mono_ms();
     {
@@ -362,6 +362,7 @@ int ngb_pause_tab_key(int *focus)
         s_tab_rbit = 0;
 
     if (!*focus) {
+        if (key == KEY_ALT_OK) key = KEY_OK;
         if (key == KEY_OK && !s_open) {
             *focus = s_tab_focus = 1;
             usb_gamepad_block = 1;
@@ -1400,7 +1401,7 @@ bool nv2a_overlay_wanted(void)
         s_tab_focus = 0;
         s_wait_release = true;
     }
-    if (s_wait_release && !(b & 0x3FFFF)) {
+    if (s_wait_release && !(b & 0x13FFFF)) {
         s_wait_release = false;
         usb_gamepad_block = 0;
         if (s_back_pending) {

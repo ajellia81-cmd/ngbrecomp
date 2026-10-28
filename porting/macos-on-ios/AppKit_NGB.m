@@ -376,6 +376,17 @@ static void attach_controls(UIWindow *window)
 }
 
 
+static uint64_t safeInsets=(5243ull<<48)|(1966ull<<32)|(5243ull<<16)|1311ull;
+static void update_safe_area(void){
+    UIEdgeInsets inset=UIEdgeInsetsZero;CGSize size=UIScreen.mainScreen.bounds.size;
+    for(UIWindow *window in UIApplication.sharedApplication.windows)if(window.isKeyWindow){inset=window.safeAreaInsets;size=window.bounds.size;break;}
+    if(size.width<=0 || size.height<=0)return;
+    uint64_t left=(uint16_t)lrint(fmin(1,fmax(0,inset.left/size.width))*65535);
+    uint64_t top=(uint16_t)lrint(fmin(1,fmax(0,inset.top/size.height))*65535);
+    uint64_t right=(uint16_t)lrint(fmin(1,fmax(0,inset.right/size.width))*65535);
+    uint64_t bottom=(uint16_t)lrint(fmin(1,fmax(0,inset.bottom/size.height))*65535);
+    __atomic_store_n(&safeInsets,(left<<48)|(top<<32)|(right<<16)|bottom,__ATOMIC_RELEASE);
+}
 static int displayMilliHz=60000,motionEnabled;
 static unsigned motionEpoch;
 double ngb_macos_on_ios_display_hz(void){return __atomic_load_n(&displayMilliHz,__ATOMIC_RELAXED)/1000.0;}
@@ -387,6 +398,7 @@ unsigned ngb_macos_on_ios_motion_epoch(void){return __atomic_load_n(&motionEpoch
 @end
 @implementation NgbFrameCadence
 - (void)tick:(CADisplayLink *)link {
+    update_safe_area();
     CFTimeInterval duration=link.targetTimestamp-link.timestamp;
     if(duration>0 && duration<1)__atomic_store_n(&displayMilliHz,(int)lrint(1000.0/duration),__ATOMIC_RELAXED);
     if(link.timestamp-self.lastReport>=5 && duration>0){
@@ -417,6 +429,13 @@ void ngb_macos_on_ios_motion_enabled(int enabled){
 }
 static int active=1,previousAudioPause;
 int ngb_macos_on_ios_is_foreground(void){return __atomic_load_n(&active,__ATOMIC_ACQUIRE);}
+void ngb_macos_on_ios_safe_area(float *left,float *top,float *right,float *bottom){
+    // Render/presenter threads consume one coherent cached snapshot, never UIKit.
+    uint64_t packed=__atomic_load_n(&safeInsets,__ATOMIC_ACQUIRE);
+    *left=(uint16_t)(packed>>48)/65535.0f;*top=(uint16_t)(packed>>32)/65535.0f;
+    *right=(uint16_t)(packed>>16)/65535.0f;*bottom=(uint16_t)packed/65535.0f;
+}
+
 void ngb_macos_on_ios_screen_size(int *w,int *h){CGSize p=UIScreen.mainScreen.nativeBounds.size;*w=(int)MAX(p.width,p.height);*h=(int)MIN(p.width,p.height);}
 void ngb_macos_on_ios_tick(void){for(UIWindow *window in UIApplication.sharedApplication.windows)if(window.isKeyWindow)attach_controls(window);[touchControls refresh];}
 void ngb_macos_on_ios_wait_foreground(void){while(!__atomic_load_n(&active,__ATOMIC_ACQUIRE))@autoreleasepool{if(NSThread.isMainThread)[NSRunLoop.currentRunLoop runUntilDate:[NSDate dateWithTimeIntervalSinceNow:0.05]];else usleep(50000);}}
@@ -444,8 +463,8 @@ int ngb_macos_on_ios_prepare(const NgbConversionHost *api){@autoreleasepool{
         }
     });
     NSNotificationCenter *nc=NSNotificationCenter.defaultCenter;
-    [nc addObserverForName:UIApplicationWillResignActiveNotification object:nil queue:NSOperationQueue.mainQueue usingBlock:^(NSNotification *n){(void)n;__atomic_store_n(&active,0,__ATOMIC_RELEASE);if(host.motion_cancel)host.motion_cancel();__atomic_add_fetch(&motionEpoch,1,__ATOMIC_RELAXED);frameCadence.link.paused=YES;[touchControls releaseInputs];ngb_ios_haptics_active(0);previousAudioPause=host.audio_paused();host.audio_pause(1);}];
-    [nc addObserverForName:UIApplicationDidBecomeActiveNotification object:nil queue:NSOperationQueue.mainQueue usingBlock:^(NSNotification *n){(void)n;__atomic_store_n(&active,1,__ATOMIC_RELEASE);frameCadence.link.paused=NO;ngb_ios_haptics_active(1);host.audio_pause(previousAudioPause);}];
+    [nc addObserverForName:UIApplicationWillResignActiveNotification object:nil queue:NSOperationQueue.mainQueue usingBlock:^(NSNotification *n){(void)n;if(!__atomic_exchange_n(&active,0,__ATOMIC_ACQ_REL))return;if(host.motion_cancel)host.motion_cancel();__atomic_add_fetch(&motionEpoch,1,__ATOMIC_RELAXED);frameCadence.link.paused=YES;[touchControls releaseInputs];ngb_ios_haptics_active(0);previousAudioPause=host.audio_paused();host.audio_pause(1);}];
+    [nc addObserverForName:UIApplicationDidBecomeActiveNotification object:nil queue:NSOperationQueue.mainQueue usingBlock:^(NSNotification *n){(void)n;if(__atomic_exchange_n(&active,1,__ATOMIC_ACQ_REL))return;__atomic_add_fetch(&motionEpoch,1,__ATOMIC_RELAXED);frameCadence.lastReport=0;__atomic_store_n(&displayMilliHz,60000,__ATOMIC_RELAXED);frameCadence.link.paused=NO;ngb_ios_haptics_active(1);host.audio_pause(previousAudioPause);}];
     for(NSNotificationName name in @[GCControllerDidConnectNotification,GCControllerDidDisconnectNotification])
       [nc addObserverForName:name object:nil queue:NSOperationQueue.mainQueue usingBlock:^(NSNotification *n){(void)n;[touchControls refresh];for(unsigned i=0;i<4;i++)ngb_ios_haptics_prepare(i);}];
     fprintf(stderr,"[Startup] preparing controller haptics\n");

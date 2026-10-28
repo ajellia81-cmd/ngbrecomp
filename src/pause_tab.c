@@ -125,7 +125,7 @@ static const char *const s_help[S_COUNT] = {
 /* Gameplay: optional changes to how the game plays (off unless chosen; docs/quick-menu.md) */
 static const char *const s_cat_name[CATS] = { "Graphics", "Display & Audio", "Startup", "Gameplay", "Cheats", "Controls" };
 static const signed char s_cat_rows[CATS][CAT_ROWS] = {
-    { S_RENDER, S_TEXTURE, S_MSAA, S_SHADOW, S_GLOW, -1 },   /* -1 ends a page shorter than CAT_ROWS */
+    { S_RENDER, S_TEXTURE, S_MSAA, S_SHADOW, S_GLOW, S_SMOOTH, -1 },   /* -1 ends a page shorter than CAT_ROWS */
 #ifdef NGB_CONVERTED_DISPLAY
     { S_ASPECT, S_FPS, S_HUD, S_POSAUDIO, -1 },
 #else
@@ -1747,7 +1747,7 @@ void ngb_menu_mark(void);            /* src/menu_mouse.c */
 
 /* K_ROW | the row the mouse is on (HIT_*: up to HIT_CTL + CTL_ROWS * 4, past a byte since the quick menu's
  * actions -- read back as a byte, the lower rows of Controls were other rows and categories) */
-enum { K_UP = 1, K_DOWN, K_LEFT, K_RIGHT, K_OK, K_BACK, K_CLEAR, K_ROW = 0x10000 };
+enum { K_UP = 1, K_DOWN, K_LEFT, K_RIGHT, K_OK, K_BACK, K_CLEAR, K_ALT_OK, K_ROW = 0x10000 };
 
 /* For the mouse (any thread): the row of the page at (x, y) in the menu's
  * 720x480, or -1; *zone -1 on the "<" half of its value, 1 on the ">"
@@ -1869,6 +1869,7 @@ static void pt_draw(void)
 {
     int was = s_focus, vals[S_COUNT], n = cat_count(s_cat);
     int key = ngb_pause_tab_key(&s_focus);
+    if (key == K_ALT_OK) key = s_cat == CAT_CTL && s_row >= 0 ? K_CLEAR : K_OK;
     if (ngb_bind_capturing()) {                       /* waiting for the key to bind: nothing else */
         key = 0;
         if (!ngb_bind_capture_tick())
@@ -2084,6 +2085,7 @@ static int ngb_confirm_tick(void)
     if (!s_dlg_open)
         return 0;
     int key = ngb_pause_tab_key(&s_dlg_focus), r = -1;
+    if (key == K_ALT_OK) key = K_OK;
     s_dlg_back = key == K_BACK;
     if (key & K_ROW) {                                 /* the mouse */
         if ((key & 0xFFFF) < 2 && (key & 0xFFFF) != s_dlg_sel) {
@@ -2214,6 +2216,7 @@ void ngb_controls_panel_tick(int want)
         play_sound(6);
     }
     int key = ngb_pause_tab_key(&s_ov_focus);
+    if (key == K_ALT_OK) key = K_CLEAR;
     if (ngb_bind_capturing()) {
         key = 0;
         if (!ngb_bind_capture_tick())
@@ -2474,6 +2477,7 @@ static void pt_exit_draw(void)
     }
     int was = s_focus;
     int key = ngb_pause_tab_key(&s_focus);
+    if (key == K_ALT_OK) key = K_OK;
     if (key & K_ROW) {                                /* the mouse on a row */
         int r = key & 0xFFFF;
         if (r < EXIT_ROWS && r != s_exit_row) {

@@ -57,6 +57,15 @@ jobs:
       run: |
         xcrun --sdk macosx clang -std=c11 -Wall -Wextra -fsanitize=address,undefined porting/macos-on-ios/tests/display_policy.c -o "$RUNNER_TEMP/ngb-display-policy-test"
         "$RUNNER_TEMP/ngb-display-policy-test"
+    - name: Check menu input, resume timing, FPS safety and haptic recovery without hardware
+      shell: bash
+      run: |
+        set -euo pipefail
+        python3 porting/macos-on-ios/tests/menu_regressions.py
+        xcrun --sdk macosx clang -std=c11 -Wall -Wextra -fsanitize=address,undefined porting/macos-on-ios/tests/runtime_regressions.c -o "$RUNNER_TEMP/ngb-runtime-regressions"
+        "$RUNNER_TEMP/ngb-runtime-regressions"
+        xcrun --sdk macosx clang -fobjc-arc -fsanitize=address porting/macos-on-ios/tests/haptic_recovery.m -framework Foundation -framework GameController -framework CoreHaptics -o "$RUNNER_TEMP/ngb-haptic-recovery"
+        "$RUNNER_TEMP/ngb-haptic-recovery"
     - name: Prepare native macOS ARM64 dependencies
       run: |-
         brew install cmake ninja pkg-config sdl2-compat sdl3 libepoxy glib glslang molten-vk vulkan-loader sevenzip
