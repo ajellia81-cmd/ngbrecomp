@@ -16,7 +16,7 @@ def wrap(folder):
             out.append(line)
         s=''.join(out)
         for a in waits:
-            old='recomp_spin_pause(0x'+a+'u);'
+            old='RECOMP_SPIN(0x'+a+'u);'
             waits[a]+=s.count(old)
             s=s.replace(old,'if (!ngb_conversion_dsp_wait(0x'+a+'u,ebx,eax)) '+old)
         p.write_text(s)

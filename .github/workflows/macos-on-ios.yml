@@ -21,6 +21,7 @@ jobs:
     - name: Check untouched macOS shader/compiler baseline
       run: |-
         python3 porting/macos-on-ios/check_baseline.py
+        python3 porting/macos-on-ios/tests/codegen_adapters.py
     - name: Compile public iPhone compatibility UI before private generation
       run: |
         xcrun --sdk iphoneos clang -target arm64-apple-ios17.0 -fobjc-arc -Iporting/macos-on-ios -c porting/macos-on-ios/AppKit_NGB.m -o "$RUNNER_TEMP/ngb-ui-bridge.o"
@@ -56,6 +57,15 @@ jobs:
       run: |
         xcrun --sdk macosx clang -std=c11 -Wall -Wextra -fsanitize=address,undefined porting/macos-on-ios/tests/display_policy.c -o "$RUNNER_TEMP/ngb-display-policy-test"
         "$RUNNER_TEMP/ngb-display-policy-test"
+    - name: Prepare native macOS ARM64 dependencies
+      run: |-
+        brew install cmake ninja pkg-config sdl2-compat sdl3 libepoxy glib glslang molten-vk vulkan-loader sevenzip
+        bash xboxrecomp/third_party/fetch.sh
+    - name: Verify the packaged MoltenVK submission policy without rendering
+      run: |
+        xcrun --sdk macosx clang -std=c11 porting/macos-on-ios/tests/mvk_queue_policy.c -o "$RUNNER_TEMP/ngb-mvk-queue-policy-test"
+        MVK_CONFIG_SYNCHRONOUS_QUEUE_SUBMITS=1 "$RUNNER_TEMP/ngb-mvk-queue-policy-test" "$(brew --prefix)/lib/libMoltenVK.dylib" 1
+        MVK_CONFIG_SYNCHRONOUS_QUEUE_SUBMITS=0 "$RUNNER_TEMP/ngb-mvk-queue-policy-test" "$(brew --prefix)/lib/libMoltenVK.dylib" 0
     - name: Require private disc input
       env:
         NGB_DISC_URL: ${{ secrets.NGB_DISC_URL }}
@@ -131,15 +141,6 @@ jobs:
     - name: Bind original Options text language to the private Korean boot
       run: |-
         python3 porting/macos-on-ios/korean/wrap_game_codegen.py src/recomp/gen
-    - name: Prepare native macOS ARM64 dependencies
-      run: |-
-        brew install cmake ninja pkg-config sdl2-compat sdl3 libepoxy glib glslang molten-vk vulkan-loader sevenzip
-        bash xboxrecomp/third_party/fetch.sh
-    - name: Verify the packaged MoltenVK submission policy without rendering
-      run: |
-        xcrun --sdk macosx clang -std=c11 porting/macos-on-ios/tests/mvk_queue_policy.c -o "$RUNNER_TEMP/ngb-mvk-queue-policy-test"
-        MVK_CONFIG_SYNCHRONOUS_QUEUE_SUBMITS=1 "$RUNNER_TEMP/ngb-mvk-queue-policy-test" "$(brew --prefix)/lib/libMoltenVK.dylib" 1
-        MVK_CONFIG_SYNCHRONOUS_QUEUE_SUBMITS=0 "$RUNNER_TEMP/ngb-mvk-queue-policy-test" "$(brew --prefix)/lib/libMoltenVK.dylib" 0
     - name: Compile original engine for macOS ARM64, not iPhoneOS
       shell: bash
       run: |-
