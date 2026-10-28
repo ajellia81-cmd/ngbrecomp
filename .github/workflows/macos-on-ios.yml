@@ -24,6 +24,7 @@ jobs:
     - name: Compile public iPhone compatibility UI before private generation
       run: |
         xcrun --sdk iphoneos clang -target arm64-apple-ios17.0 -fobjc-arc -Iporting/macos-on-ios -c porting/macos-on-ios/AppKit_NGB.m -o "$RUNNER_TEMP/ngb-ui-bridge.o"
+        xcrun --sdk iphoneos clang -target arm64-apple-ios17.0 -fobjc-arc -c porting/macos-on-ios/AppKit_NGBDialogs.m -o "$RUNNER_TEMP/ngb-native-dialogs.o"
         xcrun --sdk iphoneos clang -target arm64-apple-ios17.0 -fobjc-arc -c porting/macos-on-ios/korean/haptics.m -o "$RUNNER_TEMP/ngb-haptics-bridge.o"
     - name: Check SDL cursor image storage and ownership without game data
       run: |
