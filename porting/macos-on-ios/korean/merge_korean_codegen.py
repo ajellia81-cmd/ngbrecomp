@@ -1,0 +1,335 @@
+#!/usr/bin/env python3
+"""Merge only changed/new private Korean functions into the original tree.
+
+The original generated bodies are retained. Address dispatch selects variants
+only for a Korean boot; font wrappers retain their handwritten host hooks.
+Never commit the output of this script.
+"""
+import argparse
+import json
+import re
+import struct
+from pathlib import Path
+
+DEFINITION = re.compile(r'^void (sub_[0-9A-Fa-f]{8})\(void\)\s*\{', re.M)
+TOKENS = re.compile(r'/\*.*?\*/|//[^\n]*|"(?:\\.|[^"\\])*"|\'(?:\\.|[^\'\\])*\'', re.S)
+
+
+def functions(folder):
+    result = {}
+    for path in sorted(folder.glob('recomp_[0-9]*.c')):
+        source = path.read_text()
+        masked = TOKENS.sub(lambda m: ' ' * len(m[0]), source)
+        for match in DEFINITION.finditer(source):
+            start = match.start()
+            brace = source.index('{', match.start(), match.end())
+            depth = 1
+            end = brace + 1
+            while depth and end < len(masked):
+                depth += (masked[end] == '{') - (masked[end] == '}')
+                end += 1
+            if depth:
+                raise ValueError('Unbalanced generated function')
+            result[match[1]] = source[start:end]
+    return result
+
+
+def normalized(body):
+    return re.sub(r'\s+', '', re.sub(r'/\*.*?\*/|//[^\n]*', '', body, flags=re.S))
+
+
+def restore_wrapper_stack(name, body):
+    # These two pinned patch wrappers push flags solely for later restoration;
+    # they never inspect that stack word. The lifter retains caller conditions
+    # in caller-local snapshots, which C callees cannot overwrite. Reserve the
+    # real guest stack word so PUSHAD/locals/return addresses keep their offsets.
+    # This is NOT a general PUSHFD/POPFD implementation or an EFLAGS emulator.
+    pairs = {'sub_00E02E50': ('00E02E50','00E02F97'),
+             'sub_00E03430': ('00E03430','00E03459')}
+    if name not in pairs: return body
+    start,end=pairs[name]
+    for instruction,address,replacement in (
+        ('pushfd',start,'esp -= 4; /* unobserved saved flags; caller snapshots retained */'),
+        ('popfd',end,'esp += 4; /* discard saved flags word; caller snapshots retained */')):
+        old=f'RECOMP_UNIMPL("{instruction}", 0x{address}u); /* TODO: {instruction} */'
+        if body.count(old)!=1:
+            raise ValueError('Pinned Korean flags-wrapper shape changed')
+        body=body.replace(old,replacement)
+    return body
+
+
+def repair_font_trampolines(bodies):
+    # The pinned patch uses PUSH continuation; RET as a jump. A normal lifted
+    # RET would return to the host caller and skip the rest of glyph setup.
+    # Rejoin the existing caller body so its live frame and loop stay intact.
+    for helper, target in [('00DCA400', '0021A23A'), ('00DCA600', '0021A4B6')]:
+        key='sub_'+helper
+        if key not in bodies:
+            raise ValueError('Pinned Korean font trampoline missing')
+        body=bodies[key]
+        old='PUSH32(esp, 0x'+target.lstrip('0')+');\n    esp += 4; return; /* ret */'
+        if body.count(old)!=1:
+            raise ValueError('Pinned Korean font trampoline shape changed')
+        has_frame=bool(re.search(r'uint32_t ebp\s*=',body))
+        body=body.replace(old,('g_seh_ebp = ebp; ' if has_frame else '')+
+                          'return; /* resume in the patched caller */')
+        bodies[key]=body
+        pattern=re.compile(r'g_seh_ebp = ebp; '+key+r'\(\); return; /\* tail jmp 0x'+helper+r' \*/')
+        count=0
+        for caller,source in list(bodies.items()):
+            if 'loc_'+target+':' not in source: continue
+            source,n=pattern.subn('g_seh_ebp = ebp; '+key+'(); '+
+                ('ebp = g_seh_ebp; ' if has_frame else '')+'goto loc_'+target+';',source)
+            if n: bodies[caller]=source; count+=n
+        expected=2 if helper=='00DCA400' else 1
+        if count!=expected:
+            raise ValueError('Pinned Korean font trampoline caller changed')
+
+
+
+def repair_korean_vertical_uv(bodies):
+    # The three Korean page IDs retain horizontal gutter protection. Their
+    # glyphs reach row 15; trimming the lower V edge loses the last ink row
+    # when the destination quad lands between console pixel boundaries.
+    key='sub_00E03430'
+    old='xmm0.f[0] = xmm0.f[0] - MEMF(0xE0346C); /* subss */'
+    body=bodies.get(key,'')
+    if body.count(old)!=1:
+        raise ValueError('Pinned Korean vertical UV adjustment changed')
+    bodies[key]=body.replace(old,'/* Keep the full vertical glyph interval, including the last ink row. */')
+
+
+def repair_korean_spacing(bodies):
+    # These are the ASCII-space branches, not generic glyph or sprite bounds.
+    # Adapt both the measurement pass and each draw continuation together.
+    counts={"001E7462":0,"001E8481":0}
+    for name,body in list(bodies.items()):
+        for label,register in [("001E7462","ecx"),("001E8481","eax")]:
+            old=f"loc_{label}: ;\n    {register} = ZX16(MEM16(esp + 0x88));"
+            new=old+f"\n    {register} = ngb_korean_space_advance({register},MEM32(esi + 0x38));"
+            counts[label]+=body.count(old)
+            body=body.replace(old,new)
+        bodies[name]=body
+    # Shift-JIS full-width spaces bypass the ASCII-space branch. The pinned
+    # translation still contains 0x8140 pairs. Consume both bytes and use the
+    # same measured advance, without rewriting the translated resource files.
+    wide_counts={"001E734F":0,"001E8147":0}
+    for name,body in list(bodies.items()):
+        for label,target,advance in [("001E734F","001E7462","edi++;"),
+                                     ("001E8147","001E8481","MEM32(esp + 0x18)++;" )]:
+            old=f"loc_{label}: ;"
+            new=old+f"\n    if (MEM32(esi + 0x38)==1 && MEM8(edi)==0x81 && MEM8(edi+1)==0x40) {{ {advance} goto loc_{target}; }}"
+            wide_counts[label]+=body.count(old)
+            body=body.replace(old,new)
+        bodies[name]=body
+    if wide_counts!={"001E734F":1,"001E8147":2}:
+        raise ValueError("Pinned Korean full-width space branches changed")
+    if counts!={"001E7462":1,"001E8481":2}:
+        raise ValueError("Pinned Korean space measurement/draw branches changed")
+
+
+def repair_korean_text_layout(bodies):
+    # Keep the public measurer's legacy metrics. Its callers also use that
+    # width to choose horizontal font compression; compacting it changes glyph
+    # proportions on loading prose and any other auto-fit screen. The drawer's
+    # own measurement below uses compact advances only to place existing quads.
+    changes = {
+        '001E734F': ('', 'ngb_punct_def=0;\n    if (MEM32(esi+0x38)==1 && ngb_korean_punctuation_at(edi)) goto loc_001E7374;'),
+        '001E73A9': ('', 'ngb_punct_def=eax;'),
+        '001E73EF': ('', 'eax=ngb_korean_punctuation_advance(eax,ngb_punct_def,edi,MEM32(esi+0x38),MEMF(esp+0x1C)*MEMF(esp+0xAC));'),
+        '001E818A': ('', 'ngb_punct_def=eax;\n    ngb_punct_left=ngb_korean_punctuation_left(eax,edi,MEM32(esi+0x38),MEMF(esp+0x1C)*MEMF(esp+0xAC));\n    MEM32(esp+0x10)-=ngb_punct_left;'),
+        '001E83F8': ('', 'eax=ngb_korean_punctuation_advance(eax,ngb_punct_def,MEM32(esp+0x18),MEM32(esi+0x38),MEMF(esp+0x1C)*MEMF(esp+0xAC))+ngb_punct_left;'),
+        '001E7462': ('ecx = ngb_korean_space_advance(ecx,MEM32(esi + 0x38));',
+                     'if (MEM32(esi+0x38)==1 && ngb_korean_punctuation_at(edi+1)) ecx=0;'),
+        '001E8481': ('eax = ngb_korean_space_advance(eax,MEM32(esi + 0x38));',
+                     'if (MEM32(esi+0x38)==1 && ngb_korean_punctuation_at(MEM32(esp+0x18)+1)) eax=0;'),
+        '001E7527': ('', 'ngb_korean_center_paragraph(esi,esp+0xC8,esp+0x2C8,ZX16(MEM16(esp+0x20))+1,\n'
+                     '        MEM32(ebp+4)==0x00E02FB5u ? MEM32(ebp+20) : MEM32(ebp+4));'),
+    }
+    expected={label:1 for label in changes}
+    for label in ('001E818A','001E83F8','001E8481'): expected[label]=2
+    counts={label:0 for label in changes}
+    for name,body in list(bodies.items()):
+        touched=False
+        for label,(after,code) in changes.items():
+            marker='loc_'+label+': ;'+ ('\n    '+after if after and label not in ('001E7462','001E8481') else '')
+            if label in ('001E7462','001E8481'):
+                marker=after
+            n=body.count(marker)
+            if n:
+                body=body.replace(marker,marker+'\n    '+code)
+                counts[label]+=n;touched=True
+        if touched:
+            at=body.index('{')+1
+            body=body[:at]+'\n    unsigned ngb_punct_def=0; int ngb_punct_left=0;\n'+body[at:]
+            bodies[name]=body
+    if counts!=expected:
+        raise ValueError('Pinned Korean paragraph/punctuation paths changed: '+str(counts))
+
+
+HOST_WRAPPERS={'sub_001E6D30','sub_001E86A0','sub_001E6AE0','sub_0017E8A0'}
+
+def route_direct_entries(original, selected):
+    # RECOMP_ABI_CALL invokes its C symbol directly. The manual lookup only
+    # handles indirect calls, so every generated selected entry needs a gate.
+    routed=set()
+    for path in sorted(original.glob('recomp_[0-9]*.c')):
+        source=path.read_text()
+        additions=[]
+        for name in sorted(set(selected)-HOST_WRAPPERS):
+            pattern=re.compile(r'\bvoid '+name+r'\(void\)\s*\{')
+            source,n=pattern.subn('void ngb_original_'+name+'(void) {',source)
+            if n:
+                if n!=1 or name in routed: raise ValueError('Duplicate private language entry')
+                routed.add(name)
+                additions.append('void '+name+'(void) {\n'
+                    '#ifdef NGB_IOS_KOREAN\n'
+                    '    extern void kr_'+name+'(void);\n'
+                    '    extern int ngb_korean_active(void);\n'
+                    '    if (ngb_korean_active()) { kr_'+name+'(); return; }\n'
+                    '#endif\n'
+                    '    ngb_original_'+name+'();\n}')
+        if additions: path.write_text(source+'\n'+'\n'.join(additions)+'\n')
+    return routed
+
+
+def xbe_bytes(path, address, length):
+    image=path.read_bytes()
+    base=struct.unpack_from('<I',image,0x104)[0]
+    count,table=struct.unpack_from('<II',image,0x11C)
+    for i in range(count):
+        fields=struct.unpack_from('<9I20s',image,table-base+i*56)
+        va,offset,size=fields[1],fields[3],fields[4]
+        if va<=address and address+length<=va+size:
+            return image[offset+address-va:offset+address-va+length]
+    raise ValueError('Private function range is outside executable sections')
+
+def code_ranges(folder):
+    result={}
+    for path in folder.glob('recomp_[0-9]*.c'):
+        for a,b in re.findall(r'Original: 0x([0-9A-Fa-f]+) - 0x([0-9A-Fa-f]+)',path.read_text()):
+            result['sub_'+a.upper()]=(int(a,16),int(b,16))
+    return result
+
+def changed_instructions(name, before, after, original_xbe, patched_xbe):
+    start,end=before[name]
+    # A patch can split a function into a detour and continuations. Check
+    # its complete original span, not just the shorter lifted entry prefix.
+    if name in after: end=max(end,after[name][1])
+    return xbe_bytes(original_xbe,start,end-start)!=xbe_bytes(patched_xbe,start,end-start)
+
+
+def select_changed_functions(before,after,original_ranges,patched_ranges,original_xbe,patched_xbe):
+    return {name:body for name,body in after.items() if name in before and
+            normalized(body)!=normalized(before[name]) and
+            changed_instructions(name,original_ranges,patched_ranges,original_xbe,patched_xbe)}
+
+
+def merge(original, translated, missing_seeds=None):
+    before, after = functions(original), functions(translated)
+    repair_font_trampolines(after)
+    original_xbe=Path(__file__).resolve().parents[3]/'game_files/default.xbe'
+    patched_xbe=translated.parent/'korean.xbe'
+    original_ranges,patched_ranges=code_ranges(original),code_ranges(translated)
+    changed=select_changed_functions(before,after,original_ranges,patched_ranges,original_xbe,patched_xbe)
+    # Changes in generated calling convention around a handwritten hook do
+    # not mean the Xbox function changed. Keep the original safe-call caller
+    # when its instructions are byte-identical; changed callees have gates.
+    # Executable XBE sections can also hold text data. Do not import functions
+    # found by a linear sweep of those bytes unless reachable from real changed
+    # code. The three handwritten entries contain verified patched branches.
+    roots=set(changed) | {'sub_001E6D30','sub_001E86A0','sub_0021C660','sub_001E6AE0','sub_0017E8A0'}
+    old_symbols=set(re.findall(r'void (sub_[0-9A-Fa-f]{8})\(', (original/'recomp_funcs.h').read_text()))
+    selected={}; pending=list(roots); missing=set()
+    while pending:
+        name=pending.pop()
+        if name in selected: continue
+        body=after.get(name)
+        if body is None:
+            if name not in old_symbols: missing.add(int(name[4:],16))
+            continue
+        if name in before and name not in changed and name not in roots: continue
+        selected[name]=body
+        code=TOKENS.sub('',body)
+        # Continuations can appear as function-pointer values, not just calls.
+        targets=set(re.findall(r'\bsub_([0-9A-Fa-f]{8})\b',code))
+        targets.update(re.findall(r'RECOMP_(?:CALL|TAIL)\(0x([0-9A-Fa-f]{8})u?\)',code))
+        for address in targets:
+            target='sub_'+address.upper()
+            if target != name: pending.append(target)
+    if missing:
+        if missing_seeds:
+            previous=json.loads(missing_seeds.read_text()) if missing_seeds.exists() else []
+            missing.update(int(item['start'],16) for item in previous)
+            missing_seeds.write_text(json.dumps([{'start':f'0x{address:08X}',
+                'static_branch':True,
+                'note':'Static Korean patch continuation; not runtime-observed'} for address in sorted(missing)]))
+        print('Korean native continuations need actual translation:',len(missing))
+        return False
+    if not selected or not any(int(name[4:], 16) >= 0x00DF0000 for name in selected):
+        raise ValueError('Korean font/helper code was not generated')
+    # Reject new untranslated instructions. Existing unreachable baseline
+    # decoding artefacts are not introduced by the Korean adaptation.
+    baseline_unimplemented=set(re.findall(r'RECOMP_UNIMPL\("[^\"]*", (0x[0-9A-F]+)u\)',
+        '\n'.join(before.values())))
+    for name,body in selected.items():
+        body=restore_wrapper_stack(name,body)
+        unimplemented=set(re.findall(r'RECOMP_UNIMPL\("[^\"]*", (0x[0-9A-F]+)u\)',body))
+        if unimplemented-baseline_unimplemented:
+            raise ValueError('New Korean instruction remains untranslated; refusing an incomplete font helper')
+        selected[name]=body
+    repair_korean_vertical_uv(selected)
+    repair_korean_spacing(selected)
+    repair_korean_text_layout(selected)
+    # Read-only metrics to distinguish font-cell clipping from renderer bounds.
+    key='sub_001E6D36'
+    marker='loc_001E6E59: ;'
+    if selected[key].count(marker)!=1: raise ValueError('Pinned text metric entry changed')
+    selected[key]=selected[key].replace(marker,marker+'\n    ngb_korean_font_metrics(MEM32(esi + 0x38),ZX16(MEM16(esp + 0x88)),ZX16(MEM16(MEM32(esi + 0x38)*24 + 0x452A02)),MEMF(esp + 0x1C),MEMF(esp + 0xC));')
+    output = ['/* PRIVATE generated language variants: never commit. */',
+              '#ifdef NGB_IOS_KOREAN', '#define RECOMP_GENERATED_CODE', '#include "recomp_funcs.h"',
+              '#include "korean.h"', '#include <stddef.h>', '#include <math.h>']
+    output.extend('void kr_' + name + '(void);' for name in sorted(selected))
+    for name, body in sorted(selected.items()):
+        # A few generator-internal continuations call C functions directly.
+        # Route those to the matching variant while retaining font host hooks.
+        def rename(match):
+            target = match[0]
+            return 'kr_' + target if target in selected and int(target[4:],16) not in {0x001E6D30,0x001E86A0,0x001E6AE0,0x0017E8A0} else target
+        body = re.sub(r'\bsub_[0-9A-Fa-f]{8}\b', rename, body)
+        if name in {'sub_001E6D30','sub_001E86A0','sub_001E6AE0','sub_0017E8A0'}:
+            body = body.replace('void ' + name + '(void)', 'void kr_' + name + '(void)', 1)
+        output.append(body)
+        for macro in ['fp_push', 'fp_pop', 'fp_top', 'fp_st', 'fp_st1']:
+            output.append('#undef ' + macro)
+    output.extend(['typedef struct { unsigned address; ngb_korean_fn function; } KoreanEntry;',
+                   'static const KoreanEntry entries[] = {'])
+    for name in sorted(selected):
+        output.append('{0x' + name[4:] + 'u, kr_' + name + '},')
+    output.extend(['};', 'ngb_korean_fn ngb_korean_lookup_raw(unsigned address) {',
+                  'if (!ngb_korean_active()) return NULL;',
+                  'size_t lo=0, hi=sizeof entries / sizeof entries[0];',
+                  'while (lo < hi) { size_t m=lo+(hi-lo)/2;',
+                  'if (entries[m].address < address) lo=m+1;',
+                  'else if (entries[m].address > address) hi=m;',
+                  'else return entries[m].function; } return NULL; }',
+                  'ngb_korean_fn ngb_korean_lookup(unsigned address) {',
+                  'if (address == 0x001E6D30u || address == 0x001E86A0u || address == 0x001E6AE0u || address == 0x0017E8A0u) return NULL;',
+                  'return ngb_korean_lookup_raw(address); }', '#endif'])
+    routed=route_direct_entries(original,selected)
+    print('Private Korean direct-call entry gates:',len(routed))
+    (original / 'recomp_korean.c').write_text('\n'.join(output) + '\n')
+    # Same register ABI; the patched executable adds an executable helper range.
+    # Original image dispatch is unchanged; variants use the manual lookup first.
+    (original / 'recomp_types.h').write_bytes((translated / 'recomp_types.h').read_bytes())
+    print('Private Korean changed/new function variants:', len(selected))
+    return True
+
+
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--original', type=Path, required=True)
+    parser.add_argument('--translated', type=Path, required=True)
+    parser.add_argument('--missing-seeds', type=Path)
+    args = parser.parse_args()
+    raise SystemExit(0 if merge(args.original, args.translated,args.missing_seeds) else 2)

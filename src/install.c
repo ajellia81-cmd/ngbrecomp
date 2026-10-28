@@ -224,6 +224,13 @@ int ngb_check_xbe(const char *dir)
         return 1;
     }
     fclose(f);
+#ifdef NGB_IOS_KOREAN
+    extern int ngb_korean_active(void);
+    if (ngb_korean_active() && size == 4818032 &&
+        fnv1a(d,(size_t)size,0xcbf29ce484222325ull) == 0x98fe8c960b4bbac1ull) {
+        free(d); return 0;
+    }
+#endif
     if ((uint64_t)size == NGB_XBE_SIZE && fnv1a(d, (size_t)size, 0xcbf29ce484222325ull) == NGB_XBE_FNV) {
         free(d);
         return 0;                                   /* the very file */

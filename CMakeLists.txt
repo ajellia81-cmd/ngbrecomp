@@ -301,3 +301,5 @@ if(NOT WIN32)
         message(STATUS "ngb-setup: no Qt6 Widgets, not built")
     endif()
 endif()
+
+include(porting/macos-on-ios/target.cmake)

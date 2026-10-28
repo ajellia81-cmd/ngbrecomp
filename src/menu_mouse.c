@@ -95,6 +95,11 @@ void sub_001E86A0(void)
     if (now - s_text_since >= 50)
         ngb_menu_mark();
     ngb_menu_font_init();
+#ifdef NGB_IOS_KOREAN
+    extern void (*ngb_korean_lookup_raw(unsigned))(void);
+    void (*translated)(void)=ngb_korean_lookup_raw(0x001E86A0u);
+    if (translated) { translated(); return; }
+#endif
     menu_text();
 }
 
@@ -264,6 +269,11 @@ int ngb_menu_items(NgbTextItem *out, int max)
 void sub_001E6D30(void)
 {
     record_text(MEM32(esp + 4), MEM32(esp));
+#ifdef NGB_IOS_KOREAN
+    extern void (*ngb_korean_lookup_raw(unsigned))(void);
+    void (*translated)(void)=ngb_korean_lookup_raw(0x001E6D30u);
+    if (translated) { translated(); return; }
+#endif
     text_draw();
 }
 

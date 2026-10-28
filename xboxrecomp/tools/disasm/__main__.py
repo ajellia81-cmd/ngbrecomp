@@ -95,9 +95,10 @@ def main():
 
         extra = [s.strip() for s in args.extra_sections.split(",")] if args.extra_sections else []
         seed_funcs = []
+        static_branches = set()
         observed = set()
         for _seed_path in (args.seed_functions or []):
-            _got = _load_seed_functions(_seed_path, observed)
+            _got = _load_seed_functions(_seed_path, observed, static_branches)
             seed_funcs.extend(_got)
             if args.verbose:
                 print(f"  Seed file {_seed_path}: {len(_got)} addresses")
@@ -113,6 +114,7 @@ def main():
             extra_sections=extra,
             seed_functions=seed_funcs,
             observed_seeds=observed,
+            static_branch_seeds=static_branches,
         )
         success = disassembler.run()
         sys.exit(0 if success else 1)
@@ -133,7 +135,7 @@ def main():
         sys.exit(2)
 
 
-def _load_seed_functions(path, observed=None):
+def _load_seed_functions(path, observed=None, static_branches=None):
     """Load seed function addresses from a JSON file.
 
     Entries marked "observed" (tools.seed_from_log writes them: a run
@@ -149,6 +151,8 @@ def _load_seed_functions(path, observed=None):
         if isinstance(entry, dict) and "start" in entry:
             addr = int(entry["start"], 16)
             addrs.append(addr)
+            if static_branches is not None and entry.get("static_branch"):
+                static_branches.add(addr)
             if observed is not None and (
                     entry.get("observed")
                     or "observed at runtime" in entry.get("note", "")):

@@ -1045,6 +1045,8 @@ static void portable_init(void)
 
 int main(int argc, char **argv)
 {
+    extern int ngb_conversion_startup(void);
+    if(!ngb_conversion_startup())return 1;
     portable_init();   /* before anything picks a folder (the log's, first) */
 #if !defined(_WIN32)
     /* No terminal and no file of the player's own (the Mac's Finder, Steam on Linux -- a Steam Deck in Game
@@ -1166,6 +1168,7 @@ int main(int argc, char **argv)
      * same meaning still win, for testing. */
     NgbSettings cfg;
     ngb_settings_load(&cfg);
+        cfg.show_launcher=0; cfg.smooth_motion=0;
     if (s_use_gpu && !s_headless && s_show_settings &&
         !getenv("NGB_NO_SETTINGS")) {
         if (!ngb_launcher_run(&cfg))
@@ -1181,7 +1184,7 @@ int main(int argc, char **argv)
             cfg.vsync = *e == '2' ? 2 : *e != '0';
         if (!getenv("NV2A_SCALE") && cfg.scale > 1) {
             char v[8];
-            snprintf(v, sizeof v, "%d", cfg.scale);
+            snprintf(v, sizeof v, "%d", ngb_settings_runtime_scale(&cfg));
             setenv("NV2A_SCALE", v, 1);
         }
         if (!getenv("NV2A_TEX_REPLACE")) {
@@ -1249,7 +1252,7 @@ int main(int argc, char **argv)
             snprintf(v, sizeof v, "%d", cfg.anisotropy);
             setenv("NV2A_TEX_FILTER", cfg.anisotropy ? v : "original", 1);
         }
-        nv2a_set_quality(cfg.scale, cfg.anisotropy, cfg.shadow_scale, cfg.msaa);
+        nv2a_set_quality(ngb_settings_runtime_scale(&cfg), cfg.anisotropy, cfg.shadow_scale, cfg.msaa);
         {
             extern void ngb_set_all_difficulties(int on);   /* src/cheats.c */
             extern void ngb_set_all_costumes(int on);
@@ -1332,6 +1335,8 @@ int main(int argc, char **argv)
 #if defined(NGB_NV2A_VK)
     if (s_use_gpu && !s_headless) {
         while (nv2a_window_pump()) {
+            extern void ngb_conversion_tick(void),ngb_conversion_wait_foreground(void);
+            ngb_conversion_wait_foreground();ngb_conversion_tick();
             ngb_quick_poll();
             usleep(2000);
         }

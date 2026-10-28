@@ -58,6 +58,23 @@ class ObservedSeedTest(unittest.TestCase):
         d = _disasm(observed=(), prologues={0x00069538})
         self.assertTrue(d._trust_mid_instruction_seed(0x00069538))
 
+    def test_verified_static_branch_is_not_a_runtime_observation(self):
+        d = _disasm(observed=(), prologues=())
+        d.static_branch_seeds = {0x00DCA200}
+        self.assertTrue(d._trust_mid_instruction_seed(0x00DCA200))
+        self.assertNotIn(0x00DCA200, d.observed_seeds)
+        self.assertFalse(d._trust_mid_instruction_seed(0x00202C2E))
+
+    def test_loader_keeps_static_branch_provenance_separate(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = os.path.join(directory, 'seeds.json')
+            with open(path, 'w') as stream:
+                json.dump([{'start':'0x00DCA200','static_branch':True}], stream)
+            observed, branches = set(), set()
+            self.assertEqual(_load_seed_functions(path, observed, branches), [0x00DCA200])
+            self.assertFalse(observed)
+            self.assertEqual(branches, {0x00DCA200})
+
     def test_loader_marks_observed_seeds(self):
         seeds = [
             {"start": "0x001CF6AC", "observed": True, "note": "x"},

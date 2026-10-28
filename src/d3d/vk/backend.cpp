@@ -9,6 +9,9 @@
 // NGB_D3D_DUMP=dir writes each presented frame (and NGB_D3D_DUMP_FROM=n, NGB_D3D_DUMP_COUNT=n
 // choose which) as dir/frame_NNNNN.ppm.
 #include "port.h"
+extern "C" void ngb_conversion_render_size(int *,int *);
+extern "C" int ngb_pc_setting(int);
+extern "C" void ngb_conversion_wait_foreground(void);
 #include <volk.h>
 #include <vk_mem_alloc.h>
 
@@ -388,6 +391,7 @@ private:
     // the quality settings (nv2a_quality_get), read once a frame: display-sized targets render
     // at scale_ times their size, small depth-only ones (shadow maps) at shadow_ times
     int scale_ = 1, shadow_ = 1, aniso_level_ = 0, msaa_ = 1;
+    uint32_t native_w_=0,native_h_=0;
     bool anisotropy_ = false;
     bool wide_lines_ = false;   // lines wider than a pixel (the sparks of a hit are 2.7 to 3, #51)
     float point_max_ = 1.0f;
@@ -732,6 +736,8 @@ bool VulkanBackend::FinishDevice() {
 void VulkanBackend::ReadQuality() {
     int msaa = 1;
     nv2a_quality_get(&scale_, &aniso_level_, &shadow_, &msaa);
+    native_w_=native_h_=0;
+    if(ngb_pc_setting(0)==11){int w,h;ngb_conversion_render_size(&w,&h);native_w_=uint32_t(w);native_h_=uint32_t(h);}
     while (msaa > 1 && !(ms_counts_ & uint32_t(msaa))) msaa /= 2;   // the most the device has
     msaa_ = msaa;
     // a new anti-aliasing setting: its pipelines made in the background once the startup ones are
@@ -1150,6 +1156,7 @@ Target* VulkanBackend::EnsureTarget(const Surface& s, bool depth) {
     if (!depth && w==128 && h==128 && ContinuousGlowEnabled() && glow_targets_.count(s.data))
         scale=GlowTargetScale(uint32_t(scale_));
     uint32_t iw = w * scale, ih = h * scale;
+    if(big && native_w_ && native_h_){iw=native_w_;ih=native_h_;}
     uint64_t key = uint64_t(s.data) << 1 | (depth ? 1 : 0);
     auto it = targets_.find(key);
     // MSAA (a quality setting) for the display-sized targets: the 3D and what is drawn over it
@@ -3545,6 +3552,7 @@ void VulkanBackend::TraceFrame(Target& t) {
 }
 
 void VulkanBackend::Present(const Surface& front) {
+    ngb_conversion_wait_foreground();
     presents_++;
     {   // NGB_TRACE_FILE=<file>: its appearing starts a recording too (headless tests)
         static const char* tf = std::getenv("NGB_TRACE_FILE");

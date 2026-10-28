@@ -33,6 +33,7 @@
  * game's own, six tabs.
  */
 #define RECOMP_GENERATED_CODE
+#include "quit_label.h"
 #include "recomp_funcs.h"
 #include <math.h>
 #include <stdio.h>
@@ -77,7 +78,7 @@ void ngb_pc_set_setting(int which, int value);
 /* The settings, numbered as ngb_pc_setting has them. */
 enum { S_RENDER, S_TEXTURE, S_SHADOW, S_DISPLAY, S_VSYNC, S_FPS, S_WINDOW, S_ASPECT,
        S_SKIP, S_LAUNCHER, S_MSAA, S_HEALTH, S_NINPO, S_ESSENCE, S_ALLDIFF, S_SCARABS, S_ALLCOST, S_EXTRACOST,
-       S_GLOW, S_QUICKFREEZE, S_QUICKSCALE, S_INFITEMS, S_INFAMMO, S_POSAUDIO, S_HUD, S_COUNT };
+       S_GLOW, S_QUICKFREEZE, S_QUICKSCALE, S_INFITEMS, S_INFAMMO, S_POSAUDIO, S_HUD, S_TEXTLANG, S_SMOOTH, S_COUNT };
 
 static const char *const s_label[S_COUNT] = {
     "Render Resolution", "Anisotropic Filtering", "Shadow Resolution",
@@ -85,14 +86,14 @@ static const char *const s_label[S_COUNT] = {
     "Skip Intros", "Settings at Startup", "Anti-Aliasing (MSAA)",
     "Infinite Health", "Infinite Ninpo", "Infinite Essence", "All Difficulties",
     "Golden Scarabs", "All Costumes", "Extra Costume", "Smoother Glow", "Quick Menu Pause",
-    "Quick Menu", "Infinite Items", "Infinite Projectiles", "Positional Audio", "HUD",
+    "Quick Menu", "Infinite Items", "Infinite Projectiles", "Positional Audio", "HUD", "Text Language", "Smooth Motion",
 };
 static const char *const s_help[S_COUNT] = {
     "Draws the game at a multiple of the console's resolution.",
-    "Keeps textures sharp at an angle. Off: the console's filtering.",
+    "Sharper textures at an angle. Off: console filtering.",
     "The detail of the characters' shadows; 1x is the console's.",
     "A window, the whole screen, or a window without a frame.",
-    "No tearing. Mailbox: least delay. FIFO: steadiest. Adaptive: a late frame goes at once.",
+    "Choose frame synchronization.",
     "Frames per second, in the corner of the screen.",
     "The size of the window when not full screen.",
     "The shape of the picture and the window sizes offered.",
@@ -104,15 +105,17 @@ static const char *const s_help[S_COUNT] = {
     "As much essence as can be held. For this session only.",
     "Every difficulty at New Game, Ninja Dog to Master Ninja.",
     "All 50: Muramasa gives every reward. For this session only.",
-    "Every costume at the Costume Selection, and three it never offers.",
+    "Unlock all costumes at Costume Selection.",
     "Costumes in the game it never offers. From the next area.",
     "A softer, fainter glow on bright lights. Off: the console's.",
-    "The game pauses while the quick menu is open (once Ryu's action ends).",
-    "A d-pad menu of weapons, Ninpo and items (Up and Down open it), at this size.",
-    "Healing items, the Talisman of Rebirth and the Jewel of the Demon Seal are not used up.\nFor this session only.",
-    "Shuriken, smoke bombs, arrows and spears are not used up. For this session only.",
-    "Sounds placed left and right. Console: the sound chip's filters. Panning: their placement only, clearer.",
-    "The health and Ninpo bar, weapons and the rest drawn over play. Off: a clear screen.",
+    "Pause gameplay while the quick menu is open.",
+    "D-pad item menu. Up/Down to open; Off disables it.",
+    "Items are not used up. This session only.",
+    "Unlimited projectiles. This session only.",
+    "Choose console audio or clearer stereo panning.",
+    "Show or hide the HUD.",
+    "Text language. Restart to apply Korean.",
+    "Extra motion frames. MSAA and Smoother Glow must be Off.",
 };
 
 /* The categories: the strip's words, their rows. */
@@ -123,8 +126,13 @@ static const char *const s_help[S_COUNT] = {
 static const char *const s_cat_name[CATS] = { "Graphics", "Display & Audio", "Startup", "Gameplay", "Cheats", "Controls" };
 static const signed char s_cat_rows[CATS][CAT_ROWS] = {
     { S_RENDER, S_TEXTURE, S_MSAA, S_SHADOW, S_GLOW, -1 },   /* -1 ends a page shorter than CAT_ROWS */
+#ifdef NGB_CONVERTED_DISPLAY
+    { S_ASPECT, S_FPS, S_HUD, S_POSAUDIO, -1 },
+#else
     { S_ASPECT, S_WINDOW, S_DISPLAY, S_VSYNC, S_FPS, S_HUD, S_POSAUDIO },
-    { S_SKIP, S_ALLDIFF, S_ALLCOST, -1 },
+#endif
+    { S_SKIP,
+      S_ALLDIFF, S_ALLCOST, -1 },
     { S_QUICKSCALE, S_QUICKFREEZE, -1 },
     { S_HEALTH, S_NINPO, S_ESSENCE, S_SCARABS, S_INFITEMS, S_INFAMMO, -1 },
     { -1 },
@@ -179,7 +187,12 @@ static void value_text(int row, char *out, size_t n)
 {
     int v = ngb_pc_setting(row);
     switch (row) {
-    case S_RENDER:  snprintf(out, n, v == 1 ? "1x (console)" : "%dx", v); break;
+    case S_TEXTLANG: snprintf(out,n,"%s",v==0 ? "Japanese" : v==2 ? "Korean" : "English"); break;
+    case S_RENDER:
+#ifdef NGB_CONVERTED_DISPLAY
+        if (v == NGB_RENDER_SCALE_IPHONE_NATIVE) { snprintf(out, n, "iPhone Native"); break; }
+#endif
+        snprintf(out, n, v == 1 ? "1x (console)" : "%dx", v); break;
     case S_TEXTURE:
     case S_MSAA:    if (v > 1) snprintf(out, n, "%dx", v); else snprintf(out, n, "Off"); break;
     case S_SHADOW:  snprintf(out, n, v == 1 ? "1x (console)" : "%dx", v); break;
@@ -191,7 +204,11 @@ static void value_text(int row, char *out, size_t n)
         snprintf(out, n, "%d x %d", w, h);
         break;
     }
-    case S_ASPECT:  snprintf(out, n, "%s", v == 3 ? "21:9" : v == 2 ? "16:10" : v ? "16:9" : "4:3"); break;
+    case S_ASPECT:
+#ifdef NGB_CONVERTED_DISPLAY
+        if (v == ASPECT_IPHONE) { snprintf(out, n, "iPhone Native"); break; }
+#endif
+        snprintf(out, n, "%s", v == 3 ? "21:9" : v == 2 ? "16:10" : v ? "16:9" : "4:3"); break;
     case S_QUICKSCALE: if (v) snprintf(out, n, "%d%%", v); else snprintf(out, n, "Off"); break;
     case S_POSAUDIO: snprintf(out, n, "%s", v == 2 ? "Panning" : v ? "Console" : "Off"); break;
     case S_SKIP:
@@ -206,9 +223,10 @@ static void change(int row, int step)
 {
     int v = ngb_pc_setting(row);
     switch (row) {
+    case S_TEXTLANG: ngb_pc_set_setting(25,(v+(step>0 ? 1 : 2))%3); break;
     case S_RENDER:
         v += step;
-        ngb_pc_set_setting(0, v < 1 ? 10 : v > 10 ? 1 : v);
+        ngb_pc_set_setting(0, v < 1 ? NGB_RENDER_SCALE_COUNT : v > NGB_RENDER_SCALE_COUNT ? 1 : v);
         break;
     case S_TEXTURE: {
         static const int steps[] = { 0, 2, 4, 8, 16 };
@@ -247,7 +265,7 @@ static void change(int row, int step)
         ngb_pc_set_setting(row, (v + (step > 0 ? 1 : 2)) % 3);
         break;
     case S_ASPECT:
-        ngb_pc_set_setting(row, (v + (step > 0 ? 1 : 3)) % 4);
+        ngb_pc_set_setting(row, (v + (step > 0 ? 1 : ASPECT_COUNT - 1)) % ASPECT_COUNT);
         break;
     case S_WINDOW: {
         int n = ngb_settings_size_count(v / 8);
@@ -564,12 +582,23 @@ static void tab_word(uint8_t *m, int mw, int mh, float cx, float cy, float bw, f
 {
     static uint8_t tmp[400 * 160];
     const float cap = 58, rest = 40, sx = 0.82f, base = 110;
+    float text_height = bh;
+    int localized = 0;
     memset(tmp, 0, sizeof tmp);
     {   /* always the typeface: it looks like the other plates' lettering */
         int game = s_game_font;
         s_game_font = 0;
-        float a = draw_text(tmp, 400, 160, &s_font_tab, "S", cap, sx, 6, base);
-        draw_text(tmp, 400, 160, &s_font_tab, "ettings", rest, sx, 6 + a - 2, base);
+#ifdef NGB_IOS_KOREAN
+        extern int ngb_korean_active(void);
+        extern int ngb_ios_settings_tab_mask(uint8_t *, int, int);
+        localized = ngb_korean_active() && ngb_ios_settings_tab_mask(tmp, 400, 160);
+        if (localized) { text_height = bh * 30.0f / 38.0f; cy -= 2.0f * mh / 64.0f; }
+        if (!localized)
+#endif
+        {
+            float a = draw_text(tmp, 400, 160, &s_font_tab, "S", cap, sx, 6, base);
+            draw_text(tmp, 400, 160, &s_font_tab, "ettings", rest, sx, 6 + a - 2, base);
+        }
         s_game_font = game;
     }
     int x0 = 400, y0 = 160, x1 = -1, y1 = -1;
@@ -584,18 +613,30 @@ static void tab_word(uint8_t *m, int mw, int mh, float cx, float cy, float bw, f
     if (x1 < 0)
         return;
     float tw = (float)(x1 - x0 + 1), th = (float)(y1 - y0 + 1);
-    float k = fminf(fminf(bw / tw, bh / th), 1.0f);
-    int ow = (int)(tw * k), oh = (int)(th * k);
+    float k = fminf(fminf(bw / tw, text_height / th), 1.0f);
+    int ow = localized ? (int)lroundf(tw * k) : (int)(tw * k);
+    int oh = localized ? (int)lroundf(th * k) : (int)(th * k);
     int ox = (int)lroundf(cx - ow / 2.0f), oy = (int)lroundf(cy - oh / 2.0f);
     /* Area-average resample into place. */
     for (int y = 0; y < oh; y++)
         for (int x = 0; x < ow; x++) {
             float sx0 = x0 + x / k, sy0 = y0 + y / k, sum = 0, n = 0;
-            for (float yy = sy0; yy < sy0 + 1 / k; yy += 0.5f)
-                for (float xx = sx0; xx < sx0 + 1 / k; xx += 0.5f) {
-                    int X = (int)xx, Y = (int)yy;
-                    if (X <= x1 && Y <= y1) { sum += tmp[Y * 400 + X]; n++; }
-                }
+            if (localized) {
+                // Integrate coverage instead of point sampling thin strokes.
+                float sx1=fminf(sx0+1/k,x1+1), sy1=fminf(sy0+1/k,y1+1);
+                for (int Y=(int)floorf(sy0); Y<(int)ceilf(sy1); Y++)
+                    for (int X=(int)floorf(sx0); X<(int)ceilf(sx1); X++) {
+                        float area=(fminf(X+1,sx1)-fmaxf(X,sx0))*
+                                   (fminf(Y+1,sy1)-fmaxf(Y,sy0));
+                        if (area>0) { sum+=tmp[Y*400+X]*area; n+=area; }
+                    }
+            } else {
+                for (float yy = sy0; yy < sy0 + 1 / k; yy += 0.5f)
+                    for (float xx = sx0; xx < sx0 + 1 / k; xx += 0.5f) {
+                        int X = (int)xx, Y = (int)yy;
+                        if (X <= x1 && Y <= y1) { sum += tmp[Y * 400 + X]; n++; }
+                    }
+            }
             int X = ox + x, Y = oy + y;
             if (n && X >= 0 && Y >= 0 && X < mw && Y < mh)
                 m[Y * mw + X] = (uint8_t)(sum / n);
@@ -2354,7 +2395,7 @@ int ngb_confirm_hit(float x, float y)
 static int s_mm_exit;
 void ngb_main_menu_exit(void)
 {
-    if (!s_mm_exit && ngb_confirm_open("Exit to Desktop?", 0))
+    if (!s_mm_exit && ngb_confirm_open(NGB_QUIT_QUESTION, 0))
         s_mm_exit = 1;
 }
 
@@ -2384,13 +2425,13 @@ void ngb_restart_to_menu(void);
 void ngb_quit_to_desktop(void);
 
 #define EXIT_ROWS 3
-static const char *const s_exit_label[EXIT_ROWS] = { "Return to Game", "Return to Main Menu", "Exit to Desktop" };
+static const char *const s_exit_label[EXIT_ROWS] = { "Return to Game", "Return to Main Menu", NGB_QUIT_LABEL };
 static const char *const s_exit_help[EXIT_ROWS] = {
     "Closes this menu.",
     "Back to the main menu. Unsaved progress is lost.",
     "Closes the game. Unsaved progress is lost.",
 };
-static const char *const s_exit_q[EXIT_ROWS] = { "", "Return to the Main Menu?", "Exit to Desktop?" };
+static const char *const s_exit_q[EXIT_ROWS] = { "", "Return to the Main Menu?", NGB_QUIT_QUESTION };
 static int s_exit_row, s_exit_armed = -1;   /* (no longer armed: the box asks) */
 
 static void draw_exit_page(int focused, int row, int armed)
@@ -4867,6 +4908,16 @@ static void edge_inset(uint32_t p, uint32_t verts)
     uint32_t fmt = MEM32(hdr + 0xC);
     float tw = (float)(1 << (fmt >> 20 & 0xF)), th = (float)(1 << (fmt >> 24 & 0xF));
     for (int axis = 0; axis < 2; axis++) {
+#ifdef NGB_IOS_KOREAN
+        // Korean ink reaches the last cell row. QuadSnap already clamps to
+        // console sample centres; another vertical inset cuts off its fade.
+        // Keep horizontal seam protection and every non-font sprite intact.
+        extern int ngb_korean_active(void);
+        uint32_t id = MEM32(p) & 0xFFFF;
+        if (axis == 1 && ngb_korean_active() &&
+            (id == 0x56D || id == 0x587 || id == 0x588))
+            continue;
+#endif
         uint32_t off = 20 + 4 * axis;
         float lo = MEMF(verts + off), hi = lo;
         for (int v = 1; v < 4; v++) {

@@ -62,7 +62,7 @@ void ngb_settings_size_at(int aspect, int i, int *w, int *h);
 enum { ROW_SCREEN, ROW_MOVIE, ROW_PC, ROW_DEFAULT, ROW_EXIT,
        ROW_RENDER, ROW_TEXTURE, ROW_SHADOW, ROW_DISPLAY, ROW_VSYNC, ROW_FPS, ROW_WINDOW, ROW_ASPECT, ROW_BACK,
        ROW_SKIP, ROW_LAUNCHER, ROW_MSAA, ROW_HEALTH, ROW_NINPO, ROW_ESSENCE, ROW_ALLDIFF, ROW_SCARABS, ROW_ALLCOST, ROW_EXTRACOST,
-       ROW_GLOW, ROW_QUICKFREEZE, ROW_QUICKSCALE, ROW_INFITEMS, ROW_INFAMMO, ROW_POSAUDIO, ROW_HUD,
+       ROW_GLOW, ROW_QUICKFREEZE, ROW_QUICKSCALE, ROW_INFITEMS, ROW_INFAMMO, ROW_POSAUDIO, ROW_HUD, ROW_TEXTLANG, ROW_SMOOTH,
 };
 
 static int is_ours(int page) { return page >= PAGE_GFX && page < PAGE_GFX + N_OURS; }
@@ -74,9 +74,14 @@ static int is_ours(int page) { return page >= PAGE_GFX && page < PAGE_GFX + N_OU
 static const uint8_t s_rows_ws[] = { ROW_SCREEN, ROW_MOVIE, ROW_DEFAULT, ROW_EXIT };
 static const uint8_t s_rows_std[] = { ROW_SCREEN, ROW_EXIT };
 static const uint8_t s_rows_gfx[] = { ROW_RENDER, ROW_TEXTURE, ROW_MSAA, ROW_SHADOW, ROW_GLOW, ROW_BACK };
-static const uint8_t s_rows_disp[] = { ROW_ASPECT, ROW_WINDOW, ROW_DISPLAY, ROW_VSYNC, ROW_FPS, ROW_HUD, ROW_POSAUDIO,
+static const uint8_t s_rows_disp[] = { ROW_ASPECT,
+#ifndef NGB_CONVERTED_DISPLAY
+                                       ROW_WINDOW, ROW_DISPLAY, ROW_VSYNC,
+#endif
+                                       ROW_FPS, ROW_HUD, ROW_POSAUDIO,
                                        ROW_BACK };
-static const uint8_t s_rows_start[] = { ROW_SKIP, ROW_ALLDIFF, ROW_ALLCOST, ROW_BACK };
+static const uint8_t s_rows_start[] = { ROW_SKIP,
+    ROW_ALLDIFF, ROW_ALLCOST, ROW_BACK };
 static const uint8_t s_rows_game[] = { ROW_QUICKSCALE, ROW_QUICKFREEZE, ROW_BACK };
 static const uint8_t s_rows_cheat[] = { ROW_HEALTH, ROW_NINPO, ROW_ESSENCE, ROW_SCARABS, ROW_INFITEMS, ROW_INFAMMO, ROW_BACK };
 static const uint8_t s_rows_ctrl[] = { ROW_BACK };
@@ -174,25 +179,32 @@ static const struct { const uint8_t *kinds; int n; } s_ours[N_OURS] = {
 #define T_WSIZE0   0x20140            /* + aspect * 8 + index: "1280 x 720" */
 
 static const struct { uint32_t id; const char *text; } s_text[] = {
+    { 0x20220, "Smooth Motion" },
+    { 0x20221, "Extra motion frames. MSAA and Smoother Glow must be Off." },
+#ifdef NGB_IOS_KOREAN
+    { 0x20200, "Text Language" },
+    { 0x20201, "Text language. Restart to apply Korean." },
+    { 0x20210, "Japanese" }, { 0x20211, "English" }, { 0x20212, "Korean" },
+#endif
     { T_QUICKFREEZE, "Quick Menu Pause" },
     { T_POSAUDIO, "Positional Audio" },
     { T_POSCONSOLE, "Console" },
     { T_POSPAN, "Panning" },
     { T_HUD, "HUD" },
-    { D_HUD, "The health and Ninpo bar, weapons and the rest drawn over play. Off: a clear screen." },
-    { D_POSAUDIO, "Sounds placed left and right. Console: the sound chip's filters. Panning: their placement only, clearer." },
+    { D_HUD, "Show or hide the HUD." },
+    { D_POSAUDIO, "Choose console audio or clearer stereo panning." },
     { T_QUICKSCALE, "Quick Menu" },
-    { D_QUICKSCALE, "A d-pad menu of weapons, Ninpo and items (Up and Down open it), at this size." },
-    { D_GAMEPLAY, "Optional changes to how the game plays, each off unless chosen." },
+    { D_QUICKSCALE, "D-pad item menu. Up/Down to open; Off disables it." },
+    { D_GAMEPLAY, "Optional gameplay changes." },
     { T_INFITEMS, "Infinite Items" },
     { T_INFAMMO,  "Infinite Projectiles" },
-    { D_INFITEMS, "Healing items, the Talisman of Rebirth and the Jewel of the Demon Seal are not used up.\nFor this session only." },
-    { D_INFAMMO,  "Shuriken, smoke bombs, arrows and spears are not used up. For this session only." },
+    { D_INFITEMS, "Items are not used up. This session only." },
+    { D_INFAMMO,  "Unlimited projectiles. This session only." },
     { T_QUICKSCALE0 + 0, "150%" }, { T_QUICKSCALE0 + 1, "125%" },
     { T_QUICKSCALE0 + 2, "100%" }, { T_QUICKSCALE0 + 3, "75%" },
     { T_QUICKSCALE0 + 4, "50%" }, { T_QUICKSCALE0 + 5, "25%" },
     { T_QUICKSCALE0 + 6, "Off" },
-    { D_QUICKFREEZE, "The game pauses while the quick menu is open (once Ryu's action ends)." },
+    { D_QUICKFREEZE, "Pause gameplay while the quick menu is open." },
     { T_PC,      "PC Settings" },
     { T_RENDER,  "Render Resolution" },
     { T_TEXTURE, "Anisotropic Filtering" },
@@ -210,6 +222,10 @@ static const struct { uint32_t id; const char *text; } s_text[] = {
     { T_SCALE0 + 0, "Native (1x)" }, { T_SCALE0 + 1, "2x" }, { T_SCALE0 + 2, "3x" },
     { T_SCALE0 + 3, "4x" }, { T_SCALE0 + 4, "5x" }, { T_SCALE0 + 5, "6x" },
     { T_SCALE0 + 6, "7x" }, { T_SCALE0 + 7, "8x" }, { T_SCALE0 + 8, "9x" }, { T_SCALE0 + 9, "10x" },
+#ifdef NGB_CONVERTED_DISPLAY
+    { T_SCALE0 + 10, "iPhone Native" },
+    { T_ASPECT0 + 4, "iPhone Native" },
+#endif
     { T_SMOOTH,   "Smooth" },
     { T_ORIGINAL, "Original" },
     { T_SHADOW0 + 0, "Original" }, { T_SHADOW0 + 1, "2x" }, { T_SHADOW0 + 2, "4x" },
@@ -227,20 +243,20 @@ static const struct { uint32_t id; const char *text; } s_text[] = {
     { D_WINDOWSZ, "The size of the window when not full screen." },
     { D_PC,      "Graphics and display settings of the PC version." },
     { D_RENDER,  "Sets the resolution the game is drawn at." },
-    { D_TEXTURE, "Keeps textures sharp at an angle; Off is the console's filtering." },
+    { D_TEXTURE, "Sharper textures at an angle. Off: console filtering." },
     { D_SHADOW,  "Sets the resolution of the character shadows." },
     { D_DISPLAY, "A window, the whole screen, or a window without a frame." },
-    { D_VSYNC,   "No tearing. Mailbox: least delay. FIFO: steadiest. Adaptive: a late frame goes at once." },
+    { D_VSYNC,   "Choose frame synchronization." },
     { D_FPS,     "Shows the frame rate in a corner of the screen." },
     { T_SKIP,    "Skip Intros" },
     { T_LAUNCHER, "Settings at Startup" },
     { T_YES,     "Yes" },
     { T_NO,      "No" },
     { D_SKIP,    "Starts at the title screen, from the next start." },
-    { D_LAUNCHER, "Shows the settings screen before the game, from the next start." },
-    { D_CAT0 + 0, "Render resolution, texture filtering, anti-aliasing, shadows and the glow." },
-    { D_CAT0 + 1, "Aspect ratio, window size, display mode, V-Sync, the FPS counter, the HUD and positional audio." },
-    { D_CAT0 + 2, "What the game shows when it starts, and the difficulties New Game offers." },
+    { D_LAUNCHER, "Show settings at startup. Applies next launch." },
+    { D_CAT0 + 0, "Resolution, textures, shadows and effects." },
+    { D_CAT0 + 1, "Screen shape, frame rate, HUD and audio." },
+    { D_CAT0 + 2, "Startup and New Game options." },
     { D_BACK,    "Returns to the Recomp Settings screen." },
     { T_HEALTH,  "Infinite Health" },
     { T_NINPO,   "Infinite Ninpo" },
@@ -248,15 +264,15 @@ static const struct { uint32_t id; const char *text; } s_text[] = {
     { D_HEALTH,  "Ryu's health stays full. For this session only." },
     { D_NINPO,   "Ninpo is always ready. For this session only." },
     { D_ESSENCE, "As much essence as can be held. For this session only." },
-    { D_CHEATS,  "Help for a hard spot: health, ninpo, essence, items and projectiles. Not saved." },
+    { D_CHEATS,  "Optional cheats. This session only." },
     { T_ALLDIFF, "All Difficulties" },
     { D_ALLDIFF, "Every difficulty at New Game, Ninja Dog to Master Ninja." },
     { T_SCARABS, "Golden Scarabs" },
-    { D_SCARABS, "All 50 Golden Scarabs: Muramasa gives every reward. For this session only." },
+    { D_SCARABS, "All Scarab rewards. This session only." },
     { T_ALLCOST, "All Costumes" },
-    { D_ALLCOST, "Every costume at the Costume Selection, and three it never offers." },
+    { D_ALLCOST, "Unlock all costumes at Costume Selection." },
     { T_EXTRACOST, "Extra Costume" },
-    { D_EXTRACOST, "Costumes in the game's files it never offers. From the next area." },
+    { D_EXTRACOST, "Choose an extra costume. Applies in the next area." },
     { T_EXTRA0 + 0, "Game's Choice" }, { T_EXTRA0 + 1, "Extra 1" }, { T_EXTRA0 + 2, "Extra 2" },
     { T_EXTRA0 + 3, "Extra 3" },
     { D_CONTROLS, "The keys, mouse buttons and controller buttons used in play." },
@@ -291,13 +307,14 @@ static uint32_t make_rows(const uint8_t *kinds, int n)
         case ROW_DEFAULT: src = 0x4299A0; break;
         case ROW_EXIT:
         case ROW_BACK:    src = 0x4299BC; break;
-        case ROW_RENDER:  src = 0x429984; max = 9; break;
+        case ROW_RENDER:  src = 0x429984; max = NGB_RENDER_SCALE_COUNT - 1; break;
         case ROW_TEXTURE: src = 0x429984; max = 4; break;
         case ROW_MSAA:    src = 0x429984; max = 3; break;
         case ROW_SHADOW:  src = 0x429984; max = 4; break;
         case ROW_VSYNC:   src = 0x429984; max = 3; break;
         case ROW_WINDOW:  src = 0x429984; max = 6; break;
-        case ROW_ASPECT:  src = 0x429984; max = 3; break;
+        case ROW_ASPECT:  src = 0x429984; max = ASPECT_COUNT - 1; break;
+        case ROW_TEXTLANG: src = 0x429984; max = 2; break;
         case ROW_EXTRACOST: src = 0x429984; max = 3; break;
         case ROW_QUICKSCALE: src = 0x429984; max = 10; break;
         default:          src = 0x429984; break;          /* a value, 0-1 */
@@ -318,7 +335,7 @@ static uint32_t make_labels(const uint8_t *kinds, int n)
                                    T_RENDER, T_TEXTURE, T_SHADOW, T_DISPLAY, T_VSYNC,
                                    T_FPS, T_WINDOWSZ, T_ASPECT, 0x20005, T_SKIP, T_LAUNCHER, T_MSAA,
                                    T_HEALTH, T_NINPO, T_ESSENCE, T_ALLDIFF, T_SCARABS, T_ALLCOST, T_EXTRACOST,
-                                   T_GLOW, T_QUICKFREEZE, T_QUICKSCALE, T_INFITEMS, T_INFAMMO, T_POSAUDIO, T_HUD };
+                                   T_GLOW, T_QUICKFREEZE, T_QUICKSCALE, T_INFITEMS, T_INFAMMO, T_POSAUDIO, T_HUD, 0x20200, 0x20220 };
     uint32_t va = xbox_HeapAlloc(4 * n, 4);
     for (int i = 0; i < n; i++)
         MEM32(va + 4 * i) = id[kinds[i]];
@@ -686,6 +703,8 @@ static int row_kind(int row)
 static uint32_t pc_value_id(int row, uint32_t movie_id)
 {
     switch (row_kind(row)) {
+    case ROW_SMOOTH: return ngb_pc_setting(26) ? T_ON : T_OFF;
+    case ROW_TEXTLANG: return 0x20210u+(uint32_t)ngb_pc_setting(25);
     case ROW_QUICKFREEZE: return ngb_pc_setting(19) ? T_ON : T_OFF;
     case ROW_POSAUDIO: return ngb_pc_setting(23) == 2 ? T_POSPAN : ngb_pc_setting(23) ? T_POSCONSOLE : T_OFF;
     case ROW_HUD:     return ngb_pc_setting(24) ? T_ON : T_OFF;
@@ -736,18 +755,20 @@ static int pc_value_change(int row, int delta)
 {
     int kind = row_kind(row);
     int step = delta > 0 ? 1 : -1;
-    if ((kind < ROW_RENDER || kind > ROW_ASPECT) && (kind < ROW_SKIP || kind > ROW_HUD))
+    if ((kind < ROW_RENDER || kind > ROW_ASPECT) && (kind < ROW_SKIP || kind > ROW_SMOOTH))
         return 0;
     if (!delta)
         return 1;
     switch (kind) {
+    case ROW_SMOOTH: ngb_pc_set_setting(26,!ngb_pc_setting(26)); break;
+    case ROW_TEXTLANG: ngb_pc_set_setting(25,(ngb_pc_setting(25)+(step>0 ? 1 : 2))%3); break;
     case ROW_QUICKFREEZE: ngb_pc_set_setting(19, !ngb_pc_setting(19)); break;
     case ROW_POSAUDIO: ngb_pc_set_setting(23, (ngb_pc_setting(23) + (step > 0 ? 1 : 2)) % 3); break;
     case ROW_HUD: ngb_pc_set_setting(24, !ngb_pc_setting(24)); break;
     case ROW_QUICKSCALE: ngb_pc_set_setting(20, ngb_quick_scale_step(ngb_pc_setting(20), step)); break;
     case ROW_RENDER: {
         int v = ngb_pc_setting(0) + step;
-        ngb_pc_set_setting(0, v < 1 ? 10 : v > 10 ? 1 : v);
+        ngb_pc_set_setting(0, v < 1 ? NGB_RENDER_SCALE_COUNT : v > NGB_RENDER_SCALE_COUNT ? 1 : v);
         break;
     }
     case ROW_SHADOW: {
@@ -789,7 +810,7 @@ static int pc_value_change(int row, int delta)
         ngb_pc_set_setting(which, !ngb_pc_setting(which));
         break;
     }
-    case ROW_ASPECT:  ngb_pc_set_setting(7, (ngb_pc_setting(7) + (step > 0 ? 1 : 3)) % 4); break;
+    case ROW_ASPECT:  ngb_pc_set_setting(7, (ngb_pc_setting(7) + (step > 0 ? 1 : ASPECT_COUNT - 1)) % ASPECT_COUNT); break;
     case ROW_WINDOW: {
         int v = ngb_pc_setting(6), a = v / 8, n = ngb_settings_size_count(a);
         ngb_pc_set_setting(6, a * 8 + (v % 8 + step + n) % n);
@@ -1865,7 +1886,7 @@ void sub_00220870(void)
                                            D_EXTRACOST & 0xFFFF, D_GLOW & 0xFFFF,
                                            D_QUICKFREEZE & 0xFFFF, D_QUICKSCALE & 0xFFFF,
                                            D_INFITEMS & 0xFFFF, D_INFAMMO & 0xFFFF, D_POSAUDIO & 0xFFFF,
-                                           D_HUD & 0xFFFF };
+                                           D_HUD & 0xFFFF, 0x0201, 0x0221 };
     RECOMP_ENTRY(0x00220870u);
     uint32_t out = ecx;
     uint32_t level = MEM16(0x8DE430), tab = MEM16(0x8DE4CC), row = MEM16(0x8DE468);
@@ -1928,5 +1949,11 @@ float ngb_hud_shape(void)
     if (stretch)
         return 1.0f;
     int a = ngb_pc_setting(7);
+#ifdef NGB_CONVERTED_DISPLAY
+    if (a == ASPECT_IPHONE) {
+        NgbSettings settings = {0}; settings.aspect = a;
+        return (float)((4.0/3.0)/ngb_settings_aspect_ratio(&settings));
+    }
+#endif
     return a == 1 ? 0.75f : a == 2 ? 0.8333333f : a == 3 ? 0.5625f : 1.0f;
 }

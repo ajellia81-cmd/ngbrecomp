@@ -1,3 +1,6 @@
+#ifdef __APPLE__
+#include <dlfcn.h>
+#endif
 /**
  * Xbox Input Compatibility Layer
  *
@@ -631,9 +634,17 @@ DWORD xbox_InputSetState(DWORD dwPort, const XBOX_VIBRATION *pVibration)
     SDL_GameController *c = g_pads[dwPort];
     /* SDL rumble needs a duration; refresh for ~1s on each call (the game
      * polls vibration continuously). */
-    if (c)
+    if (c) {
+#ifdef __APPLE__
+        typedef void (*ConvertedRumble)(unsigned,uint16_t,uint16_t);
+        static ConvertedRumble rumble;static int checked;
+        if(!checked){rumble=(ConvertedRumble)dlsym(RTLD_DEFAULT,"ngb_macos_on_ios_haptics_set");checked=1;}
+        if(rumble)rumble(dwPort,pVibration->wLeftMotorSpeed,pVibration->wRightMotorSpeed);
+        else
+#endif
         SDL_GameControllerRumble(c, pVibration->wLeftMotorSpeed,
                                  pVibration->wRightMotorSpeed, 1000);
+    }
     SDL_UnlockMutex(g_pad_lock);
     return c ? ERROR_SUCCESS : ERROR_DEVICE_NOT_CONNECTED;
 }

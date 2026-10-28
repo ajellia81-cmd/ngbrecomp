@@ -450,7 +450,7 @@ _EFLAGS_PRESERVE = frozenset({
     "cmpss", "cmpsd",
     "cmpltss", "cmpeqss", "cmpleps", "cmpneqss",
     # SSE packed float
-    "movaps", "movups", "movlps", "movhps", "movlhps", "movhlps",
+    "movaps", "movups", "movdqa", "movdqu", "movlps", "movhps", "movlhps", "movhlps",
     "addps", "subps", "mulps", "divps",
     "minps", "maxps", "sqrtps", "rsqrtps", "rcpps",
     "shufps", "unpcklps", "unpckhps",
@@ -1720,7 +1720,7 @@ class Lifter:
                    "emms", "femms", "cvtpi2ps"):
             return self._lift_mmx(insn, m, ops)
 
-        if m in ("movss", "movsd", "movaps", "movups", "movlps", "movhps",
+        if m in ("movss", "movsd", "movaps", "movups", "movdqa", "movdqu", "movlps", "movhps",
                  "movlhps", "movhlps", "movapd", "movupd",
                  "addss", "subss", "mulss", "divss", "sqrtss",
                  "addsd", "subsd", "mulsd", "divsd", "sqrtsd",
@@ -3380,7 +3380,7 @@ class Lifter:
         # ── Moves ──
         # movaps/movups move all 16 bytes. Treating them like movss was the
         # defect that left every packed value 4 bytes wide.
-        if m in ("movaps", "movups", "movapd", "movupd"):
+        if m in ("movaps", "movups", "movapd", "movupd", "movdqa", "movdqu"):
             if nops >= 2:
                 src = _packed_read(ops[1])
                 if src is not None:

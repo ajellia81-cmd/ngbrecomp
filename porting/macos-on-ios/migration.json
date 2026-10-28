@@ -1,0 +1,46 @@
+{
+  "baseline": {
+    "commit": "5fc57d84d617aa7f360cf0a5ab707dc9334f4b95",
+    "branch": "master",
+    "version": "0.9.29",
+    "policy": "Build a native ARM64 macOS app first, then convert with macos-on-ios; do not compile the game engine for iPhoneOS."
+  },
+  "preserve": [
+    "Ninja Gaiden Black display name",
+    "Approved cover crop and iPhone icon catalog",
+    "iPhone native resolution, aspect ratio and safe-area presentation",
+    "Korean code variants, font UV correction, subtitle switching, spacing and punctuation",
+    "Korean sprite alignment and approved settings lettering",
+    "Controller and touch controls",
+    "Haptic preparation and recovery",
+    "Background pause and foreground recovery",
+    "Language and gameplay settings",
+    "User saves and original imported game files",
+    "Original macOS logger, recorder and F7 behavior"
+  ],
+  "exclude": [
+    "Existing iPhoneOS game target, SDL UIKit entry point and device engine build",
+    "Existing iOS scheduler, audio-mailbox and render/presenter changes",
+    "Old Smooth Motion scene adapter in the initial baseline",
+    "Cache-copy timing acceleration and producer-vblank bypass",
+    "Forced synchronous shader compilation",
+    "Added shader preparation completion/loading/demo gates",
+    "Additional port diagnostic files, probes and shader dumps"
+  ],
+  "pending_preference": null,
+  "unknowns": [
+    "macOS-on-iOS compatibility and actual attract-demo stutter need device validation",
+    "Original macOS launcher execv and separate Qt installer require conversion-safe entry/import handling",
+    "Korean hooks must be rebuilt into the macOS app; a binary-only conversion does not carry them",
+    "Smooth Motion is absent in pristine baseline and requires a separate implementation decision"
+  ],
+  "source_safety": "Never commit private game files, generated C, device logs or credentials. Do not delete or overwrite existing saves/cache to test.",
+  "first_ipa": "60fps, no Smooth Motion, no stutter tuning before device baseline",
+  "compatibility_commit": "c2562a333d4de4c08da4ceb4a4f1485bddb84e04",
+  "validation": [
+    "23 generator tests passed",
+    "Shader compiler/cache/prewarm and shader source identity check passed",
+    "Language hooks and layout compile passed",
+    "Workflow shell syntax passed"
+  ]
+}
