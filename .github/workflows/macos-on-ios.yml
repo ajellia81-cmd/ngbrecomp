@@ -17,6 +17,7 @@ jobs:
     - uses: actions/checkout@v4
       with:
         persist-credentials: false
+        fetch-depth: 0
     - name: Check untouched macOS shader/compiler baseline
       run: |-
         python3 porting/macos-on-ios/check_baseline.py
