@@ -41,6 +41,12 @@ jobs:
         xcrun --sdk macosx clang -DNGB_IMAGE_IDENTITY_TEST=1 -fsanitize=address -dynamiclib porting/macos-on-ios/libSystem_NGBImageIdentity.m porting/macos-on-ios/tests/game_image_probe.c -Wl,-install_name,@rpath/NinjaGaidenBlack -o "$RUNNER_TEMP/NinjaGaidenBlack"
         xcrun --sdk macosx clang -fsanitize=address porting/macos-on-ios/tests/image_identity.c "$RUNNER_TEMP/NinjaGaidenBlack" -Wl,-rpath,"$RUNNER_TEMP" -o "$RUNNER_TEMP/ngb-image-identity-test"
         "$RUNNER_TEMP/ngb-image-identity-test"
+    - name: Check logical Mac audio-device enumeration without playing audio
+      run: |
+        xcrun --sdk iphoneos clang -target arm64-apple-ios17.0 -fobjc-arc -c porting/macos-on-ios/CoreAudio_NGB.m -o "$RUNNER_TEMP/ngb-coreaudio.o"
+        xcrun --sdk iphoneos clang -target arm64-apple-ios17.0 -fobjc-arc -c porting/macos-on-ios/AudioToolbox_NGB.m -o "$RUNNER_TEMP/ngb-audioqueue.o"
+        xcrun --sdk macosx clang -fobjc-arc -fsanitize=address porting/macos-on-ios/tests/audio_device.m -framework Foundation -framework AudioToolbox -o "$RUNNER_TEMP/ngb-audio-device-test"
+        "$RUNNER_TEMP/ngb-audio-device-test"
     - name: Require private disc input
       env:
         NGB_DISC_URL: ${{ secrets.NGB_DISC_URL }}

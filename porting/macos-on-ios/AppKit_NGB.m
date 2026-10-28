@@ -8,6 +8,7 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <stdio.h>
+#include <signal.h>
 #include "bridge.h"
 #include "korean/haptics.h"
 #define NGB_IOS_PORT_DIAG(...) ((void)0)
@@ -390,6 +391,17 @@ int ngb_macos_on_ios_prepare(const NgbConversionHost *api){@autoreleasepool{
     if(ngb_check_xbe(game.fileSystemRepresentation)!=0){NGBImport *importer=[NGBImport new];importer.destination=game;if(![importer run])return 0;}
     fprintf(stderr,"[Startup] game data validated; configuring audio session\n");
     [AVAudioSession.sharedInstance setCategory:AVAudioSessionCategoryAmbient error:nil];
+    [AVAudioSession.sharedInstance setPreferredSampleRate:48000 error:nil];
+    NSError *audioError=nil;
+    [AVAudioSession.sharedInstance setActive:YES error:&audioError];
+    fprintf(stderr,"[Audio] iOS session active: %s\n",audioError ? audioError.localizedDescription.UTF8String : "yes");
+    // Use the original Mac hang sampler, twice only, to locate a stalled boot.
+    for(unsigned seconds=25;seconds<=45;seconds+=20)dispatch_after(dispatch_time(DISPATCH_TIME_NOW,(int64_t)seconds*NSEC_PER_SEC),dispatch_get_global_queue(QOS_CLASS_UTILITY,0),^{
+        struct sigaction action={0};
+        if(__atomic_load_n(&active,__ATOMIC_ACQUIRE) && sigaction(SIGUSR1,NULL,&action)==0 && action.sa_handler!=SIG_DFL && action.sa_handler!=SIG_IGN){
+            fprintf(stderr,"[Startup] sampling original Mac boot thread\n");kill(getpid(),SIGUSR1);
+        }
+    });
     NSNotificationCenter *nc=NSNotificationCenter.defaultCenter;
     [nc addObserverForName:UIApplicationWillResignActiveNotification object:nil queue:NSOperationQueue.mainQueue usingBlock:^(NSNotification *n){(void)n;__atomic_store_n(&active,0,__ATOMIC_RELEASE);[touchControls releaseInputs];ngb_ios_haptics_active(0);previousAudioPause=host.audio_paused();host.audio_pause(1);}];
     [nc addObserverForName:UIApplicationDidBecomeActiveNotification object:nil queue:NSOperationQueue.mainQueue usingBlock:^(NSNotification *n){(void)n;__atomic_store_n(&active,1,__ATOMIC_RELEASE);ngb_ios_haptics_active(1);host.audio_pause(previousAudioPause);}];
@@ -402,3 +414,23 @@ int ngb_macos_on_ios_prepare(const NgbConversionHost *api){@autoreleasepool{
 }}
 
 void ngb_macos_on_ios_haptics_set(unsigned port,uint16_t low,uint16_t high){ngb_ios_haptics_set(port,low,high);}
+
+// A Mac SDL message box cannot present a UIKit alert through AppKit stubs.
+void ngb_macos_on_ios_language_changed(int language){
+    dispatch_async(dispatch_get_main_queue(),^{
+        static BOOL showing;
+        if(showing)return;
+        UIWindow *window=nil;
+        for(UIWindow *candidate in UIApplication.sharedApplication.windows)if(candidate.isKeyWindow){window=candidate;break;}
+        UIViewController *controller=window.rootViewController;
+        while(controller.presentedViewController)controller=controller.presentedViewController;
+        if(!controller){fprintf(stderr,"[Language] restart notice has no active window\n");return;}
+        BOOL korean=language==2;
+        UIAlertController *alert=[UIAlertController alertControllerWithTitle:korean ? @"재시작 필요" : @"Restart required"
+            message:korean ? @"표시 언어를 적용하려면 앱을 완전히 종료한 뒤 다시 실행해 주세요." : @"Fully close and reopen the app to apply the display language."
+            preferredStyle:UIAlertControllerStyleAlert];
+        [alert addAction:[UIAlertAction actionWithTitle:korean ? @"확인" : @"OK" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action){(void)action;showing=NO;}]];
+        showing=YES;[controller presentViewController:alert animated:YES completion:nil];
+        fprintf(stderr,"[Language] native restart notice presented\n");
+    });
+}

@@ -6,6 +6,7 @@ from pathlib import Path
 def prepare(compat):
  root=Path(__file__).resolve().parent;overrides=compat/'shim/overrides'
  shutil.copy2(root/'CoreGraphics_NGB.m',overrides/'CoreGraphics.m')
+ for name in ('CoreAudio_NGB.m','AudioToolbox_NGB.m'):shutil.copy2(root/name,overrides/name)
  for name in ('libSystem_NGBSharedMemory.m','libSystem_NGBImageIdentity.m'):shutil.copy2(root/name,overrides/name)
  for name in ('AppKit_NGB.m','AppKit_NGBImages.m','bridge.h'):shutil.copy2(root/name,overrides/name)
  (overrides/'korean').mkdir(exist_ok=True)
@@ -16,7 +17,7 @@ def prepare(compat):
  (overrides/'AppKit_Stats.m').write_text('/* No conversion-owned periodic statistics. */\n')
  p=compat/'tools/convert_app.py';s=p.read_text();old='"-framework", "Metal", "-framework", "GameController"]'
  if s.count(old)!=1:raise ValueError('Pinned converter linker arguments changed')
- s=s.replace(old,'"-framework", "Metal", "-framework", "GameController", "-framework", "CoreHaptics", "-framework", "AVFoundation", "-framework", "UniformTypeIdentifiers", "-framework", "ImageIO"]')
+ s=s.replace(old,'"-framework", "Metal", "-framework", "GameController", "-framework", "CoreHaptics", "-framework", "AVFoundation", "-framework", "UniformTypeIdentifiers", "-framework", "ImageIO", "-framework", "AudioToolbox"]')
  p.write_text(s)
  print('Compatibility UI bridge installed; Mac renderer/compiler unchanged')
 if __name__=='__main__':

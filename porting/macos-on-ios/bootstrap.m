@@ -17,7 +17,11 @@ extern BOOL ngb_prepare_korean(NSString *,NSString *,NSString *,void (^)(NSStrin
 static int active,override=-1,converted,w=1280,h=720;
 int ngb_korean_active(void){return active;}
 int ngb_ios_text_override(void){return override;}
-void ngb_ios_language_changed(int language){(void)language;SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_INFORMATION,"Restart required","Quit and reopen to apply the text language.",NULL);}
+void ngb_ios_language_changed(int language){
+    void (*notice)(int)=(void(*)(int))dlsym(RTLD_DEFAULT,"ngb_macos_on_ios_language_changed");
+    if(notice){notice(language);return;}
+    SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_INFORMATION,"Restart required","Quit and reopen to apply the text language.",NULL);
+}
 void ngb_ios_screen_size(int *width,int *height){*width=w;*height=h;}
 static void (*bridge_tick)(void),(*bridge_wait)(void);
 void ngb_conversion_tick(void){if(bridge_tick)bridge_tick();}
@@ -90,6 +94,7 @@ int ngb_conversion_startup(void){@autoreleasepool {
             setvbuf(stdout,NULL,_IONBF,0);setvbuf(stderr,NULL,_IONBF,0);
         }
         fprintf(stderr,"[Startup] 3.0 diagnostic: starting UIKit bridge\n");
+        setenv("NV2A_FPS_LOG","1",0);
         [NSApplication sharedApplication];
         [NSApp nextEventMatchingMask:NSEventMaskAny untilDate:[NSDate distantPast] inMode:NSDefaultRunLoopMode dequeue:YES];
         NgbConversionHost api={1,sizeof(NgbConversionHost),ngb_check_xbe,ngb_install,ngb_install_set_progress,
