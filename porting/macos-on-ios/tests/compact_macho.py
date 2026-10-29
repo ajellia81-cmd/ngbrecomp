@@ -12,6 +12,7 @@ with tempfile.TemporaryDirectory(prefix='ngb-release-strip-') as temp:
  work=Path(temp);source=work/'fixture.c';binary=work/'fixture.dylib'
  source.write_text('static __attribute__((noinline)) int local_helper(int n){return n+7;}\n__attribute__((visibility("default"))) int public_bridge(int n){return local_helper(n);}\n')
  subprocess.run(['xcrun','clang','-dynamiclib','-g','-O0','-fvisibility=hidden',str(source),'-o',str(binary)],check=True)
+ binary.chmod(0o444)  # Match copied read-only Homebrew dylibs.
  original=text_hash(binary);before,after=package.compact_macho(binary)
  assert original==text_hash(binary),'Stripping changed executable instructions'
  assert after<=before,'Stripping enlarged fixture'

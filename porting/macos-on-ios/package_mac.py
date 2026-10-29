@@ -9,6 +9,9 @@ def compact_macho(binary):
  # Keep all externally visible names: the conversion bridge uses dlsym.
  before=binary.stat().st_size
  exports=set(run('nm','-gUj',binary).splitlines())
+ # Homebrew libraries can arrive read-only through copy2. This is the
+ # isolated bundle copy, never the installed dependency.
+ binary.chmod(binary.stat().st_mode | 0o200)
  run('xcrun','strip','-S','-x',binary)
  if set(run('nm','-gUj',binary).splitlines())!=exports:
   raise SystemExit('Compaction changed exported symbols: '+binary.name)
