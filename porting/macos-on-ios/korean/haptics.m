@@ -5,8 +5,7 @@
 #include <time.h>
 #include "haptics.h"
 #include <stdio.h>
-static unsigned hapticReports;
-#define NGB_IOS_PORT_DIAG(...) do { if (hapticReports++<32) fprintf(stderr,__VA_ARGS__); } while (0)
+#define NGB_IOS_PORT_DIAG(...) ((void)0)
 #include "haptics_policy.h"
 static uint64_t commands[4];
 static int foreground=1;

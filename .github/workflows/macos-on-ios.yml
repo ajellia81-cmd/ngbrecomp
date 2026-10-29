@@ -1,4 +1,4 @@
-name: macOS-on-iOS Universal Shader experimental IPA
+name: Ninja Gaiden Black distribution IPA
 'on':
   push:
     branches:
@@ -23,6 +23,7 @@ jobs:
       run: |-
         python3 porting/macos-on-ios/check_baseline.py
         python3 porting/macos-on-ios/tests/codegen_adapters.py
+        python3 porting/macos-on-ios/tests/compact_macho.py
     - name: Compile public iPhone compatibility UI before private generation
       run: |
         xcrun --sdk iphoneos clang -target arm64-apple-ios17.0 -fobjc-arc -Iporting/macos-on-ios -c porting/macos-on-ios/AppKit_NGB.m -o "$RUNNER_TEMP/ngb-ui-bridge.o"
@@ -95,7 +96,7 @@ jobs:
       shell: bash
       run: |
         set -euo pipefail
-        xcrun --sdk macosx clang++ -std=c++20 -fsyntax-only -DNGB_SMOOTH_MOTION=1 -DNGB_CONVERTED_DISPLAY=1 -DVK_NO_PROTOTYPES -Isrc -Isrc/d3d -Isrc/d3d/compat -Ixboxrecomp/src -Ixboxrecomp/src/nv2a_vk/host -Ixboxrecomp/third_party/Vulkan-Headers/include -Ixboxrecomp/third_party/volk -Ixboxrecomp/third_party/VulkanMemoryAllocator/include src/d3d/vk/backend.cpp
+        xcrun --sdk macosx clang++ -std=c++20 -fsyntax-only -DNGB_SMOOTH_MOTION=1 -DNGB_CONVERTED_DISPLAY=1 -DNGB_IOS_PORT_RELEASE=1 -DVK_NO_PROTOTYPES -Isrc -Isrc/d3d -Isrc/d3d/compat -Ixboxrecomp/src -Ixboxrecomp/src/nv2a_vk/host -Ixboxrecomp/third_party/Vulkan-Headers/include -Ixboxrecomp/third_party/volk -Ixboxrecomp/third_party/VulkanMemoryAllocator/include src/d3d/vk/backend.cpp
         xcrun --sdk macosx clang++ -std=c++20 -O2 tests/shadow_depth_test.cpp -o "$RUNNER_TEMP/ngb-shadow-depth-test"
         "$RUNNER_TEMP/ngb-shadow-depth-test"
         python3 tests/check_vf3_reference.py
@@ -202,7 +203,7 @@ jobs:
       shell: bash
       run: |-
         set -euo pipefail
-        cmake -S . -B "$RUNNER_TEMP/ngb-mac-engine" -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ -DCMAKE_OSX_ARCHITECTURES=arm64 -DCMAKE_PREFIX_PATH="$(brew --prefix)" -DCMAKE_DISABLE_FIND_PACKAGE_Qt6=TRUE > "$RUNNER_TEMP/mac-config-private.log" 2>&1
+        cmake -S . -B "$RUNNER_TEMP/ngb-mac-engine" -G Ninja -DCMAKE_BUILD_TYPE=Release -DNGB_IOS_PORT_RELEASE=ON -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ -DCMAKE_OSX_ARCHITECTURES=arm64 -DCMAKE_PREFIX_PATH="$(brew --prefix)" -DCMAKE_DISABLE_FIND_PACKAGE_Qt6=TRUE > "$RUNNER_TEMP/mac-config-private.log" 2>&1
         if ! cmake --build "$RUNNER_TEMP/ngb-mac-engine" --target NinjaGaidenBlack -j2 -- -k0 > "$RUNNER_TEMP/mac-compile-private.log" 2>&1; then
          echo '::error::Native macOS build failed. Generated-code diagnostics remain private.'
          python3 porting/macos-on-ios/report_build_errors.py "$RUNNER_TEMP/mac-compile-private.log"

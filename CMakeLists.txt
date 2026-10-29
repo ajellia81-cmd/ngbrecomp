@@ -23,6 +23,11 @@ endif()
 
 add_compile_definitions(WIN32_LEAN_AND_MEAN NOMINMAX)
 
+option(NGB_IOS_PORT_RELEASE "Omit iOS port investigation diagnostics" OFF)
+if(NGB_IOS_PORT_RELEASE)
+    add_compile_definitions(NGB_IOS_PORT_RELEASE=1)
+endif()
+
 # Bring-up build: record every indirect-branch target the title reaches, so
 # tools/feedback.sh can reseed function detection with them. Applies to the
 # toolkit too (its icall_feedback.c compiles to nothing without it).

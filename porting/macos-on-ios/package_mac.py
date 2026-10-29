@@ -5,6 +5,15 @@ from pathlib import Path
 
 def run(*a):return subprocess.check_output([str(x) for x in a],text=True)
 def dependencies(p):return [l.strip().split(' (')[0] for l in run('otool','-L',p).splitlines()[1:]]
+def compact_macho(binary):
+ # Keep all externally visible names: the conversion bridge uses dlsym.
+ before=binary.stat().st_size
+ exports=set(run('nm','-gUj',binary).splitlines())
+ run('xcrun','strip','-S','-x',binary)
+ if set(run('nm','-gUj',binary).splitlines())!=exports:
+  raise SystemExit('Compaction changed exported symbols: '+binary.name)
+ return before,binary.stat().st_size
+
 def main():
  a=argparse.ArgumentParser();a.add_argument('binary',type=Path);a.add_argument('app',type=Path);a.add_argument('korean',type=Path);o=a.parse_args()
  if o.app.exists():raise SystemExit('Output exists; use a new scratch path')
@@ -47,8 +56,12 @@ def main():
   for f in Path(os.environ['NGB_MOLTENVK_LIBRARY']).parent.glob('*.txt'):shutil.copy2(f,licenses/f.name)
  info={'CFBundleName':'Ninja Gaiden Black','CFBundleDisplayName':'Ninja Gaiden Black','CFBundleExecutable':'NinjaGaidenBlack','CFBundleIdentifier':'com.ngbrecomp.game','CFBundleVersion':'3.1','CFBundleShortVersionString':'3.1','CFBundlePackageType':'APPL','NSHighResolutionCapable':True,'LSMinimumSystemVersion':'26.0'}
  (o.app/'Contents/Info.plist').write_bytes(plistlib.dumps(info))
+ saved=0
  for p in [*libs.iterdir(),binary]:
-  if not p.is_symlink():run('codesign','--force','--sign','-',p)
+  if not p.is_symlink():
+   before,after=compact_macho(p);saved+=before-after
+   run('codesign','--force','--sign','-',p)
+ print('Removed non-runtime symbol bytes:',saved)
  run('codesign','--force','--sign','-',o.app)
  print('macOS ARM64 bundle prepared; direct game entry; Korean resources included')
 if __name__=='__main__':main()

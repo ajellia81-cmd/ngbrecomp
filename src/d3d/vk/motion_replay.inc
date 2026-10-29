@@ -199,6 +199,7 @@ void VulkanBackend::MotionPresent(const Surface& front,Image& endpoint,float bar
 
 void VulkanBackend::MotionFinish() {
     int64_t now=MotionClockNs();
+#ifndef NGB_IOS_PORT_RELEASE
     double hz=0;
 #ifdef NGB_CONVERTED_DISPLAY
     hz=ngb_ios_display_hz();
@@ -224,6 +225,7 @@ void VulkanBackend::MotionFinish() {
         motion_match_window_={};
         motion_log_ns_=now; motion_pictures_=0;
     }
+#endif
     bool wanted=false;
 #ifdef NGB_CONVERTED_DISPLAY
     wanted=shared_ && ngb_pc_setting(26) && ngb_ios_display_hz()>=100;

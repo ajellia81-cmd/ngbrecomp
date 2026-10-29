@@ -7,6 +7,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
+#define NGB_IOS_PORT_DIAG(...) ((void)0)
 #include "bridge.h"
 #include "launcher.h"
 #include "install.h"
@@ -96,27 +97,11 @@ int ngb_conversion_startup(void){@autoreleasepool {
     NgbConversionPrepare prepare=(NgbConversionPrepare)dlsym(RTLD_DEFAULT,"ngb_macos_on_ios_prepare");
     converted=prepare!=NULL;
     if(converted){
-        NSString *documents=NSSearchPathForDirectoriesInDomains(NSDocumentDirectory,NSUserDomainMask,YES).firstObject;
-        NSString *log=[documents stringByAppendingPathComponent:@"macos-on-ios-startup.log"];
-        if(log){
-            FILE *fresh=fopen(log.fileSystemRepresentation,"w");if(fresh)fclose(fresh);
-            freopen(log.fileSystemRepresentation,"a",stdout);
-            freopen(log.fileSystemRepresentation,"a",stderr);
-            setvbuf(stdout,NULL,_IONBF,0);setvbuf(stderr,NULL,_IONBF,0);
-        }
-        fprintf(stderr,"[Startup] 3.0 diagnostic: starting UIKit bridge\n");
-        setenv("NV2A_FPS_LOG","1",0);
-        // Use the renderer's existing counters to distinguish missing draws
-        // from visible surfaces disagreeing in depth. No capture or sync policy.
-        setenv("NGB_D3D_HITCHLOG","1",0);
-        setenv("NGB_D3D_STATS","1",0);
         setenv("NGB_D3D_UNIVERSAL","1",0);
-        fprintf(stderr,"[Universal shaders] experimental fallback requested; original guest loading/cache-copy behavior retained\n");
-        fprintf(stderr,"[Graphics diagnostics] existing missing-draw/compiler log and renderer counts enabled; rendering policy unchanged\n");
         // Presentation may wait for UIKit to retire a drawable. Keep that
         // wait on MoltenVK's submission worker, outside the game thread.
         setenv("MVK_CONFIG_SYNCHRONOUS_QUEUE_SUBMITS","0",0);
-        fprintf(stderr,"[Display] asynchronous presentation submits: %s\n",getenv("MVK_CONFIG_SYNCHRONOUS_QUEUE_SUBMITS"));
+        NGB_IOS_PORT_DIAG("[Display] asynchronous presentation submits: %s\n",getenv("MVK_CONFIG_SYNCHRONOUS_QUEUE_SUBMITS"));
         setenv("RECOMP_DSP_ACK","auto",0);
         [NSApplication sharedApplication];
         [NSApp nextEventMatchingMask:NSEventMaskAny untilDate:[NSDate distantPast] inMode:NSDefaultRunLoopMode dequeue:YES];
@@ -125,9 +110,9 @@ int ngb_conversion_startup(void){@autoreleasepool {
             (int(*)(void*,int,int16_t))SDL_JoystickSetVirtualAxis,(int(*)(void*,int,uint8_t))SDL_JoystickSetVirtualButton,
             (int32_t(*)(void*))SDL_JoystickInstanceID,(void(*)(void*))SDL_JoystickClose,SDL_NumJoysticks,
             SDL_JoystickGetDeviceInstanceID,SDL_JoystickDetachVirtual,apu_host_pause,audio_paused,nv2a_present_cancel_pairs};
-        fprintf(stderr,"[Startup] preparing import and device services\n");
-        if(!prepare(&api)){fprintf(stderr,"[Startup] preparation failed or cancelled\n");return 0;}
-        fprintf(stderr,"[Startup] import and device services complete\n");
+        NGB_IOS_PORT_DIAG("[Startup] preparing import and device services\n");
+        if(!prepare(&api)){NGB_IOS_PORT_DIAG("[Startup] preparation failed or cancelled\n");return 0;}
+        NGB_IOS_PORT_DIAG("[Startup] import and device services complete\n");
         void (*screen)(int*,int*)=(void(*)(int*,int*))dlsym(RTLD_DEFAULT,"ngb_macos_on_ios_screen_size");
         if(screen)screen(&w,&h);
         bridge_safe_area=(void(*)(float*,float*,float*,float*))dlsym(RTLD_DEFAULT,"ngb_macos_on_ios_safe_area");
@@ -145,13 +130,13 @@ int ngb_conversion_startup(void){@autoreleasepool {
     NSString *loader=[resources stringByAppendingPathComponent:@"../Frameworks/libvulkan.1.dylib"];
     setenv("NGB_D3D_SEED",seed.fileSystemRepresentation,0);setenv("NV2A_SHADER_SEED",vkseed.fileSystemRepresentation,0);
     setenv("VK_DRIVER_FILES",icd.fileSystemRepresentation,0);setenv("SDL_VULKAN_LIBRARY",loader.fileSystemRepresentation,0);
-    fprintf(stderr,"[Startup] loading settings\n");
+    NGB_IOS_PORT_DIAG("[Startup] loading settings\n");
     NgbSettings settings;ngb_settings_load(&settings);
     if(bridge_motion)bridge_motion(settings.smooth_motion);
     override=settings.text_language_options ? (settings.text_language==1 ? 1 : 0) : -1;
     setenv("NGB_TEXT_LANGUAGE",settings.text_language==1 ? "English" : "Japanese",1);
-    if(settings.text_language!=2){fprintf(stderr,"[Startup] entering original Mac engine\n");return 1;}
-    fprintf(stderr,"[Startup] preparing Korean resources\n");
+    if(settings.text_language!=2){NGB_IOS_PORT_DIAG("[Startup] entering original Mac engine\n");return 1;}
+    NGB_IOS_PORT_DIAG("[Startup] preparing Korean resources\n");
     const char *original=getenv("NGB_GAME_DIR");if(!original)return 1;
     NSString *documents=NSSearchPathForDirectoriesInDomains(NSDocumentDirectory,NSUserDomainMask,YES).firstObject;
     NSString *output=[documents stringByAppendingPathComponent:@"korean-game"];
@@ -175,7 +160,7 @@ int ngb_conversion_startup(void){@autoreleasepool {
         if(![fm fileExistsAtPath:target])[fm createSymbolicLinkAtPath:target withDestinationPath:source error:nil];
     }
     setenv("NGB_SAVE_DIR",localized.fileSystemRepresentation,1);setenv("NGB_GAME_DIR",output.fileSystemRepresentation,1);
-    active=1;override=0;fprintf(stderr,"[Startup] Korean resources ready; entering original Mac engine\n");return 1;
+    active=1;override=0;NGB_IOS_PORT_DIAG("[Startup] Korean resources ready; entering original Mac engine\n");return 1;
 }}
 
 extern int ngb_pc_setting(int);
