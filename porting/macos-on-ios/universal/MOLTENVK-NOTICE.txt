@@ -6,7 +6,8 @@ License: Apache License 2.0 (see MoltenVK-LICENSE.txt).
 Modification: MVKPipeline.mm / MVKPipeline.h / MVKCmdPipeline.mm enable SPIRV-Cross native framebuffer fetch on
 Apple GPUs when a graphics pipeline explicitly maps color input attachment 0
 to the single color attachment 0 for dynamic rendering local read. The matching native-fetch pipeline implements its exact color-write/input-read
-dependency without a Metal tile-pass restart. Other barriers retain their
+dependency without a Metal tile-pass restart. Native color inputs are excluded
+from sampled-texture binding operations, preserving texture slot0 with push descriptors. Other barriers retain their
 original behavior. Ordinary pipeline shader conversion,
 compilation scheduling, cache copying and game loading are not changed.
 

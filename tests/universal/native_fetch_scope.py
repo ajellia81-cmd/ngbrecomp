@@ -5,7 +5,7 @@ from pathlib import Path
 root=Path(__file__).resolve().parents[2]
 parser=argparse.ArgumentParser();parser.add_argument('--vulkan-include',type=Path,required=True);parser.add_argument('--compiler',default=os.environ.get('CXX','c++'));args=parser.parse_args()
 tree=ast.parse((root/'porting/macos-on-ios/universal/patch_moltenvk.py').read_text())
-parts={t.id:ast.literal_eval(n.value) for n in tree.body if isinstance(n,ast.Assign) for t in n.targets if isinstance(t,ast.Name) and t.id in ('patch','barrier_patch')}
+parts={t.id:ast.literal_eval(n.value) for n in tree.body if isinstance(n,ast.Assign) for t in n.targets if isinstance(t,ast.Name) and t.id in ('patch','barrier_patch','unbind_patch')}
 head=r'''
 #include <vulkan/vulkan.h>
 #include <array>
@@ -14,16 +14,17 @@ head=r'''
 struct Capabilities {bool isAppleGPU=true;};
 struct Physical {Capabilities caps; const Capabilities& getMTLDeviceCapabilities(){return caps;}};
 namespace spv {enum ExecutionModel {ExecutionModelFragment,ExecutionModelVertex};}
-struct Resource {struct {spv::ExecutionModel stage=spv::ExecutionModelFragment;uint32_t desc_set=0,binding=28,msl_texture=29;} resourceBinding;};
+struct Resource {bool outIsUsedByShader=true;struct {spv::ExecutionModel stage=spv::ExecutionModelFragment;uint32_t desc_set=0,binding=28,msl_texture=29;} resourceBinding;};
 struct Descriptor {VkDescriptorType descriptorType=VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT;};
 struct Layout {Descriptor descriptor;size_t getDescriptorSetCount(){return 1;}Layout* getDescriptorSetLayout(uint32_t){return this;}Descriptor* getBinding(uint32_t){return &descriptor;}};
 struct Configuration {struct {struct {bool use_framebuffer_fetch_subpasses=false;} mslOptions;} options;std::vector<Resource> resourceBindings{Resource{}};};
 struct Harness {
- Layout layout;Layout* _layout=&layout;uint32_t remapped=29;Physical physical;bool _inputAttachmentIsDSAttachment=false,_usesNativeColorFetch=false;
+ Layout layout;Layout* _layout=&layout;uint32_t remapped=29;bool input_bound=true;Physical physical;bool _inputAttachmentIsDSAttachment=false,_usesNativeColorFetch=false;
  Physical* getPhysicalDevice(){return &physical;}
- bool convert(const VkGraphicsPipelineCreateInfo* pCreateInfo){Configuration shaderConfig;
+ bool convert(const VkGraphicsPipelineCreateInfo* pCreateInfo){_usesNativeColorFetch=false;Configuration shaderConfig;
 '''
 middle=r'''
+ input_bound=shaderConfig.resourceBindings[0].outIsUsedByShader;
  remapped=shaderConfig.resourceBindings[0].resourceBinding.msl_texture;
  return shaderConfig.options.mslOptions.use_framebuffer_fetch_subpasses;
  }
@@ -50,11 +51,11 @@ tail=r'''
  return false;
 }
 int main(){Harness h;VkGraphicsPipelineCreateInfo pipeline{VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO};
- assert(!h.convert(&pipeline));
+ assert(!h.convert(&pipeline));assert(h.input_bound);
  uint32_t index=0;VkRenderingInputAttachmentIndexInfoKHR local{VK_STRUCTURE_TYPE_RENDERING_INPUT_ATTACHMENT_INDEX_INFO_KHR};local.colorAttachmentCount=1;local.pColorAttachmentInputIndices=&index;
  VkPipelineRenderingCreateInfo rendering{VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO};rendering.pNext=&local;pipeline.pNext=&rendering;
- assert(h.convert(&pipeline));assert(h.remapped==0);
- h.layout.descriptor.descriptorType=VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE;assert(h.convert(&pipeline));assert(h.remapped==29);h.layout.descriptor.descriptorType=VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT;
+ assert(h.convert(&pipeline));assert(h.remapped==0);assert(!h.input_bound);
+ h.layout.descriptor.descriptorType=VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE;assert(h.convert(&pipeline));assert(h.remapped==29);assert(h.input_bound);h.layout.descriptor.descriptorType=VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT;
  h._inputAttachmentIsDSAttachment=true;assert(!h.convert(&pipeline));h._inputAttachmentIsDSAttachment=false;
  h.physical.caps.isAppleGPU=false;assert(!h.convert(&pipeline));h.physical.caps.isAppleGPU=true;
  index=VK_ATTACHMENT_UNUSED;assert(!h.convert(&pipeline));index=1;assert(!h.convert(&pipeline));index=0;
@@ -68,7 +69,7 @@ int main(){Harness h;VkGraphicsPipelineCreateInfo pipeline{VK_STRUCTURE_TYPE_GRA
 }
 '''
 with tempfile.TemporaryDirectory(prefix='ngb-native-fetch-scope-') as temp:
-    work=Path(temp);(work/'scope.cpp').write_text(head+parts['patch']+middle+parts['barrier_patch']+tail)
+    work=Path(temp);(work/'scope.cpp').write_text(head+parts['patch']+parts['unbind_patch']+middle+parts['barrier_patch']+tail)
     subprocess.run([args.compiler,'-std=c++17','-I'+str(args.vulkan_include),str(work/'scope.cpp'),'-o',str(work/'scope')],check=True)
     subprocess.run([str(work/'scope')],check=True)
 print('PASS: native fetch and no tile restart only for explicit Apple color0/input0 and its exact dependency; ordinary/depth/other barriers preserved')

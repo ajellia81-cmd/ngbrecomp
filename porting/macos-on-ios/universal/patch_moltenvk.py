@@ -47,6 +47,23 @@ patch='''
 '''
 anchor='\t\tshaderConfig.options.mslOptions.input_attachment_is_ds_attachment = _inputAttachmentIsDSAttachment;\n'
 insert(paths[0],anchor,anchor+patch)
+# Native color inputs are render-pass arguments, not sampled textures. The
+# remapped color index must never become a texture bind operation (push sets
+# bind resources directly, so color0 would otherwise overwrite texture slot0).
+unbind_patch='''
+        if (_usesNativeColorFetch) {
+            for (auto& resource : shaderConfig.resourceBindings) {
+                const auto& binding = resource.resourceBinding;
+                if (binding.stage == spv::ExecutionModelFragment &&
+                    binding.desc_set < _layout->getDescriptorSetCount() &&
+                    _layout->getDescriptorSetLayout(binding.desc_set)->getBinding(binding.binding)->descriptorType == VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT) {
+                    resource.outIsUsedByShader = false;
+                }
+            }
+        }
+'''
+anchor='\t\tplDesc.fragmentFunction = mtlFunc;\n\t\tif ( !mtlFunc ) { return false; }\n'
+insert(paths[0],anchor,anchor+unbind_patch)
 anchor='\tbool isRasterizationDisabled() const { return !_isRasterizing; }\n'
 insert(paths[1],anchor,anchor+'\tbool usesNativeColorFetch() const { return _usesNativeColorFetch; }\n')
 anchor='\tbool _inputAttachmentIsDSAttachment = false;\n'
