@@ -33,6 +33,7 @@ public:
   for(auto& w:waters_)if(!w.count){w={key,modes,signed_mask,target_mask,shadow_mask,1,unsigned(generic),unsigned(blend),depth};return;}
   overflow_++;
  }
+ bool ReportDue(int64_t now){return Enabled()&&first_&&now-window_>=1000000000LL;}
  void ReplayWater(uint64_t key){if(!Enabled())return;water_replay_++;for(auto& w:waters_)if(w.count&&w.key==key){w.replays++;return;}}
  void Frame(int64_t now,unsigned frame,int requested,bool wanted,bool reset,unsigned scene,unsigned changed,unsigned equal,uint64_t packet,uint64_t snapshots,double extract_ms,double interpolate_ms,double project_ms,uint64_t mids,uint64_t ends,uint64_t superseded,double display_hz=0,unsigned width=0,unsigned height=0,unsigned msaa=0,bool capture_valid=true){
   if(!Enabled())return;

@@ -248,8 +248,8 @@ void VulkanBackend::MotionFinish() {
     reset=reset || motion_epoch_!=ngb_ios_motion_epoch(); motion_epoch_=ngb_ios_motion_epoch();
 #endif
 #ifdef NGB_IOS_MOTION_DIAGNOSTICS
-    uint64_t diagnostic_midpoints,diagnostic_endpoints,diagnostic_superseded;
-    nv2a_present_pair_counts(&diagnostic_midpoints,&diagnostic_endpoints,&diagnostic_superseded);
+    uint64_t diagnostic_midpoints=0,diagnostic_endpoints=0,diagnostic_superseded=0;
+    if(motion_diagnostics_.ReportDue(now))nv2a_present_pair_counts(&diagnostic_midpoints,&diagnostic_endpoints,&diagnostic_superseded);
     motion_diagnostics_.Frame(now,presents_,ngb_pc_setting(26),wanted,reset,motion_3d_,motion_changed_,motion_equal_,motion_cpu_bytes_,motion_gpu_bytes_,motion_match_stats_.extract_ms,motion_match_stats_.interpolate_ms,motion_match_stats_.project_ms,diagnostic_midpoints,diagnostic_endpoints,diagnostic_superseded,ngb_ios_display_hz(),native_w_,native_h_,msaa_,motion_valid_);
 #endif
     if (reset) { motion_history_.Reset(); nv2a_present_cancel_pairs(); }
