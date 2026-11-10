@@ -97,6 +97,11 @@ int ngb_conversion_startup(void){@autoreleasepool {
     NgbConversionPrepare prepare=(NgbConversionPrepare)dlsym(RTLD_DEFAULT,"ngb_macos_on_ios_prepare");
     converted=prepare!=NULL;
     if(converted){
+#ifdef NGB_IOS_MOTION_DIAGNOSTICS
+        NSString *documents=NSSearchPathForDirectoriesInDomains(NSDocumentDirectory,NSUserDomainMask,YES).firstObject;
+        NSString *diagnostics=[documents stringByAppendingPathComponent:@"smooth-motion-diagnostics.log"];
+        if(diagnostics)setenv("NGB_MOTION_DIAGNOSTICS_FILE",diagnostics.fileSystemRepresentation,1);
+#endif
         setenv("NGB_D3D_UNIVERSAL","1",0);
         // Presentation may wait for UIKit to retire a drawable. Keep that
         // wait on MoltenVK's submission worker, outside the game thread.

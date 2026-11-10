@@ -72,6 +72,10 @@ void VulkanBackend::MotionFeedback(Target *target) {
 }
 
 void VulkanBackend::MotionReplay(const MotionDraw& p) {
+#ifdef NGB_IOS_MOTION_DIAGNOSTICS
+    NgbMotionDiagnostics::Timer diagnostic_time(motion_diagnostics_,NgbMotionDiagnostics::ReplayDraw);
+    if(p.diagnostic_bump)motion_diagnostics_.ReplayWater(p.diagnostic_bump_key);
+#endif
     // Upload can submit/reset the ring. All following bindings are rebuilt from
     // this owned packet, exactly as the original draw rebuilds its bindings.
     uint64_t required=sizeof p.vc+sizeof p.dc+(p.universal?sizeof(UniversalConstants)+ringAlign_:0)+ringAlign_*3+16*16+4+p.indices.size()+p.scene.positions.size()*sizeof(ScenePosition);
@@ -130,6 +134,9 @@ void VulkanBackend::MotionReplay(const MotionDraw& p) {
 }
 
 void VulkanBackend::MotionPresent(const Surface& front,Image& endpoint,float bars,float bars_y) {
+#ifdef NGB_IOS_MOTION_DIAGNOSTICS
+    NgbMotionDiagnostics::Timer diagnostic_time(motion_diagnostics_,NgbMotionDiagnostics::MidpointGraph);
+#endif
     int64_t now=MotionClockNs();
 #ifdef NGB_CONVERTED_DISPLAY
     if (motion_epoch_!=ngb_ios_motion_epoch() || ngb_ios_display_hz()<100 || !ngb_pc_setting(26)) return;
@@ -239,6 +246,11 @@ void VulkanBackend::MotionFinish() {
     bool reset=!motion_valid_ || !wanted || (motion_last_ns_ && now-motion_last_ns_>50000000LL);
 #ifdef NGB_CONVERTED_DISPLAY
     reset=reset || motion_epoch_!=ngb_ios_motion_epoch(); motion_epoch_=ngb_ios_motion_epoch();
+#endif
+#ifdef NGB_IOS_MOTION_DIAGNOSTICS
+    uint64_t diagnostic_midpoints,diagnostic_endpoints,diagnostic_superseded;
+    nv2a_present_pair_counts(&diagnostic_midpoints,&diagnostic_endpoints,&diagnostic_superseded);
+    motion_diagnostics_.Frame(now,presents_,ngb_pc_setting(26),wanted,reset,motion_3d_,motion_changed_,motion_equal_,motion_cpu_bytes_,motion_gpu_bytes_,motion_match_stats_.extract_ms,motion_match_stats_.interpolate_ms,motion_match_stats_.project_ms,diagnostic_midpoints,diagnostic_endpoints,diagnostic_superseded,ngb_ios_display_hz(),native_w_,native_h_,msaa_);
 #endif
     if (reset) { motion_history_.Reset(); nv2a_present_cancel_pairs(); }
     else motion_history_.Finish();

@@ -10,8 +10,10 @@ def code_section(binary):
  return hashlib.sha256(''.join(''.join(l.split()[1:]) for l in lines).encode()).hexdigest()
 def main():
  a=argparse.ArgumentParser();a.add_argument('mac_app',type=Path);a.add_argument('app',type=Path);a.add_argument('ipa',type=Path);o=a.parse_args()
+ diagnostic=os.environ.get('NGB_MOTION_DIAGNOSTIC_BUILD')=='1'
  root=Path(__file__).resolve().parent;info_path=o.app/'Info.plist';info=plistlib.loads(info_path.read_bytes())
- info.update(CFBundleName='Ninja Gaiden Black',CFBundleDisplayName='Ninja Gaiden Black',CFBundleVersion='3.1.'+os.environ.get('GITHUB_RUN_NUMBER','0'),CFBundleShortVersionString='3.1',NGBBuildConfiguration='Release',NGBPortMethod='macOS-on-iOS',NGBSmoothMotionEnabled=True,NGBSmoothMotionDefault=False,NGBSmoothMotionReference='vf3-recomp@842151aaf97a4bf5e59709004a385ae5735c5a05',NGBDistributionBuild=True,NGBDiagnosticsEnabled=False,NGBShaderCompilerPolicy='macOS loading preserved; validated universal fallback',NGBUniversalShadersEnabled=True,NGBUniversalShaderDriver='MoltenVK-1.4.2-native-color-fetch',NGBSourceCommit=os.environ.get('GITHUB_SHA','local'),UIFileSharingEnabled=True,LSSupportsOpeningDocumentsInPlace=True,UIRequiresFullScreen=True,UIDeviceFamily=[1],UISupportedInterfaceOrientations=['UIInterfaceOrientationLandscapeLeft','UIInterfaceOrientationLandscapeRight'],CADisableMinimumFrameDurationOnPhone=True,MetalHudEnabled=False)
+ info.update(CFBundleName='Ninja Gaiden Black',CFBundleDisplayName='Ninja Gaiden Black',CFBundleVersion='3.1.'+os.environ.get('GITHUB_RUN_NUMBER','0'),CFBundleShortVersionString='3.1',NGBBuildConfiguration='Release',NGBPortMethod='macOS-on-iOS',NGBSmoothMotionEnabled=True,NGBSmoothMotionDefault=False,NGBSmoothMotionReference='vf3-recomp@842151aaf97a4bf5e59709004a385ae5735c5a05',NGBDistributionBuild=not diagnostic,NGBDiagnosticsEnabled=diagnostic,NGBShaderCompilerPolicy='macOS loading preserved; validated universal fallback',NGBUniversalShadersEnabled=True,NGBUniversalShaderDriver='MoltenVK-1.4.2-native-color-fetch',NGBSourceCommit=os.environ.get('GITHUB_SHA','local'),UIFileSharingEnabled=True,LSSupportsOpeningDocumentsInPlace=True,UIRequiresFullScreen=True,UIDeviceFamily=[1],UISupportedInterfaceOrientations=['UIInterfaceOrientationLandscapeLeft','UIInterfaceOrientationLandscapeRight'],CADisableMinimumFrameDurationOnPhone=True,MetalHudEnabled=False)
+ if diagnostic:info.update(NGBDiagnosticsFile='smooth-motion-diagnostics.log',NGBDiagnosticsFormatVersion=1)
  info.pop('CFBundleIconFile',None)
  info_path.write_bytes(plistlib.dumps(info))
  run('xcrun','--sdk','macosx','swift',root/'korean/build_icons.swift',root/'assets/app-icon-source.jpg',o.app,o.app.parent/'icon-work')
@@ -43,7 +45,7 @@ def main():
  digest=hashlib.sha256(o.ipa.read_bytes()).hexdigest()
  print('macOS engine instructions: preserved through conversion')
  print('Shader compiler policy: original Mac loading/cache/prewarm with validated universal fallback')
- print('Distribution: compact symbols, original exports preserved; no automatic iOS diagnostic log')
+ print('Diagnostics: bounded Smooth Motion CPU/bump summaries' if diagnostic else 'Distribution: compact symbols, original exports preserved; no automatic iOS diagnostic log')
  print('Smooth Motion: VF3 production core 842151aa; available, default off; game clock remains 60 Hz')
  print('Packaged runtime build:',info['CFBundleVersion'])
  print('Unsigned game IPA bytes:',o.ipa.stat().st_size)

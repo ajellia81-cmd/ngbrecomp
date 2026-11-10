@@ -36,6 +36,9 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
+#ifdef NGB_IOS_MOTION_DIAGNOSTICS
+#include "vk/motion_diagnostics.h"
+#endif
 #include "gpu/backend.h"
 #include "gpu/shaders.h"
 #include "gpu/universal_shaders.h"
@@ -368,6 +371,9 @@ private:
         std::array<uint32_t,16> buffers{};
     };
     struct MotionDraw {
+#ifdef NGB_IOS_MOTION_DIAGNOSTICS
+        bool diagnostic_bump=false;uint64_t diagnostic_bump_key=0;
+#endif
         std::unique_ptr<UniversalReplay> universal;
         Target *rt=nullptr,*ds=nullptr;
         VkPipeline pipeline=VK_NULL_HANDLE;
@@ -683,6 +689,9 @@ private:
     uint32_t compiles_ = 0, pipes_made_ = 0;
 
     // NGB_D3D_STATS: per frame, what the draws came to
+#ifdef NGB_IOS_MOTION_DIAGNOSTICS
+    NgbMotionDiagnostics motion_diagnostics_;
+#endif
     struct Stats { uint32_t draws, noasm, notarget, nopipe, drawn, clears, copies; } st_{};
     std::unordered_map<uint32_t, uint32_t> rt_draws_;
     bool stats_ = false;
@@ -2533,6 +2542,9 @@ void Transpose(const float* m, float* o) {
 #include "spark_aspect.h"
 
 void VulkanBackend::Draw(const State& s, uint32_t prim, uint32_t start, uint32_t count, const uint8_t* indices) {
+#ifdef NGB_IOS_MOTION_DIAGNOSTICS
+    NgbMotionDiagnostics::Timer diagnostic_time(motion_diagnostics_,NgbMotionDiagnostics::EndpointDraw);
+#endif
     st_.draws++;
     if (!Assemble(s, prim, start, count, indices, asm_)) { st_.noasm++; return; }
     ClassifyGlowTarget(s,asm_,count);
@@ -2897,6 +2909,16 @@ void VulkanBackend::Draw(const State& s, uint32_t prim, uint32_t start, uint32_t
         if(family==universal_pipes_.end())ngb_renderer_fatal("No prepared universal pipeline for this draw state.");
         pipe=family->second;
     }
+#ifdef NGB_IOS_MOTION_DIAGNOSTICS
+    motion_diagnostics_.Draw(universal_draw);
+    unsigned signed_mask=0,target_mask=0,shadow_mask=0;bool bump_candidate=false;
+    for(unsigned stage=0;stage<4;stage++) {
+        signed_mask|=unsigned((info[stage].flags&kTexSigned)!=0)<<stage;
+        target_mask|=unsigned(from_target[stage])<<stage;shadow_mask|=unsigned(info[stage].shadow!=0)<<stage;
+        unsigned mode=(pk.tex_modes>>(stage*5))&31;bump_candidate|=mode==6 || mode==7;
+    }
+    if(signed_mask || bump_candidate)motion_diagnostics_.Water(pkey,pk.tex_modes,signed_mask,target_mask,shadow_mask,universal_draw,k.blend,k.zfunc);
+#endif
     async_now_ = false;
     if (!pipe) {
         st_.nopipe++;
@@ -3412,6 +3434,9 @@ void VulkanBackend::Draw(const State& s, uint32_t prim, uint32_t start, uint32_t
     }
     if (motion_capture_ && motion_valid_) {
         auto packet=std::make_shared<MotionDraw>();
+#ifdef NGB_IOS_MOTION_DIAGNOSTICS
+        packet->diagnostic_bump=signed_mask || bump_candidate;packet->diagnostic_bump_key=pkey;
+#endif
         packet->rt=rt; packet->ds=ds; packet->pipeline=pipe;
         if(universal_draw) {
             packet->universal=std::make_unique<UniversalReplay>();

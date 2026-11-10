@@ -23,6 +23,10 @@ endif()
 
 add_compile_definitions(WIN32_LEAN_AND_MEAN NOMINMAX)
 
+option(NGB_IOS_MOTION_DIAGNOSTICS "Bounded Smooth Motion CPU and bump-material summaries" OFF)
+if(NGB_IOS_MOTION_DIAGNOSTICS)
+    add_compile_definitions(NGB_IOS_MOTION_DIAGNOSTICS=1)
+endif()
 option(NGB_IOS_PORT_RELEASE "Omit iOS port investigation diagnostics" OFF)
 if(NGB_IOS_PORT_RELEASE)
     add_compile_definitions(NGB_IOS_PORT_RELEASE=1)
