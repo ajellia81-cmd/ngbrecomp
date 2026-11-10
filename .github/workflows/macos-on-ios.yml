@@ -36,6 +36,11 @@ jobs:
         xcrun --sdk macosx clang -fobjc-arc -Wall -Wextra -Werror -fsanitize=address porting/macos-on-ios/tests/save_paths.m -framework Foundation -o "$RUNNER_TEMP/ngb-save-paths-test"
         mkdir -p "$RUNNER_TEMP/ngb-save-paths-fixture"
         "$RUNNER_TEMP/ngb-save-paths-test" "$RUNNER_TEMP/ngb-save-paths-fixture"
+    - name: Check Korean asset links after container relocation
+      run: |
+        xcrun --sdk macosx clang -fobjc-arc -Wall -Wextra -Werror -fsanitize=address porting/macos-on-ios/tests/game_links.m -framework Foundation -o "$RUNNER_TEMP/ngb-game-links-test"
+        mkdir -p "$RUNNER_TEMP/ngb-game-links-fixture"
+        "$RUNNER_TEMP/ngb-game-links-test" "$RUNNER_TEMP/ngb-game-links-fixture"
     - name: Compile public iPhone compatibility UI before private generation
       run: |
         xcrun --sdk iphoneos clang -target arm64-apple-ios17.0 -fobjc-arc -Iporting/macos-on-ios -c porting/macos-on-ios/AppKit_NGB.m -o "$RUNNER_TEMP/ngb-ui-bridge.o"

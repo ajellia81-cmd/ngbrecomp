@@ -1,3 +1,4 @@
+#include "game_links.h"
 /* Private on-device language overlay. Original disc files are never edited. */
 #import <Foundation/Foundation.h>
 #import <CommonCrypto/CommonDigest.h>
@@ -223,20 +224,16 @@ BOOL ngb_prepare_korean(NSString *original, NSString *destination, NSString *ass
     NSString *marker=[destination stringByAppendingString:@".state.plist"];
     NSDictionary *previous=[NSDictionary dictionaryWithContentsOfFile:marker];
     NSString *capsuleHash=hash_data(json);
-    if ([previous[@"layout"] isEqual:AFSLayoutVersion] && [previous[@"capsule"] isEqual:capsuleHash] && [previous[@"patch"] isEqual:manifest[@"patch_zip_sha256"]] && [previous[@"sources"] isEqual:signatures] &&
-        [fm fileExistsAtPath:[destination stringByAppendingPathComponent:@"default.xbe"]]) return YES;
-    NSString *temporary=[destination stringByAppendingString:@".pending"];
-    [fm removeItemAtPath:temporary error:nil];
-    if (![fm createDirectoryAtPath:temporary withIntermediateDirectories:YES attributes:nil error:error]) return NO;
     NSMutableSet<NSString *> *patched=[NSMutableSet setWithObject:@"default.xbe"];
     for (NSDictionary *spec in manifest[@"archives"]) [patched addObject:spec[@"path"]];
     for (NSDictionary *spec in manifest[@"root_patches"]) [patched addObject:spec[@"path"]];
-    BOOL ok=YES;
-    for (NSString *name in [fm contentsOfDirectoryAtPath:original error:error]) {
-        if ([patched containsObject:name]) continue;
-        if (![fm createSymbolicLinkAtPath:[temporary stringByAppendingPathComponent:name]
-            withDestinationPath:[original stringByAppendingPathComponent:name] error:error]) { ok=NO; break; }
-    }
+    if ([previous[@"layout"] isEqual:AFSLayoutVersion] && [previous[@"capsule"] isEqual:capsuleHash] && [previous[@"patch"] isEqual:manifest[@"patch_zip_sha256"]] && [previous[@"sources"] isEqual:signatures] &&
+        [fm fileExistsAtPath:[destination stringByAppendingPathComponent:@"default.xbe"]])
+        return ngb_prepare_game_links(original,destination,patched,error);
+    NSString *temporary=[destination stringByAppendingString:@".pending"];
+    [fm removeItemAtPath:temporary error:nil];
+    if (![fm createDirectoryAtPath:temporary withIntermediateDirectories:YES attributes:nil error:error]) return NO;
+    BOOL ok=ngb_prepare_game_links(original,temporary,patched,error);
     if (ok) ok=patch_blob([original stringByAppendingPathComponent:@"default.xbe"],
         [temporary stringByAppendingPathComponent:@"default.xbe"],manifest[@"xbe"],USAHash,manifest[@"output_xbe_sha256"],error);
     unsigned current=0; NSArray *archives=manifest[@"archives"];
