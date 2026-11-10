@@ -389,7 +389,7 @@ private:
         bool index16=false,lines=false,depth_bias=false;
         float bias_steps=0,bias_slope=0;
     };
-    struct MotionTarget { Target *source=nullptr; Target replay; uint32_t seen=0; };
+    struct MotionTarget { Target *source=nullptr; Target replay; uint32_t seen=0,feedback_seen=~0u; };
     bool motion_capture_=false,motion_valid_=false,motion_endpoint_=false;
     uint64_t motion_cpu_bytes_=0,motion_gpu_bytes_=0;
     unsigned motion_epoch_=0;

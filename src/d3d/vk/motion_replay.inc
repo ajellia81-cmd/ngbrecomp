@@ -53,10 +53,15 @@ Target *VulkanBackend::MotionTargetFor(Target *target) {
 }
 Image *VulkanBackend::MotionImageFor(Image *image) {
     for (auto& [key,saved]:motion_targets_) {
-        if (&saved.source->img==image) return &saved.replay.img;
-        if (&saved.source->fb==image) return &saved.replay.fb;
+        // A target only sampled this frame has no midpoint writes to replay.
+        // Its old clone can contain last frame's midpoint (or be absent): use
+        // the unchanged authoritative image, rather than flicker or drop it.
+        if (&saved.source->img==image)
+            return saved.seen==frame_ ? &saved.replay.img : image;
+        if (&saved.source->fb==image)
+            return saved.feedback_seen==frame_ ? &saved.replay.fb : image;
     }
-    return nullptr;
+    return image;
 }
 void VulkanBackend::MotionFeedback(Target *target) {
     Target *clone=MotionTargetFor(target);
@@ -68,6 +73,7 @@ void VulkanBackend::MotionFeedback(Target *target) {
         motion_gpu_bytes_+=uint64_t(clone->fb.w)*clone->fb.h*4;
     }
     MotionCopyImage(clone->img,clone->fb);
+    motion_targets_.at(target->img.image).feedback_seen=frame_;
     Barrier(clone->fb,VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
 }
 
@@ -95,6 +101,9 @@ void VulkanBackend::MotionReplay(const MotionDraw& p) {
     auto images=p.images;
     for (size_t i=0;i<4;i++) if (p.target_images[i]) {
         Image *image=MotionImageFor(p.target_images[i]);
+#ifdef NGB_IOS_MOTION_DIAGNOSTICS
+        motion_diagnostics_.TargetSample(image!=p.target_images[i]);
+#endif
         if (!image || !image->image) return;
         Barrier(*image,images[i].imageLayout); images[i].imageView=image->view;
     }
@@ -249,6 +258,7 @@ void VulkanBackend::MotionFinish() {
 #endif
 #ifdef NGB_IOS_MOTION_DIAGNOSTICS
     uint64_t diagnostic_midpoints=0,diagnostic_endpoints=0,diagnostic_superseded=0;
+    motion_diagnostics_.SceneInput(motion_match_stats_.input_bytes,motion_match_stats_.input_cached);
     if(motion_diagnostics_.ReportDue(now))nv2a_present_pair_counts(&diagnostic_midpoints,&diagnostic_endpoints,&diagnostic_superseded);
     motion_diagnostics_.Frame(now,presents_,ngb_pc_setting(26),wanted,reset,motion_3d_,motion_changed_,motion_equal_,motion_cpu_bytes_,motion_gpu_bytes_,motion_match_stats_.extract_ms,motion_match_stats_.interpolate_ms,motion_match_stats_.project_ms,diagnostic_midpoints,diagnostic_endpoints,diagnostic_superseded,ngb_ios_display_hz(),native_w_,native_h_,msaa_,motion_valid_);
 #endif

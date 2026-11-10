@@ -375,7 +375,8 @@ uint64_t digest(const void* data,size_t size,uint64_t h=1469598103934665603ull) 
     auto p=static_cast<const uint8_t*>(data);for(size_t i=0;i<size;i++) {h^=p[i];h*=1099511628211ull;}return h;
 }
 // Owned bytes, not stream addresses, determine whether fixed terrain is
-// unchanged. Include declarations, decoding, topology and index data too.
+// unchanged. Large terrain buffers contain many draws: retain only this draw's
+// vertex interval, and capture an interleaved position/UV stream just once.
 std::vector<uint8_t> fixed_input(const Assembled& a) {
     std::vector<uint8_t> bytes;
     auto append=[&](const void* data,size_t n) {
@@ -384,14 +385,47 @@ std::vector<uint8_t> fixed_input(const Assembled& a) {
     auto value=[&](auto x) {append(&x,sizeof x);};
     value(a.vertex_count);value(a.draw_count);value(a.index_count);value(a.base_vertex);
     value(a.index16);value(a.strip);value(a.decode);value(uint16_t(a.regs&0x201));
+    uint32_t count=a.index_count?a.index_count:a.draw_count;
+    size_t n=size_t(a.index_count)*(a.index16?2:4);
+    if(!count || n>2u*1024u*1024u || (n && !a.index_src)) return {};
+    uint32_t first=a.vertex_count,last=0;
+    for(uint32_t i=0;i<count;i++) {
+        int64_t id=i;
+        if(a.index_count) {
+            if(a.index16) {uint16_t index;std::memcpy(&index,static_cast<const uint8_t*>(a.index_src)+i*2,2);id=int64_t(index)+a.base_vertex;}
+            else {uint32_t index;std::memcpy(&index,static_cast<const uint8_t*>(a.index_src)+i*4,4);id=int64_t(index)+a.base_vertex;}
+        }
+        if(id<0 || id>=a.vertex_count) return {};
+        first=std::min(first,uint32_t(id));last=std::max(last,uint32_t(id));
+    }
+    struct Span {const VertexBuffer* buffer;size_t end;};
+    std::array<Span,2> spans{};unsigned span_count=0;
     for(unsigned reg:{0u,9u}) if(a.regs&(1u<<reg)) {
         const auto& e=a.elements[reg];if(e.buffer>=a.buffer_count) return {};
         const auto& b=a.buffers[e.buffer];
-        if(!b.src || b.bytes>2u*1024u*1024u) return {};
-        value(e.format);value(e.offset);value(b.stride);value(b.bytes);append(b.src,b.bytes);
+        unsigned width=0;
+        switch(e.format) {
+        case 2:width=16;break;case 6:width=12;break;
+        case 16:case 13:case 14:width=8;break;
+        case 41:case 37:case 38:case 28:case 87:case 42:width=4;break;
+        case 58:case 59:case 49:width=2;break;case 61:width=1;break;
+        default:return {};
+        }
+        size_t end=size_t(e.offset)+width;
+        if(!b.src || size_t(last)*b.stride>b.bytes || end>b.bytes-size_t(last)*b.stride) return {};
+        unsigned slot=0;
+        for(;slot<span_count;slot++) if(spans[slot].buffer==&b) break;
+        if(slot==span_count) spans[span_count++]={&b,end};
+        else spans[slot].end=std::max(spans[slot].end,end);
+        value(e.format);value(e.offset);value(b.stride);value(slot);
     }
-    size_t n=size_t(a.index_count)*(a.index16?2:4);
-    if(n>2u*1024u*1024u || (n && !a.index_src)) return {};
+    for(unsigned i=0;i<span_count;i++) {
+        const auto& b=*spans[i].buffer;
+        size_t start=size_t(first)*b.stride;
+        size_t size=size_t(last-first)*b.stride+spans[i].end;
+        if(size>2u*1024u*1024u) return {};
+        value(size);append(b.src+start,size);
+    }
     append(a.index_src,n);return bytes;
 }
 struct FixedGeometry {
@@ -508,6 +542,7 @@ bool SceneMotion::Add(const State& s,const Assembled& a,const DrawConstants& dc,
     size_t input_hash=0;const FixedGeometry* retained=nullptr;
     if(!program && raw_model) {
         input=fixed_input(a);
+        p.stats.input_bytes+=input.size();
         if(!input.empty()) {
             input_hash=std::hash<std::string_view>{}({reinterpret_cast<const char*>(input.data()),input.size()});
             auto it=p.fixed_geometry.find(input_hash);

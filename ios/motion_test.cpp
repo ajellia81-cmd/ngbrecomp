@@ -77,6 +77,33 @@ static void input_cache_tests() {
     std::swap(indices[0],indices[1]);add(0);add(1);
     a.decode=kDecodeW1;add(0);add(1);
     dc.wv[3]=10;add(1); // transforms do not invalidate immutable local geometry
+
+    // Three terrain vertices in a large shared interleaved buffer. Unused
+    // terrain must neither fill the key nor invalidate this draw's cache.
+    std::vector<float> terrain(512*1024,0);
+    constexpr unsigned base=4000;
+    for(unsigned i=0;i<3;i++) {
+        std::copy(positions+i*4,positions+i*4+4,terrain.begin()+(base+i)*6);
+        terrain[(base+i)*6+4]=uv[i*2];terrain[(base+i)*6+5]=uv[i*2+1];
+    }
+    uint16_t far_indices[]={base,base+1,base+2};
+    auto far=a;far.vertex_count=base+3;far.decode=0;far.buffer_count=1;
+    far.buffers[0]={reinterpret_cast<const uint8_t*>(terrain.data()),uint32_t(terrain.size()*4),24};
+    far.elements[0]={2,0,0};far.elements[9]={16,0,16};far.index_src=far_indices;
+    SceneMotion distant;SceneOutput far_output;
+    auto far_add=[&](unsigned hits) {
+        check(distant.Add(s,far,dc,far_output),"large terrain input rejected");
+        auto stats=distant.Resolve();
+        check(stats.input_cached==hits,"terrain cache did not track the consumed interval");
+        check(stats.input_bytes<256,"terrain cache copied the backing buffer or duplicated its interleaved stream");
+        distant.Reset();
+    };
+    far_add(0);far_add(1);
+    terrain[0]=99;far_add(1);
+    terrain[base*6]=2;far_add(0);far_add(1);
+    terrain[base*6+4]=.25f;far_add(0);far_add(1);
+    far.buffers[0].bytes=(base+3)*24-1;
+    check(!distant.Add(s,far,dc,far_output),"truncated terrain input reused a cached mesh");
 }
 static void fixed_scene_tests() {
     DrawConstants dc{};

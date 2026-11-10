@@ -44,3 +44,23 @@ cannot record a loader rejection that occurs before any executable initializer.
 The v2 writer uses native GCD already used by the port, eliminating the new
 C++ writer thread and timed condition-variable wait introduced in3.1.34. This
 is a compatibility isolation change, not proof of the user's exit cause.
+# Terrain capture and sampled targets
+
+The diagnostic build reports a `[scene-input]` row beside each one-second frame
+summary. `key_MiB` counts bytes copied into fixed-geometry cache keys; `hits`
+counts unchanged fixed inputs. `target_readonly` and `target_replay` count
+sampled render targets using their unchanged authoritative image or the current
+midpoint image, respectively. These are CPU-side counters, not GPU timings.
+
+Fixed terrain keys retain the indexed draw's vertex interval instead of an
+entire shared backing buffer, and retain interleaved position/UV bytes once.
+Index data, declarations, decoding and consumed bytes still determine cache
+identity; changing consumed geometry invalidates the cache even at the same
+address. This does not change VF3 matching, interpolation or the guest clock.
+
+Only render targets written by the current replay use a replay image. A target
+sampled without being updated must use its unchanged original image, including
+feedback targets without a feedback copy in the current frame. Otherwise an old
+midpoint image can leak into water/reflection draws, or an absent clone can drop
+a draw. Actual water appearance and distant-scene frame rate still need device
+verification; synthetic scene tests do not establish visual correctness.
