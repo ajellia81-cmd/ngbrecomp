@@ -15,6 +15,7 @@
 #define NGB_DIAG_STAGE(stage) ((void)0)
 #endif
 #include "bridge.h"
+#include "save_paths.h"
 #include "launcher.h"
 #include "install.h"
 extern void apu_host_pause(int);
@@ -170,15 +171,14 @@ int ngb_conversion_startup(void){@autoreleasepool {
     });
     while(!done)@autoreleasepool{[NSRunLoop.currentRunLoop runUntilDate:[NSDate dateWithTimeIntervalSinceNow:0.05]];}
     if(!ok){NGB_DIAG_STAGE("Korean preparation failed");fprintf(stderr,"Korean game data preparation failed: %s\n",preparationError.localizedDescription.UTF8String);return 0;}
-    NSFileManager *fm=NSFileManager.defaultManager;
-    NSString *saves=[documents stringByAppendingPathComponent:@"saves"];
-    NSString *localized=[documents stringByAppendingPathComponent:@"saves-korean"];
-    [fm createDirectoryAtPath:localized withIntermediateDirectories:YES attributes:nil error:nil];
-    for(NSString *name in @[@"UserData",@"TitleData"]){
-        NSString *source=[saves stringByAppendingPathComponent:name],*target=[localized stringByAppendingPathComponent:name];
-        [fm createDirectoryAtPath:source withIntermediateDirectories:YES attributes:nil error:nil];
-        if(![fm fileExistsAtPath:target])[fm createSymbolicLinkAtPath:target withDestinationPath:source error:nil];
+    NSError *saveError=nil;
+    if(!ngb_prepare_save_paths(documents,&saveError)){
+        NGB_DIAG_STAGE("Korean save directory preparation failed");
+        fprintf(stderr,"Korean save directory preparation failed: %s\n",saveError.localizedDescription.UTF8String);
+        SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR,"Save folder unavailable","The save folder could not be prepared. Your save files have been kept.",NULL);
+        return 0;
     }
+    NSString *localized=[documents stringByAppendingPathComponent:@"saves-korean"];
     setenv("NGB_SAVE_DIR",localized.fileSystemRepresentation,1);setenv("NGB_GAME_DIR",output.fileSystemRepresentation,1);
     NGB_DIAG_STAGE("Korean resources ready; entering engine");active=1;override=0;NGB_IOS_PORT_DIAG("[Startup] Korean resources ready; entering original Mac engine\n");return 1;
 }}

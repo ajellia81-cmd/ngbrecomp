@@ -31,6 +31,11 @@ jobs:
         mkdir -p "$RUNNER_TEMP/ngb-startup-test-documents"
         "$RUNNER_TEMP/ngb-startup-diagnostics-test" "$RUNNER_TEMP/ngb-startup-test-documents"
         xcrun --sdk iphoneos clang -target arm64-apple-ios17.0 -fobjc-arc -c porting/macos-on-ios/startup_diagnostics.m -o "$RUNNER_TEMP/ngb-startup-diagnostics-ios.o"
+    - name: Check Korean save links after container relocation
+      run: |
+        xcrun --sdk macosx clang -fobjc-arc -Wall -Wextra -Werror -fsanitize=address porting/macos-on-ios/tests/save_paths.m -framework Foundation -o "$RUNNER_TEMP/ngb-save-paths-test"
+        mkdir -p "$RUNNER_TEMP/ngb-save-paths-fixture"
+        "$RUNNER_TEMP/ngb-save-paths-test" "$RUNNER_TEMP/ngb-save-paths-fixture"
     - name: Compile public iPhone compatibility UI before private generation
       run: |
         xcrun --sdk iphoneos clang -target arm64-apple-ios17.0 -fobjc-arc -Iporting/macos-on-ios -c porting/macos-on-ios/AppKit_NGB.m -o "$RUNNER_TEMP/ngb-ui-bridge.o"
