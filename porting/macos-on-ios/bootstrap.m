@@ -8,6 +8,12 @@
 #include <stdio.h>
 #include <string.h>
 #define NGB_IOS_PORT_DIAG(...) ((void)0)
+#ifdef NGB_IOS_MOTION_DIAGNOSTICS
+#include "startup_diagnostics.h"
+#define NGB_DIAG_STAGE(stage) ngb_diag_stage(stage)
+#else
+#define NGB_DIAG_STAGE(stage) ((void)0)
+#endif
 #include "bridge.h"
 #include "launcher.h"
 #include "install.h"
@@ -94,11 +100,13 @@ int ngb_ios_settings_tab_mask(uint8_t *mask, int width, int height) {
 
 
 int ngb_conversion_startup(void){@autoreleasepool {
+    NGB_DIAG_STAGE("main reached conversion startup");
     NgbConversionPrepare prepare=(NgbConversionPrepare)dlsym(RTLD_DEFAULT,"ngb_macos_on_ios_prepare");
     converted=prepare!=NULL;
     if(converted){
 #ifdef NGB_IOS_MOTION_DIAGNOSTICS
         NSString *documents=NSSearchPathForDirectoriesInDomains(NSDocumentDirectory,NSUserDomainMask,YES).firstObject;
+        ngb_diag_documents(documents.fileSystemRepresentation);
         NSString *diagnostics=[documents stringByAppendingPathComponent:@"smooth-motion-diagnostics.log"];
         if(diagnostics)setenv("NGB_MOTION_DIAGNOSTICS_FILE",diagnostics.fileSystemRepresentation,1);
 #endif
@@ -108,15 +116,20 @@ int ngb_conversion_startup(void){@autoreleasepool {
         setenv("MVK_CONFIG_SYNCHRONOUS_QUEUE_SUBMITS","0",0);
         NGB_IOS_PORT_DIAG("[Display] asynchronous presentation submits: %s\n",getenv("MVK_CONFIG_SYNCHRONOUS_QUEUE_SUBMITS"));
         setenv("RECOMP_DSP_ACK","auto",0);
+        NGB_DIAG_STAGE("creating AppKit/UIKit bridge");
         [NSApplication sharedApplication];
         [NSApp nextEventMatchingMask:NSEventMaskAny untilDate:[NSDate distantPast] inMode:NSDefaultRunLoopMode dequeue:YES];
+#ifdef NGB_IOS_MOTION_DIAGNOSTICS
+        ngb_diag_ui_ready();
+#endif
+        NGB_DIAG_STAGE("preparing import/audio/input services");
         NgbConversionHost api={2,sizeof(NgbConversionHost),ngb_check_xbe,ngb_install,ngb_install_set_progress,
             SDL_WasInit,SDL_InitSubSystem,(int(*)(int,int,int,int))SDL_JoystickAttachVirtual,(void *(*)(int))SDL_JoystickOpen,
             (int(*)(void*,int,int16_t))SDL_JoystickSetVirtualAxis,(int(*)(void*,int,uint8_t))SDL_JoystickSetVirtualButton,
             (int32_t(*)(void*))SDL_JoystickInstanceID,(void(*)(void*))SDL_JoystickClose,SDL_NumJoysticks,
             SDL_JoystickGetDeviceInstanceID,SDL_JoystickDetachVirtual,apu_host_pause,audio_paused,nv2a_present_cancel_pairs};
         NGB_IOS_PORT_DIAG("[Startup] preparing import and device services\n");
-        if(!prepare(&api)){NGB_IOS_PORT_DIAG("[Startup] preparation failed or cancelled\n");return 0;}
+        if(!prepare(&api)){NGB_DIAG_STAGE("platform preparation returned failure");NGB_IOS_PORT_DIAG("[Startup] preparation failed or cancelled\n");return 0;}
         NGB_IOS_PORT_DIAG("[Startup] import and device services complete\n");
         void (*screen)(int*,int*)=(void(*)(int*,int*))dlsym(RTLD_DEFAULT,"ngb_macos_on_ios_screen_size");
         if(screen)screen(&w,&h);
@@ -136,10 +149,12 @@ int ngb_conversion_startup(void){@autoreleasepool {
     setenv("NGB_D3D_SEED",seed.fileSystemRepresentation,0);setenv("NV2A_SHADER_SEED",vkseed.fileSystemRepresentation,0);
     setenv("VK_DRIVER_FILES",icd.fileSystemRepresentation,0);setenv("SDL_VULKAN_LIBRARY",loader.fileSystemRepresentation,0);
     NGB_IOS_PORT_DIAG("[Startup] loading settings\n");
+    NGB_DIAG_STAGE("loading settings");
     NgbSettings settings;ngb_settings_load(&settings);
     if(bridge_motion)bridge_motion(settings.smooth_motion);
     override=settings.text_language_options ? (settings.text_language==1 ? 1 : 0) : -1;
     setenv("NGB_TEXT_LANGUAGE",settings.text_language==1 ? "English" : "Japanese",1);
+    NGB_DIAG_STAGE("settings ready; preparing game language");
     if(settings.text_language!=2){NGB_IOS_PORT_DIAG("[Startup] entering original Mac engine\n");return 1;}
     NGB_IOS_PORT_DIAG("[Startup] preparing Korean resources\n");
     const char *original=getenv("NGB_GAME_DIR");if(!original)return 1;
@@ -154,7 +169,7 @@ int ngb_conversion_startup(void){@autoreleasepool {
         dispatch_async(dispatch_get_main_queue(),^{ok=result;preparationError=failure;done=YES;});
     });
     while(!done)@autoreleasepool{[NSRunLoop.currentRunLoop runUntilDate:[NSDate dateWithTimeIntervalSinceNow:0.05]];}
-    if(!ok){fprintf(stderr,"Korean game data preparation failed: %s\n",preparationError.localizedDescription.UTF8String);return 0;}
+    if(!ok){NGB_DIAG_STAGE("Korean preparation failed");fprintf(stderr,"Korean game data preparation failed: %s\n",preparationError.localizedDescription.UTF8String);return 0;}
     NSFileManager *fm=NSFileManager.defaultManager;
     NSString *saves=[documents stringByAppendingPathComponent:@"saves"];
     NSString *localized=[documents stringByAppendingPathComponent:@"saves-korean"];
@@ -165,7 +180,7 @@ int ngb_conversion_startup(void){@autoreleasepool {
         if(![fm fileExistsAtPath:target])[fm createSymbolicLinkAtPath:target withDestinationPath:source error:nil];
     }
     setenv("NGB_SAVE_DIR",localized.fileSystemRepresentation,1);setenv("NGB_GAME_DIR",output.fileSystemRepresentation,1);
-    active=1;override=0;NGB_IOS_PORT_DIAG("[Startup] Korean resources ready; entering original Mac engine\n");return 1;
+    NGB_DIAG_STAGE("Korean resources ready; entering engine");active=1;override=0;NGB_IOS_PORT_DIAG("[Startup] Korean resources ready; entering original Mac engine\n");return 1;
 }}
 
 extern int ngb_pc_setting(int);

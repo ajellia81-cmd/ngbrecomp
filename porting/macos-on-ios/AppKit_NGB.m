@@ -9,6 +9,7 @@
 #include <unistd.h>
 #include <stdio.h>
 #include <signal.h>
+#include <dlfcn.h>
 #include "bridge.h"
 #include "korean/haptics.h"
 #define NGB_IOS_PORT_DIAG(...) ((void)0)
@@ -439,7 +440,23 @@ void ngb_macos_on_ios_safe_area(float *left,float *top,float *right,float *botto
 void ngb_macos_on_ios_screen_size(int *w,int *h){CGSize p=UIScreen.mainScreen.nativeBounds.size;*w=(int)MAX(p.width,p.height);*h=(int)MIN(p.width,p.height);}
 void ngb_macos_on_ios_tick(void){for(UIWindow *window in UIApplication.sharedApplication.windows)if(window.isKeyWindow)attach_controls(window);[touchControls refresh];}
 void ngb_macos_on_ios_wait_foreground(void){while(!__atomic_load_n(&active,__ATOMIC_ACQUIRE))@autoreleasepool{if(NSThread.isMainThread)[NSRunLoop.currentRunLoop runUntilDate:[NSDate dateWithTimeIntervalSinceNow:0.05]];else usleep(50000);}}
+// Only diagnostic builds call this optional exported progress display.
+void ngb_macos_on_ios_diag_stage(const char *stage){
+    NSString *text=stage ? [NSString stringWithUTF8String:stage] : @"starting";
+    dispatch_async(dispatch_get_main_queue(),^{
+        static UILabel *label;
+        UIWindow *window=nil;for(UIWindow *candidate in UIApplication.sharedApplication.windows)if(candidate.isKeyWindow){window=candidate;break;}
+        if(!window)return;
+        if(label.superview!=window){[label removeFromSuperview];label=[UILabel new];label.userInteractionEnabled=NO;label.numberOfLines=2;label.textAlignment=NSTextAlignmentCenter;label.font=[UIFont monospacedSystemFontOfSize:12 weight:UIFontWeightRegular];label.textColor=UIColor.whiteColor;label.backgroundColor=[UIColor colorWithWhite:0 alpha:.8];[window addSubview:label];}
+        label.frame=CGRectMake(MAX(10,(window.bounds.size.width-440)/2),window.safeAreaInsets.top+8,MIN(440,window.bounds.size.width-20),44);
+        label.text=[@"NGB startup: " stringByAppendingString:text ?: @"starting"];label.hidden=NO;[window bringSubviewToFront:label];
+        if([text hasPrefix:@"motion log"] || [text hasPrefix:@"first game frame"])
+            dispatch_after(dispatch_time(DISPATCH_TIME_NOW,4*NSEC_PER_SEC),dispatch_get_main_queue(),^{if([label.text hasSuffix:text])label.hidden=YES;});
+    });
+}
+static void startup_stage(const char *stage){void (*report)(const char*)=(void(*)(const char*))dlsym(RTLD_DEFAULT,"ngb_diag_stage");if(report)report(stage);}
 int ngb_macos_on_ios_prepare(const NgbConversionHost *api){@autoreleasepool{
+    startup_stage("native UIKit services entered");
     if(!api || api->version!=2 || api->size!=sizeof(host))return 0;host=*api;
     NSString *documents=NSSearchPathForDirectoriesInDomains(NSDocumentDirectory,NSUserDomainMask,YES).firstObject;
     if(!documents)return 0;NSFileManager *fm=NSFileManager.defaultManager;
@@ -448,6 +465,7 @@ int ngb_macos_on_ios_prepare(const NgbConversionHost *api){@autoreleasepool{
     for(NSUInteger i=0;i<names.count;i++){NSString *p=[documents stringByAppendingPathComponent:names[i]];if(![fm createDirectoryAtPath:p withIntermediateDirectories:YES attributes:nil error:nil])return 0;setenv(variables[i],p.fileSystemRepresentation,1);}
     NSString *game=[documents stringByAppendingPathComponent:@"game"];setenv("NGB_GAME_DIR",game.fileSystemRepresentation,1);
     if(ngb_check_xbe(game.fileSystemRepresentation)!=0){NGBImport *importer=[NGBImport new];importer.destination=game;if(![importer run])return 0;}
+    startup_stage("game import validated; preparing display and audio");
     request_frame_cadence();
     fprintf(stderr,"[Startup] game data validated; configuring audio session\n");
     [AVAudioSession.sharedInstance setCategory:AVAudioSessionCategoryAmbient error:nil];
@@ -469,6 +487,7 @@ int ngb_macos_on_ios_prepare(const NgbConversionHost *api){@autoreleasepool{
       [nc addObserverForName:name object:nil queue:NSOperationQueue.mainQueue usingBlock:^(NSNotification *n){(void)n;[touchControls refresh];for(unsigned i=0;i<4;i++)ngb_ios_haptics_prepare(i);}];
     fprintf(stderr,"[Startup] preparing controller haptics\n");
     for(unsigned i=0;i<4;i++)ngb_ios_haptics_prepare(i);
+    startup_stage("native platform services ready");
     fprintf(stderr,"[Startup] UIKit preparation complete\n");
     return 1;
 }}

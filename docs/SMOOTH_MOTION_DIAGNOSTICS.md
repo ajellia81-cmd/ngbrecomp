@@ -7,7 +7,7 @@ The distribution build leaves diagnostics disabled.
 
 The iOS bridge supplies a sandbox Documents path for
 `smooth-motion-diagnostics.log`. Each launch replaces the previous log.
-The render thread queues summaries once per second to a dedicated disk writer.
+The render thread queues summaries once per second to a native GCD serial disk writer, started only after the first game frame.
 The four-slot queue drops diagnostics when full instead of blocking gameplay;
 `log_dropped` reports this. There are no GPU
 queries, completion waits, screenshots, frame holds or shader-policy changes.
@@ -31,3 +31,16 @@ GPU profiler: unaccounted frame time cannot alone prove a GPU bottleneck.
 texture masks, blend/depth state and endpoint/replay counts. These are bump
 material candidates; not every candidate is necessarily water. No game code,
 texture pixels, disc inputs, recorded shader recipes or device paths are logged.
+
+## Early-exit investigation
+
+The diagnostic build records C-only executable-initializer and conversion-entry
+markers in `ngb-startup-diagnostics.log`. The original game host main source
+remains unchanged; reaching conversion startup confirms main called it. It first uses HOME/Documents and
+mirrors the markers into the game Documents path when Foundation is available.
+Platform preparation stages also appear briefly in an on-screen label. This
+cannot record a loader rejection that occurs before any executable initializer.
+
+The v2 writer uses native GCD already used by the port, eliminating the new
+C++ writer thread and timed condition-variable wait introduced in3.1.34. This
+is a compatibility isolation change, not proof of the user's exit cause.

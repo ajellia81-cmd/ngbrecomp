@@ -4,6 +4,10 @@
 #include <sstream>
 #include <cassert>
 #include <string>
+static FILE *sink;
+extern "C" int ngb_diag_writer_start(const char *path){sink=std::fopen(path,"w");return sink!=nullptr;}
+extern "C" int ngb_diag_writer_active(void){return sink!=nullptr;}
+extern "C" int ngb_diag_writer_enqueue(const char *text,size_t length){if(!sink)return 0;std::fwrite(text,1,length,sink);std::fflush(sink);return 1;}
 int main(int argc,char** argv){assert(argc==2);setenv("NGB_MOTION_DIAGNOSTICS_FILE",argv[1],1);
  {NgbMotionDiagnostics d;
   auto frame=[&](int64_t t,unsigned n){d.Frame(t,n,1,true,false,100,10,2,1048576,2097152,1,2,3,4,5,6);};
@@ -13,6 +17,7 @@ int main(int argc,char** argv){assert(argc==2);setenv("NGB_MOTION_DIAGNOSTICS_FI
   d.ReplayPacket(&packets[0]);d.ReplayPacket(&packets[1]);d.ResetPackets();
   frame(1016666667,2);frame(1116666667,3);frame(2116666667,4);
  }
+ if(sink){std::fclose(sink);sink=nullptr;}
  std::ifstream file(argv[1]);std::ostringstream out;out<<file.rdbuf();auto text=out.str();
  assert(text.find("requested=1 wanted=1")!=std::string::npos);
  assert(text.find("draws=10 generic=5")!=std::string::npos);

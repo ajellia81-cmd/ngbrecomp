@@ -25,3 +25,8 @@ if(TARGET ngb_d3d)
     target_sources(ngb_d3d PRIVATE src/d3d/gpu/scene_motion.cpp third_party/vf3_scene/interpolate.cpp)
     set_source_files_properties(src/d3d/gpu/scene_motion.cpp PROPERTIES COMPILE_OPTIONS "-ffp-contract=off")
 endif()
+
+if(NGB_IOS_MOTION_DIAGNOSTICS)
+    target_sources(${PROJECT_NAME} PRIVATE "${NGB_CONVERSION_DIR}/startup_diagnostics.m")
+    set_source_files_properties("${NGB_CONVERSION_DIR}/startup_diagnostics.m" PROPERTIES COMPILE_DEFINITIONS NGB_DIAG_EARLY_ENTRY=1)
+endif()
