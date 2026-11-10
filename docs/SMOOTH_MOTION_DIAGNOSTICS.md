@@ -7,7 +7,9 @@ The distribution build leaves diagnostics disabled.
 
 The iOS bridge supplies a sandbox Documents path for
 `smooth-motion-diagnostics.log`. Each launch replaces the previous log.
-The render thread writes buffered summaries once per second, with no GPU
+The render thread queues summaries once per second to a dedicated disk writer.
+The four-slot queue drops diagnostics when full instead of blocking gameplay;
+`log_dropped` reports this. There are no GPU
 queries, completion waits, screenshots, frame holds or shader-policy changes.
 The file stops growing at approximately 8 MiB. At most eight bump signatures
 are described per interval; overflow is counted.
