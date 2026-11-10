@@ -13,7 +13,8 @@ jobs:
   convert:
     env:
       NGB_MOTION_DIAGNOSTIC_BUILD: '1'
-    runs-on: macos-26
+      DEVELOPER_DIR: /Applications/Xcode_26.3.app/Contents/Developer
+    runs-on: macos-15
     timeout-minutes: 120
     steps:
     - uses: actions/checkout@v4
@@ -94,7 +95,7 @@ jobs:
       uses: actions/cache@v4
       with:
         path: ${{ runner.temp }}/ngb-universal-mvk
-        key: ngb-mvk-1.4.2-native-fetch-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('porting/macos-on-ios/universal/patch_moltenvk.py', 'porting/macos-on-ios/universal/build_moltenvk.sh', 'porting/macos-on-ios/universal/MOLTENVK-NOTICE.txt') }}
+        key: ngb-mvk-1.4.2-native-fetch-macos15-xcode26.3-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('porting/macos-on-ios/universal/patch_moltenvk.py', 'porting/macos-on-ios/universal/build_moltenvk.sh', 'porting/macos-on-ios/universal/MOLTENVK-NOTICE.txt') }}
     - name: Build pinned MoltenVK with native color fetch for explicit local-read pipelines
       if: steps.universal_driver_cache.outputs.cache-hit != 'true'
       run: |
