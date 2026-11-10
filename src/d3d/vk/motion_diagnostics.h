@@ -8,6 +8,7 @@
 #include <algorithm>
 #include <cstdint>
 #include <cstdarg>
+#include <utility>
 #include <string>
 #include <thread>
 #include <atomic>
@@ -33,6 +34,9 @@ public:
   for(auto& w:waters_)if(!w.count){w={key,modes,signed_mask,target_mask,shadow_mask,1,unsigned(generic),unsigned(blend),depth};return;}
   overflow_++;
  }
+ void MarkReplayPacket(const void* packet,uint64_t key){if(!Enabled())return;if(packet_count_<packets_.size())packets_[packet_count_++]={packet,key};else packet_drops_++;}
+ void ReplayPacket(const void* packet){if(!Enabled())return;for(unsigned i=0;i<packet_count_;i++)if(packets_[i].first==packet){ReplayWater(packets_[i].second);return;}}
+ void ResetPackets(){packet_count_=0;}
  bool ReportDue(int64_t now){return Enabled()&&first_&&now-window_>=1000000000LL;}
  void ReplayWater(uint64_t key){if(!Enabled())return;water_replay_++;for(auto& w:waters_)if(w.count&&w.key==key){w.replays++;return;}}
  void Frame(int64_t now,unsigned frame,int requested,bool wanted,bool reset,unsigned scene,unsigned changed,unsigned equal,uint64_t packet,uint64_t snapshots,double extract_ms,double interpolate_ms,double project_ms,uint64_t mids,uint64_t ends,uint64_t superseded,double display_hz=0,unsigned width=0,unsigned height=0,unsigned msaa=0,bool capture_valid=true){
@@ -45,7 +49,7 @@ public:
   if(now-window_<1000000000LL)return;
   double seconds=double(now-window_)/1e9;
   std::string report;
-  Append(report,"[frame] t=%.3f unix=%lld frame=%u game_hz=%.2f display_hz=%.1f target=%ux%u msaa=%u peak_ms=%.2f over20=%u over33=%u over50=%u over100=%u requested=%d wanted=%d resets=%u ineligible=%u invalid_capture=%u draws=%u generic=%u scene=%u changed=%u equal=%u packet_peak_MiB=%.2f snapshots_peak_MiB=%.2f endpoint_cpu_ms=%.2f replay_cpu_ms=%.2f midpoint_inclusive_cpu_ms=%.2f extract_ms=%.2f interpolate_ms=%.2f project_ms=%.2f midpoint_total=%llu endpoint_total=%llu superseded_total=%llu bump_draws=%u bump_replays=%u bump_overflow=%u log_dropped=%u\n",double(now-first_)/1e9,(long long)std::time(nullptr),frame,frames_/seconds,display_hz,width,height,msaa,peak_,slow_[0],slow_[1],slow_[2],slow_[3],requested,int(wanted),resets_,unwanted_,invalid_,draws_,generic_,scene_,changed_,equal_,packet_/1048576.,snapshots_/1048576.,cpu_[0],cpu_[1],cpu_[2],extract_,interpolate_,project_,(unsigned long long)mids,(unsigned long long)ends,(unsigned long long)superseded,water_,water_replay_,overflow_,dropped_);
+  Append(report,"[frame] t=%.3f unix=%lld frame=%u game_hz=%.2f display_hz=%.1f target=%ux%u msaa=%u peak_ms=%.2f over20=%u over33=%u over50=%u over100=%u requested=%d wanted=%d resets=%u ineligible=%u invalid_capture=%u draws=%u generic=%u scene=%u changed=%u equal=%u packet_peak_MiB=%.2f snapshots_peak_MiB=%.2f endpoint_cpu_ms=%.2f replay_cpu_ms=%.2f midpoint_inclusive_cpu_ms=%.2f extract_ms=%.2f interpolate_ms=%.2f project_ms=%.2f midpoint_total=%llu endpoint_total=%llu superseded_total=%llu bump_draws=%u bump_replays=%u bump_overflow=%u log_dropped=%u packet_metadata_dropped=%u\n",double(now-first_)/1e9,(long long)std::time(nullptr),frame,frames_/seconds,display_hz,width,height,msaa,peak_,slow_[0],slow_[1],slow_[2],slow_[3],requested,int(wanted),resets_,unwanted_,invalid_,draws_,generic_,scene_,changed_,equal_,packet_/1048576.,snapshots_/1048576.,cpu_[0],cpu_[1],cpu_[2],extract_,interpolate_,project_,(unsigned long long)mids,(unsigned long long)ends,(unsigned long long)superseded,water_,water_replay_,overflow_,dropped_,packet_drops_);
   for(const auto& w:waters_)if(w.count)Append(report,"[bump] frame=%u shader=%016llx modes=%08x signed=%x target=%x shadow=%x blend=%u depth=%x draws=%u generic=%u replays=%u\n",frame,(unsigned long long)w.key,w.modes,w.signed_mask,w.target_mask,w.shadow_mask,w.blend,w.depth,w.count,w.generic,w.replays);
   frames_=draws_=generic_=water_=water_replay_=overflow_=resets_=unwanted_=invalid_=scene_=changed_=equal_=0;peak_=extract_=interpolate_=project_=0;packet_=snapshots_=0;cpu_={};slow_={};waters_={};window_=now;
   Enqueue(std::move(report));
@@ -78,6 +82,7 @@ private:
  }
  std::array<std::string,4> queue_{};std::atomic<unsigned> read_{0},write_{0};
  std::atomic<bool> active_{false},stop_{false};std::thread writer_;std::mutex wait_mutex_;std::condition_variable wake_;unsigned dropped_=0;
+ std::array<std::pair<const void*,uint64_t>,64> packets_{};unsigned packet_count_=0,packet_drops_=0;
  bool opened_=false;int64_t first_=0,last_=0,window_=0;
  unsigned frames_=0,draws_=0,generic_=0,water_=0,water_replay_=0,overflow_=0,resets_=0,unwanted_=0,invalid_=0,scene_=0,changed_=0,equal_=0;
  double peak_=0,extract_=0,interpolate_=0,project_=0;uint64_t packet_=0,snapshots_=0;

@@ -74,7 +74,7 @@ void VulkanBackend::MotionFeedback(Target *target) {
 void VulkanBackend::MotionReplay(const MotionDraw& p) {
 #ifdef NGB_IOS_MOTION_DIAGNOSTICS
     NgbMotionDiagnostics::Timer diagnostic_time(motion_diagnostics_,NgbMotionDiagnostics::ReplayDraw);
-    if(p.diagnostic_bump)motion_diagnostics_.ReplayWater(p.diagnostic_bump_key);
+    motion_diagnostics_.ReplayPacket(&p);
 #endif
     // Upload can submit/reset the ring. All following bindings are rebuilt from
     // this owned packet, exactly as the original draw rebuilds its bindings.
@@ -268,6 +268,9 @@ void VulkanBackend::MotionFinish() {
         }
         if (motion_targets_.empty()) motion_gpu_bytes_=0;
     }
+#ifdef NGB_IOS_MOTION_DIAGNOSTICS
+    motion_diagnostics_.ResetPackets();
+#endif
     motion_commands_.clear(); motion_cpu_bytes_=0; motion_3d_=motion_changed_=motion_equal_=0; motion_match_stats_={};
     motion_capture_=motion_valid_=wanted; motion_last_ns_=now;
 }

@@ -371,9 +371,6 @@ private:
         std::array<uint32_t,16> buffers{};
     };
     struct MotionDraw {
-#ifdef NGB_IOS_MOTION_DIAGNOSTICS
-        bool diagnostic_bump=false;uint64_t diagnostic_bump_key=0;
-#endif
         std::unique_ptr<UniversalReplay> universal;
         Target *rt=nullptr,*ds=nullptr;
         VkPipeline pipeline=VK_NULL_HANDLE;
@@ -3435,7 +3432,7 @@ void VulkanBackend::Draw(const State& s, uint32_t prim, uint32_t start, uint32_t
     if (motion_capture_ && motion_valid_) {
         auto packet=std::make_shared<MotionDraw>();
 #ifdef NGB_IOS_MOTION_DIAGNOSTICS
-        packet->diagnostic_bump=signed_mask || bump_candidate;packet->diagnostic_bump_key=pkey;
+        if(signed_mask || bump_candidate)motion_diagnostics_.MarkReplayPacket(packet.get(),pkey);
 #endif
         packet->rt=rt; packet->ds=ds; packet->pipeline=pipe;
         if(universal_draw) {

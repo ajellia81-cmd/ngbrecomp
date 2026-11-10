@@ -11,7 +11,9 @@ The render thread queues summaries once per second to a dedicated disk writer.
 The four-slot queue drops diagnostics when full instead of blocking gameplay;
 `log_dropped` reports this. There are no GPU
 queries, completion waits, screenshots, frame holds or shader-policy changes.
-The file stops growing at approximately 8 MiB. At most eight bump signatures
+Bump replay tags live in a separate bounded side table, preserving the original
+replay packet size and memory-budget decisions. Overflow is reported as
+`packet_metadata_dropped`. The file stops growing at approximately 8 MiB. At most eight bump signatures
 are described per interval; overflow is counted.
 
 Record the stage-2 opening with Smooth Motion enabled, then the flickering
