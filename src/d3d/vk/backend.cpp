@@ -2915,6 +2915,13 @@ void VulkanBackend::Draw(const State& s, uint32_t prim, uint32_t start, uint32_t
         unsigned mode=(pk.tex_modes>>(stage*5))&31;bump_candidate|=mode==6 || mode==7;
     }
     if(signed_mask || bump_candidate)motion_diagnostics_.Water(pkey,pk.tex_modes,signed_mask,target_mask,shadow_mask,universal_draw,k.blend,k.zfunc);
+    if((signed_mask || bump_candidate) && target_mask) {
+        bool programmable=(s.vs_handle&1)!=0;
+        const auto* words=programmable && s.vs ? &s.vs->program : nullptr;
+        motion_diagnostics_.WaterState(pkey,vkey,programmable,words?words->data():nullptr,words?words->size():0,
+            s.tss[2][kTssTexCoordIndex],s.tss[2][kTssTextureTransformFlags],pk.proj,s.viewport.w,s.viewport.h,
+            motion_shader,rt && rt->fb.view && views[2]==rt->fb.view);
+    }
 #endif
     async_now_ = false;
     if (!pipe) {

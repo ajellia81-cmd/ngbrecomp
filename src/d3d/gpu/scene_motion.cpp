@@ -7,6 +7,7 @@
 #include <cmath>
 #include <cstring>
 #include <limits>
+#include <list>
 #include <map>
 #include <tuple>
 #include <string_view>
@@ -51,6 +52,12 @@ struct Program {
     std::array<uint8_t,192> constants{};
     uint16_t inputs=0;
     bool valid=true;
+    struct Proof {
+        std::vector<uint8_t> constants;
+        M matrix{};
+        bool known=false,rigid=false;
+    };
+    std::array<Proof,64> proofs;
     explicit Program(const std::vector<uint32_t>& words) {
         std::vector<Token> tokens;
         for(size_t n=0;n+4<=words.size();n+=4) {
@@ -229,6 +236,26 @@ bool rigid_clip_matrix(const Program& program,const State& s,M& out) {
     return true;
 }
 
+bool cached_clip_matrix(Program& program,const State& s,M& out,bool& hit) {
+    hit=false;
+    if(program.inputs!=1) return false;
+    // The algebraic proof depends on the program's position constants and
+    // viewport normalization, not on colour/material constants or stream
+    // addresses. Repeated depth/material passes often use the same proof.
+    std::array<V,192> constants;size_t count=0;
+    for(unsigned i=0;i<192;i++) if(program.constants[i] || i==58 || i==59)
+        constants[count++]=s.vsc[i];
+    const auto *bytes=reinterpret_cast<const uint8_t*>(constants.data());
+    size_t size=count*sizeof(V);
+    auto hash=std::hash<std::string_view>{}({reinterpret_cast<const char*>(bytes),size});
+    auto& proof=program.proofs[hash%program.proofs.size()];
+    if(proof.known && proof.constants.size()==size && !std::memcmp(proof.constants.data(),bytes,size)) {
+        hit=true;out=proof.matrix;return proof.rigid;
+    }
+    bool rigid=rigid_clip_matrix(program,s,out);
+    proof.constants.assign(bytes,bytes+size);proof.matrix=out;proof.rigid=rigid;proof.known=true;
+    return rigid;
+}
 float clamp_magnitude(float x) {
     const float m=std::clamp(std::fabs(x),5.42101e-20f,1.84467e19f);return x<0?-m:m;
 }
@@ -433,6 +460,8 @@ struct FixedGeometry {
     video::Meshes meshes;
     std::shared_ptr<std::vector<uint32_t>> indices;
     uint64_t resource=0,positions=0;
+    size_t bytes=0;
+    std::list<size_t>::iterator recent;
 };
 struct ViewKey {
     uint32_t format,size,x,y,w,h;
@@ -461,6 +490,7 @@ struct SceneMotion::Impl {
     std::unordered_map<uint64_t,video::Meshes> rigid_meshes;
     size_t cached_bytes=0;
     std::unordered_map<size_t,FixedGeometry> fixed_geometry;
+    std::list<size_t> fixed_recent;
     size_t fixed_bytes=0;
     double elapsed=0;
     size_t geometry_bytes=0;
@@ -504,7 +534,13 @@ bool SceneMotion::Add(const State& s,const Assembled& a,const DrawConstants& dc,
     }
     M local_from_clip=inv_model*inv_projection;
     M clip_from_input{},local_from_input{};
-    bool rigid=program && rigid_clip_matrix(*vp,s,clip_from_input);
+    bool rigid=false;
+    if(program) {
+        auto proof_start=Clock::now();bool hit=false;
+        rigid=cached_clip_matrix(*vp,s,clip_from_input,hit);
+        p.stats.proof_ms+=std::chrono::duration<double,std::milli>(Clock::now()-proof_start).count();
+        p.stats.proof_cached+=hit;p.stats.proof_tests+=!hit && vp->inputs==1;
+    }
     bool raw_model=false;
     if(rigid) {
         // The proven complete transform supplies its actual model-to-view
@@ -546,7 +582,10 @@ bool SceneMotion::Add(const State& s,const Assembled& a,const DrawConstants& dc,
         if(!input.empty()) {
             input_hash=std::hash<std::string_view>{}({reinterpret_cast<const char*>(input.data()),input.size()});
             auto it=p.fixed_geometry.find(input_hash);
-            if(it!=p.fixed_geometry.end() && it->second.input==input) retained=&it->second;
+            if(it!=p.fixed_geometry.end() && it->second.input==input) {
+                p.fixed_recent.splice(p.fixed_recent.begin(),p.fixed_recent,it->second.recent);
+                retained=&it->second;
+            }
         }
     }
     auto ix=retained?retained->indices:std::make_shared<std::vector<uint32_t>>(triangles(a));
@@ -638,9 +677,25 @@ bool SceneMotion::Add(const State& s,const Assembled& a,const DrawConstants& dc,
         for(const auto& vertex:meshes->at(0).verts) position_digest=digest(vertex.pos,sizeof vertex.pos,position_digest);
         if(!input.empty()) {
             size_t bytes=input.size()+ix->size()*sizeof(uint32_t)+meshes->at(0).verts.size()*sizeof(video::Vertex);
-            if(bytes<=32u*1024u*1024u) {
-                if(p.fixed_bytes+bytes>32u*1024u*1024u) {p.fixed_geometry.clear();p.fixed_bytes=0;}
-                p.fixed_geometry[input_hash]={std::move(input),meshes,ix,resource,position_digest};
+            // A distant terrain working set can exceed the old 32 MiB limit.
+            // Clearing it wholesale repeatedly decodes all static meshes. Keep
+            // recent immutable entries within a hard budget, evicting only the
+            // least recently used entries. Owned bytes still verify every hit.
+            constexpr size_t budget=128u*1024u*1024u;
+            if(bytes<=budget) {
+                auto old=p.fixed_geometry.find(input_hash);
+                if(old!=p.fixed_geometry.end()) {
+                    p.fixed_bytes-=old->second.bytes;
+                    p.fixed_recent.erase(old->second.recent);p.fixed_geometry.erase(old);
+                }
+                while(p.fixed_bytes+bytes>budget) {
+                    auto cold=p.fixed_geometry.find(p.fixed_recent.back());
+                    p.fixed_bytes-=cold->second.bytes;
+                    p.fixed_geometry.erase(cold);p.fixed_recent.pop_back();
+                    p.stats.input_evictions++;
+                }
+                p.fixed_recent.push_front(input_hash);
+                p.fixed_geometry.emplace(input_hash,FixedGeometry{std::move(input),meshes,ix,resource,position_digest,bytes,p.fixed_recent.begin()});
                 p.fixed_bytes+=bytes;
             }
         }
@@ -687,6 +742,7 @@ SceneMotion::Stats SceneMotion::Resolve() {
     for(auto& binding:p.bindings) binding.viewport=remap[binding.viewport];
     video::Scene output;
     p.stats.extract_ms=p.elapsed;
+    p.stats.input_cache_bytes=p.fixed_bytes;
     bool interpolated=p.before.id && video::interpolate(p.before,p.now,.5f,output,&p.stats.vf);
     auto projected_start=Clock::now();
     p.stats.interpolate_ms=std::chrono::duration<double,std::milli>(projected_start-start).count();

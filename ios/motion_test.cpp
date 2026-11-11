@@ -105,6 +105,50 @@ static void input_cache_tests() {
     far.buffers[0].bytes=(base+3)*24-1;
     check(!distant.Add(s,far,dc,far_output),"truncated terrain input reused a cached mesh");
 }
+static void matrix_proof_cache_tests() {
+    float positions[]={0,0,0,1, 1,0,0,1, 0,1,0,1};auto a=geometry(positions);
+    auto model=Mat::identity();model.m[14]=50;auto s=state(model);
+    DrawConstants dc{};SceneMotion history;SceneOutput output[2];
+    auto add=[&](unsigned hits,unsigned proofs) {
+        check(history.Add(s,a,dc,output[0]),"matrix proof cache fixture rejected");
+        auto stats=history.Resolve();
+        check(stats.proof_cached==hits && stats.proof_tests==proofs,"matrix proof reused changed inputs or missed identical inputs");
+        history.Reset();
+    };
+    add(0,1);add(1,0);
+    s.vsc[20][0]=123;add(1,0); // an unrelated colour/material constant
+    s.vsc[96][0]+=.1f;add(0,1);add(1,0); // same program, changed transform
+    s.vsc[59][0]+=.125f;add(0,1);add(1,0); // viewport normalization belongs in the proof key
+}
+static void terrain_working_set_tests() {
+    constexpr unsigned count=5001,draws=96;
+    std::vector<std::vector<float>> buffers(draws,std::vector<float>(count*4));
+    for(auto& buffer:buffers) for(unsigned v=0;v<count;v++) {
+        buffer[v*4]=float(v%3)-1;buffer[v*4+1]=float(v/3%3);buffer[v*4+3]=1;
+    }
+    auto model=Mat::identity();model.m[14]=50;
+    auto s=state(model);s.vs_handle=0;s.vs.reset();
+    DrawConstants dc{};draw_matrix(dc.wv,model);draw_matrix(dc.wvp,projection()*model);
+    SceneMotion history;std::array<SceneOutput,draws> output;
+    auto batch=[&](unsigned group) {
+        for(unsigned i=0;i<draws;i++) {
+            buffers[i][0]=float(group*draws+i)*.001f;
+            auto a=geometry(buffers[i].data());a.vertex_count=a.draw_count=count;
+            a.buffers[0].bytes=uint32_t(buffers[i].size()*sizeof(float));
+            check(history.Add(s,a,dc,output[i]),"large terrain working set rejected");
+        }
+        auto stats=history.Resolve();history.Reset();
+        check(stats.input_cache_bytes<=128u*1024u*1024u,"terrain cache exceeded its hard memory budget");
+        return stats;
+    };
+    auto first=batch(0);
+    check(first.input_cache_bytes>32u*1024u*1024u,"terrain fixture did not exceed the old whole-cache flush limit");
+    check(batch(0).input_cached==draws,"stable distant terrain was rebuilt on its second pass");
+    batch(1);batch(2);
+    auto evicted=batch(3);
+    check(evicted.input_evictions>0,"terrain fixture did not exercise bounded eviction");
+    check(batch(3).input_cached==draws,"eviction discarded the current terrain working set");
+}
 static void fixed_scene_tests() {
     DrawConstants dc{};
     auto fixed_state=[](const Mat& world,float camera,DrawConstants& constants) {
@@ -236,6 +280,8 @@ int main(int argc,char** argv) {
     check(SceneVertexPosition(s,packed,1,dc,p),"SHORT3 input decode failed");near(p[0],337.6f,"SHORT3 position changed");
     fixed_scene_tests();
     input_cache_tests();
+    matrix_proof_cache_tests();
+    terrain_working_set_tests();
     std::string fixed=MotionVertexHlsl(FixedVertexHlsl(1,false));
     std::string program=MotionVertexHlsl(VertexProgramHlsl(position_program(),1));
     std::string decoded=MotionVertexHlsl(VertexProgramHlsl(position_program(),1,kDecodeIntW1));

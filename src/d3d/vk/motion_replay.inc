@@ -258,7 +258,8 @@ void VulkanBackend::MotionFinish() {
 #endif
 #ifdef NGB_IOS_MOTION_DIAGNOSTICS
     uint64_t diagnostic_midpoints=0,diagnostic_endpoints=0,diagnostic_superseded=0;
-    motion_diagnostics_.SceneInput(motion_match_stats_.input_bytes,motion_match_stats_.input_cached);
+    motion_diagnostics_.SceneInput(motion_match_stats_.input_bytes,motion_match_stats_.input_cached,motion_match_stats_.input_cache_bytes,motion_match_stats_.input_evictions,motion_match_stats_.fixed_rigid);
+    motion_diagnostics_.SceneWork(motion_match_stats_.proof_ms,motion_match_stats_.proof_tests,motion_match_stats_.proof_cached,motion_match_stats_.vertices,motion_match_stats_.evaluated_vertices,motion_match_stats_.fixed_skin);
     if(motion_diagnostics_.ReportDue(now))nv2a_present_pair_counts(&diagnostic_midpoints,&diagnostic_endpoints,&diagnostic_superseded);
     motion_diagnostics_.Frame(now,presents_,ngb_pc_setting(26),wanted,reset,motion_3d_,motion_changed_,motion_equal_,motion_cpu_bytes_,motion_gpu_bytes_,motion_match_stats_.extract_ms,motion_match_stats_.interpolate_ms,motion_match_stats_.project_ms,diagnostic_midpoints,diagnostic_endpoints,diagnostic_superseded,ngb_ios_display_hz(),native_w_,native_h_,msaa_,motion_valid_);
 #endif

@@ -29,8 +29,9 @@ GPU profiler: unaccounted frame time cannot alone prove a GPU bottleneck.
 
 `[bump]` records hashed pixel-state keys, texture modes, signed/target/depth
 texture masks, blend/depth state and endpoint/replay counts. These are bump
-material candidates; not every candidate is necessarily water. No game code,
-texture pixels, disc inputs, recorded shader recipes or device paths are logged.
+material candidates; not every candidate is necessarily water. Texture pixels,
+guest CPU code, disc inputs and device paths are not logged. The targeted
+private vertex-program diagnostic is described below.
 
 ## Early-exit investigation
 
@@ -58,9 +59,32 @@ Index data, declarations, decoding and consumed bytes still determine cache
 identity; changing consumed geometry invalidates the cache even at the same
 address. This does not change VF3 matching, interpolation or the guest clock.
 
-Only render targets written by the current replay use a replay image. A target
-sampled without being updated must use its unchanged original image, including
-feedback targets without a feedback copy in the current frame. Otherwise an old
-midpoint image can leak into water/reflection draws, or an absent clone can drop
-a draw. Actual water appearance and distant-scene frame rate still need device
-verification; synthetic scene tests do not establish visual correctness.
+The defensive original-image fallback did not trigger in the reported water
+scene: `BindTexture` touches sampled render targets too. A zero `target_readonly`
+count therefore does not establish a water fix. Actual water appearance and
+distant-scene frame rate need device verification; synthetic scene tests do not
+establish visual correctness.
+
+## Bounded caches and remaining water investigation
+
+Fixed terrain no longer clears its entire cache at 32 MiB. An LRU retains recent
+owned inputs/geometry within a 128 MiB hard payload budget. `cache_MiB`, `evictions`
+and `fixed` distinguish cache pressure from a different draw mix. Scenes and
+other renderer caches can retain shared geometry independently; this is not a
+bound on the entire renderer's memory.
+
+Vertex-program matrix proofs cache exact position-dependent constant bytes plus
+viewport normalization c58/c59. Relative addressing conservatively captures all
+constants. Hash collisions require an exact byte match, and changed inputs rerun
+the original algebraic proof. The VF3 algorithm and proof result are unchanged.
+`[scene-work]` reports proof time/count/hits, decoded/interpreted vertices and
+fixed skin draws so expensive work can be identified without GPU waits.
+
+For bump candidates sampling a render target, `[water-state]` records vertex
+shader identity, programmable/fixed mode, viewport, stage-2 coordinate generation
+and transformation flags, projective sampling and feedback use. `[water-program]`
+stores at most 1024 vertex-program words for each of eight unique variants, once
+per process. These runtime shader words are proprietary user data: keep the log
+private and never commit it or publish it as a CI artifact. No pixels are read
+back, and no synchronous GPU waits are added. This is diagnostic evidence, not
+a claim that the remaining water flicker has been fixed.
