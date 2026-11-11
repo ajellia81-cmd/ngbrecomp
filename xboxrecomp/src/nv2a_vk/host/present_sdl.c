@@ -1336,7 +1336,7 @@ static bool s_external_wait; /* protected by s_present_mu */
 static bool s_pair_render;   /* the worker never enters a blocking host menu */
 static VkDevice s_pair_copy_device; /* protected by s_present_mu */
 static VkFence s_pair_copy_fence;
-#if !defined(NGB_IOS_PORT_RELEASE) || defined(NGB_IOS_MOTION_DIAGNOSTICS)
+#if !defined(NGB_IOS_PORT_RELEASE) || (defined(NGB_IOS_MOTION_DIAGNOSTICS) && !defined(NGB_IOS_PERFORMANCE_DIAGNOSTICS))
 static uint64_t s_pair_acquire_us,s_pair_lock_us,s_pair_submit_us,s_pair_present_us;
 #endif
 
@@ -1348,7 +1348,7 @@ static uint64_t s_pair_mids,s_pair_ends;
 static bool pair_present(const NgbPresentPair *pair,bool midpoint);
 static void *pair_worker(void *unused) {
     (void)unused;
-#if !defined(NGB_IOS_PORT_RELEASE) || defined(NGB_IOS_MOTION_DIAGNOSTICS)
+#if !defined(NGB_IOS_PORT_RELEASE) || (defined(NGB_IOS_MOTION_DIAGNOSTICS) && !defined(NGB_IOS_PERFORMANCE_DIAGNOSTICS))
     int64_t report_at=0; uint64_t pair_us=0,wait_us=0,pair_n=0;
 #endif
     for (;;) {
@@ -1364,14 +1364,14 @@ static void *pair_worker(void *unused) {
         // The last copy fence orders both midpoint and endpoint. Wait once,
         // including when endpoint acquisition failed after a midpoint copy.
         pthread_mutex_lock(&s_present_mu);
-#if !defined(NGB_IOS_PORT_RELEASE) || defined(NGB_IOS_MOTION_DIAGNOSTICS)
+#if !defined(NGB_IOS_PORT_RELEASE) || (defined(NGB_IOS_MOTION_DIAGNOSTICS) && !defined(NGB_IOS_PERFORMANCE_DIAGNOSTICS))
         int64_t copy_wait_started=g_get_monotonic_time();
 #endif
         if (s_pair_copy_fence) {
             vkWaitForFences(s_pair_copy_device,1,&s_pair_copy_fence,VK_TRUE,UINT64_MAX);
             s_pair_copy_fence=VK_NULL_HANDLE;
         }
-#if !defined(NGB_IOS_PORT_RELEASE) || defined(NGB_IOS_MOTION_DIAGNOSTICS)
+#if !defined(NGB_IOS_PORT_RELEASE) || (defined(NGB_IOS_MOTION_DIAGNOSTICS) && !defined(NGB_IOS_PERFORMANCE_DIAGNOSTICS))
         int64_t completed=g_get_monotonic_time();
         wait_us+=(uint64_t)(completed-copy_wait_started);
         pair_us+=(uint64_t)(completed-started);pair_n++;
@@ -1469,11 +1469,11 @@ static bool pair_present(const NgbPresentPair *pair,bool midpoint) {
 #ifdef NGB_CONVERTED_DISPLAY
     if (!ngb_conversion_is_foreground()) return false;
 #endif
-#if !defined(NGB_IOS_PORT_RELEASE) || defined(NGB_IOS_MOTION_DIAGNOSTICS)
+#if !defined(NGB_IOS_PORT_RELEASE) || (defined(NGB_IOS_MOTION_DIAGNOSTICS) && !defined(NGB_IOS_PERFORMANCE_DIAGNOSTICS))
     int64_t lock_started=g_get_monotonic_time();
 #endif
     pthread_mutex_lock(&s_present_mu);
-#if !defined(NGB_IOS_PORT_RELEASE) || defined(NGB_IOS_MOTION_DIAGNOSTICS)
+#if !defined(NGB_IOS_PORT_RELEASE) || (defined(NGB_IOS_MOTION_DIAGNOSTICS) && !defined(NGB_IOS_PERFORMANCE_DIAGNOSTICS))
     s_pair_lock_us+=(uint64_t)(g_get_monotonic_time()-lock_started);
 #endif
     pthread_mutex_lock(&s_pair_mu);
@@ -1579,12 +1579,12 @@ static void present_locked(PGRAPHState *pg, bool on_pfifo)
     // Acquire synchronizes the swapchain, not VkQueue. s_present_mu already
     // serializes this path. Holding the shared GPU queue here blocks the game
     // producer while waiting for the display to release a drawable.
-#if !defined(NGB_IOS_PORT_RELEASE) || defined(NGB_IOS_MOTION_DIAGNOSTICS)
+#if !defined(NGB_IOS_PORT_RELEASE) || (defined(NGB_IOS_MOTION_DIAGNOSTICS) && !defined(NGB_IOS_PERFORMANCE_DIAGNOSTICS))
     int64_t acquire_started=s_pair_render ? g_get_monotonic_time() : 0;
 #endif
     res = vkAcquireNextImageKHR(r->device, s_swapchain, s_external_wait ? 50000000 : 0, s_acquired[f],
                                 VK_NULL_HANDLE, &idx);
-#if !defined(NGB_IOS_PORT_RELEASE) || defined(NGB_IOS_MOTION_DIAGNOSTICS)
+#if !defined(NGB_IOS_PORT_RELEASE) || (defined(NGB_IOS_MOTION_DIAGNOSTICS) && !defined(NGB_IOS_PERFORMANCE_DIAGNOSTICS))
     if (s_pair_render) s_pair_acquire_us+=(uint64_t)(g_get_monotonic_time()-acquire_started);
 #endif
     if (res == VK_ERROR_OUT_OF_DATE_KHR) {
@@ -1768,12 +1768,12 @@ static void present_locked(PGRAPHState *pg, bool on_pfifo)
             .signalSemaphoreCount = 1,
             .pSignalSemaphores = &s_render_done[idx],
         };
-#if !defined(NGB_IOS_PORT_RELEASE) || defined(NGB_IOS_MOTION_DIAGNOSTICS)
+#if !defined(NGB_IOS_PORT_RELEASE) || (defined(NGB_IOS_MOTION_DIAGNOSTICS) && !defined(NGB_IOS_PERFORMANCE_DIAGNOSTICS))
         int64_t submit_started=s_pair_render ? g_get_monotonic_time() : 0;
 #endif
         nv2a_vk_queue_lock();
         VK_CHECK(vkQueueSubmit(r->queue, 1, &si, s_fence[f]));
-#if !defined(NGB_IOS_PORT_RELEASE) || defined(NGB_IOS_MOTION_DIAGNOSTICS)
+#if !defined(NGB_IOS_PORT_RELEASE) || (defined(NGB_IOS_MOTION_DIAGNOSTICS) && !defined(NGB_IOS_PERFORMANCE_DIAGNOSTICS))
         if (s_pair_render) s_pair_submit_us+=(uint64_t)(g_get_monotonic_time()-submit_started);
 #endif
     }
@@ -1786,11 +1786,11 @@ static void present_locked(PGRAPHState *pg, bool on_pfifo)
             .pSwapchains = &s_swapchain,
             .pImageIndices = &idx,
         };
-#if !defined(NGB_IOS_PORT_RELEASE) || defined(NGB_IOS_MOTION_DIAGNOSTICS)
+#if !defined(NGB_IOS_PORT_RELEASE) || (defined(NGB_IOS_MOTION_DIAGNOSTICS) && !defined(NGB_IOS_PERFORMANCE_DIAGNOSTICS))
         int64_t present_started=s_pair_render ? g_get_monotonic_time() : 0;
 #endif
         res = vkQueuePresentKHR(r->queue, &pi);
-#if !defined(NGB_IOS_PORT_RELEASE) || defined(NGB_IOS_MOTION_DIAGNOSTICS)
+#if !defined(NGB_IOS_PORT_RELEASE) || (defined(NGB_IOS_MOTION_DIAGNOSTICS) && !defined(NGB_IOS_PERFORMANCE_DIAGNOSTICS))
         if (s_pair_render) s_pair_present_us+=(uint64_t)(g_get_monotonic_time()-present_started);
 #endif
         nv2a_vk_queue_unlock();

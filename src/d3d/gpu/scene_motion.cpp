@@ -16,7 +16,7 @@ namespace gpu {
 namespace {
 using V=ScenePosition;
 using M=video::Mat4;
-#if defined(NGB_IOS_PORT_RELEASE) && !defined(NGB_IOS_MOTION_DIAGNOSTICS)
+#if defined(NGB_IOS_PORT_RELEASE) && (!defined(NGB_IOS_MOTION_DIAGNOSTICS) || defined(NGB_IOS_PERFORMANCE_DIAGNOSTICS))
 struct Clock {
     static std::chrono::steady_clock::time_point now() { return {}; }
 };

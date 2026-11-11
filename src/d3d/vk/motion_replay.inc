@@ -155,7 +155,12 @@ void VulkanBackend::MotionPresent(const Surface& front,Image& endpoint,float bar
     // background happens to contain a few 3D draws.
     if (ngb_movie_active() || ngb_2d_screen_frame(int(threed_)) || threed_<30) return;
     if (!motion_capture_ || !motion_valid_ || !motion_3d_) return;
-    motion_match_stats_=motion_history_.Resolve();
+    {
+#ifdef NGB_IOS_PERFORMANCE_DIAGNOSTICS
+        NgbMotionDiagnostics::Timer resolve_time(motion_diagnostics_,NgbMotionDiagnostics::Resolve);
+#endif
+        motion_match_stats_=motion_history_.Resolve();
+    }
     motion_changed_=motion_match_stats_.changed;
 #ifndef NGB_IOS_PORT_RELEASE
     motion_match_window_.draws+=motion_match_stats_.draws;
@@ -216,6 +221,9 @@ void VulkanBackend::MotionPresent(const Surface& front,Image& endpoint,float bar
 }
 
 void VulkanBackend::MotionFinish() {
+#ifdef NGB_IOS_PERFORMANCE_DIAGNOSTICS
+    NgbMotionDiagnostics::Timer history_time(motion_diagnostics_,NgbMotionDiagnostics::History);
+#endif
     int64_t now=MotionClockNs();
 #ifndef NGB_IOS_PORT_RELEASE
     double hz=0;

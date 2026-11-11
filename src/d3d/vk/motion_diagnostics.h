@@ -1,4 +1,8 @@
 #pragma once
+#ifdef NGB_IOS_PERFORMANCE_DIAGNOSTICS
+#include "performance_diagnostics.h"
+using NgbMotionDiagnostics=NgbPerformanceDiagnostics;
+#else
 // Diagnostic-only, render-thread summaries. No image captures, GPU queries or waits.
 #include <array>
 #include <chrono>
@@ -98,3 +102,5 @@ private:
  std::array<WaterStateRow,8> water_states_{};
  static constexpr double limits_[4]={20,33.333,50,100};
 };
+
+#endif

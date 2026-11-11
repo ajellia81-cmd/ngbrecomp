@@ -11,9 +11,12 @@ def code_section(binary):
 def main():
  a=argparse.ArgumentParser();a.add_argument('mac_app',type=Path);a.add_argument('app',type=Path);a.add_argument('ipa',type=Path);o=a.parse_args()
  diagnostic=os.environ.get('NGB_MOTION_DIAGNOSTIC_BUILD')=='1'
+ performance=os.environ.get('NGB_PERFORMANCE_DIAGNOSTIC_BUILD')=='1'
  root=Path(__file__).resolve().parent;info_path=o.app/'Info.plist';info=plistlib.loads(info_path.read_bytes())
  info.update(CFBundleName='Ninja Gaiden Black',CFBundleDisplayName='Ninja Gaiden Black',CFBundleVersion='3.1.'+os.environ.get('GITHUB_RUN_NUMBER','0'),CFBundleShortVersionString='3.1',NGBBuildConfiguration='Release',NGBPortMethod='macOS-on-iOS',NGBSmoothMotionEnabled=True,NGBSmoothMotionDefault=False,NGBSmoothMotionReference='vf3-recomp@842151aaf97a4bf5e59709004a385ae5735c5a05',NGBDistributionBuild=not diagnostic,NGBDiagnosticsEnabled=diagnostic,NGBShaderCompilerPolicy='macOS loading preserved; validated universal fallback',NGBUniversalShadersEnabled=True,NGBUniversalShaderDriver='MoltenVK-1.4.2-native-color-fetch',NGBSourceCommit=os.environ.get('GITHUB_SHA','local'),UIFileSharingEnabled=True,LSSupportsOpeningDocumentsInPlace=True,UIRequiresFullScreen=True,UIDeviceFamily=[1],UISupportedInterfaceOrientations=['UIInterfaceOrientationLandscapeLeft','UIInterfaceOrientationLandscapeRight'],CADisableMinimumFrameDurationOnPhone=True,MetalHudEnabled=False)
- if diagnostic:info.update(NGBDiagnosticsFile='smooth-motion-diagnostics.log',NGBDiagnosticsFormatVersion=2,NGBStartupDiagnosticsFile='ngb-startup-diagnostics.log')
+ if performance:
+  info.update(NGBDiagnosticsFile='smooth-motion-diagnostics.log',NGBDiagnosticsFormatVersion=3,NGBDiagnosticsKind='performance');info.pop('NGBStartupDiagnosticsFile',None)
+ elif diagnostic:info.update(NGBDiagnosticsFile='smooth-motion-diagnostics.log',NGBDiagnosticsFormatVersion=2,NGBStartupDiagnosticsFile='ngb-startup-diagnostics.log')
  else:
   for key in ('NGBDiagnosticsFile','NGBDiagnosticsFormatVersion','NGBStartupDiagnosticsFile'):info.pop(key,None)
  info.pop('CFBundleIconFile',None)
@@ -31,6 +34,13 @@ def main():
    data=binary.read_bytes()
    if any(marker in data for marker in forbidden):raise SystemExit('Diagnostic instrumentation present in release: '+binary.name)
   print('Clean release audit: no motion writer, frame/bump reports, automatic sampler or shim polling/compiler logs')
+ if performance:
+  data=converted.read_bytes()
+  if b'[performance] t=' not in data:raise SystemExit('Performance diagnostic collector missing')
+  forbidden=(b'[water-program]',b'[Smooth Motion pacing]',b'sampling original Mac boot thread',b'SHIM polls=',b'ngb-startup-diagnostics.log')
+  for binary in (converted,*(o.app/'Frameworks').glob('libShim_*.dylib')):
+   if any(marker in binary.read_bytes() for marker in forbidden):raise SystemExit('Unrelated diagnostic activity in performance build: '+binary.name)
+  print('Performance audit: frame/wait collector present; no water dumps, automatic sampler or shim polling logs')
  resources=o.app/'Mac/Contents/Resources'
  runtime=resources.parent/'Frameworks/libSDL3.0.dylib'
  if not runtime.is_file() or 'platform IOS' not in run('vtool','-show-build',runtime):raise SystemExit('The converted SDL3 runtime is missing or has the wrong platform')
@@ -55,7 +65,7 @@ def main():
  digest=hashlib.sha256(o.ipa.read_bytes()).hexdigest()
  print('macOS engine instructions: preserved through conversion')
  print('Shader compiler policy: original Mac loading/cache/prewarm with validated universal fallback')
- print('Diagnostics: bounded Smooth Motion CPU/bump summaries' if diagnostic else 'Distribution: compact symbols, original exports preserved; no automatic iOS diagnostic log')
+ print('Diagnostics: bounded frame/wait/compiler summaries; no per-draw timers, water dumps or auto sampler' if performance else 'Diagnostics: bounded Smooth Motion CPU/bump summaries' if diagnostic else 'Distribution: compact symbols, original exports preserved; no automatic iOS diagnostic log')
  print('Smooth Motion: VF3 production core 842151aa; available, default off; game clock remains 60 Hz')
  print('Packaged runtime build:',info['CFBundleVersion'])
  print('Unsigned game IPA bytes:',o.ipa.stat().st_size)

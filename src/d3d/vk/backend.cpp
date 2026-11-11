@@ -899,6 +899,9 @@ void VulkanBackend::ReadQuality() {
 }
 
 void VulkanBackend::QueueSubmit(const VkSubmitInfo& si, VkFence fence) {
+#ifdef NGB_IOS_PERFORMANCE_DIAGNOSTICS
+    NgbMotionDiagnostics::Timer performance_time(motion_diagnostics_,NgbMotionDiagnostics::Queue);
+#endif
     if (shared_) nv2a_vk_queue_lock();
     d_.vkQueueSubmit(queue_, 1, &si, fence);
     if (shared_) nv2a_vk_queue_unlock();
@@ -1058,6 +1061,9 @@ void VulkanBackend::Begin() {
 // Everything recorded so far, done: the slot's commands submitted and waited for, and the other
 // slot's frame too (for a caller about to destroy or read back what they used).
 void VulkanBackend::Submit() {
+#ifdef NGB_IOS_PERFORMANCE_DIAGNOSTICS
+    NgbMotionDiagnostics::Timer performance_time(motion_diagnostics_,NgbMotionDiagnostics::SyncSubmit);
+#endif
     if (!recording_) return;
     EndRendering();
     d_.vkEndCommandBuffer(cmd_);
@@ -1066,9 +1072,19 @@ void VulkanBackend::Submit() {
     si.pCommandBuffers = &cmd_;
     d_.vkResetFences(dev_, 1, &fence_);
     QueueSubmit(si, fence_);
+    {
+#ifdef NGB_IOS_PERFORMANCE_DIAGNOSTICS
+        NgbMotionDiagnostics::Timer fence_time(motion_diagnostics_,NgbMotionDiagnostics::GpuWait);
+#endif
     d_.vkWaitForFences(dev_, 1, &fence_, VK_TRUE, UINT64_MAX);
+    }
     if (submitted_[slot_ ^ 1]) {
-        d_.vkWaitForFences(dev_, 1, &fences_[slot_ ^ 1], VK_TRUE, UINT64_MAX);
+        {
+#ifdef NGB_IOS_PERFORMANCE_DIAGNOSTICS
+            NgbMotionDiagnostics::Timer fence_time(motion_diagnostics_,NgbMotionDiagnostics::GpuWait);
+#endif
+            d_.vkWaitForFences(dev_, 1, &fences_[slot_ ^ 1], VK_TRUE, UINT64_MAX);
+        }
         submitted_[slot_ ^ 1] = false;
         VisResults(slot_ ^ 1);
     }
@@ -1083,6 +1099,9 @@ void VulkanBackend::Submit() {
 // The frame's commands to the GPU without waiting: the next frame records in the other slot, once
 // the frame before this one (which used it) is done.
 void VulkanBackend::EndFrame() {
+#ifdef NGB_IOS_PERFORMANCE_DIAGNOSTICS
+    NgbMotionDiagnostics::Timer performance_time(motion_diagnostics_,NgbMotionDiagnostics::FrameEnd);
+#endif
     if (!recording_) return;
     EndRendering();
     d_.vkEndCommandBuffer(cmd_);
@@ -1097,12 +1116,20 @@ void VulkanBackend::EndFrame() {
     cmd_ = cmds_[slot_];
     fence_ = fences_[slot_];
     if (submitted_[slot_]) {
-        d_.vkWaitForFences(dev_, 1, &fence_, VK_TRUE, UINT64_MAX);
+        {
+#ifdef NGB_IOS_PERFORMANCE_DIAGNOSTICS
+            NgbMotionDiagnostics::Timer fence_time(motion_diagnostics_,NgbMotionDiagnostics::GpuWait);
+#endif
+            d_.vkWaitForFences(dev_, 1, &fence_, VK_TRUE, UINT64_MAX);
+        }
         submitted_[slot_] = false;
         VisResults(slot_);
     }
     d_.vkResetCommandBuffer(cmd_, 0);
     ring_pos_ = 0;
+#ifdef NGB_IOS_PERFORMANCE_DIAGNOSTICS
+    NgbMotionDiagnostics::Timer cleanup_time(motion_diagnostics_,NgbMotionDiagnostics::Cleanup);
+#endif
     // what the finished frames last used
     for (size_t i = 0; i < graveyard_.size();) {
         if (graveyard_[i].frame + 2 <= frame_ + 1) {
@@ -2906,7 +2933,7 @@ void VulkanBackend::Draw(const State& s, uint32_t prim, uint32_t start, uint32_t
         if(family==universal_pipes_.end())ngb_renderer_fatal("No prepared universal pipeline for this draw state.");
         pipe=family->second;
     }
-#ifdef NGB_IOS_MOTION_DIAGNOSTICS
+#if defined(NGB_IOS_MOTION_DIAGNOSTICS) && !defined(NGB_IOS_PERFORMANCE_DIAGNOSTICS)
     motion_diagnostics_.Draw(universal_draw);
     unsigned signed_mask=0,target_mask=0,shadow_mask=0;bool bump_candidate=false;
     for(unsigned stage=0;stage<4;stage++) {
@@ -3445,7 +3472,7 @@ void VulkanBackend::Draw(const State& s, uint32_t prim, uint32_t start, uint32_t
     }
     if (motion_capture_ && motion_valid_) {
         auto packet=std::make_shared<MotionDraw>();
-#ifdef NGB_IOS_MOTION_DIAGNOSTICS
+#if defined(NGB_IOS_MOTION_DIAGNOSTICS) && !defined(NGB_IOS_PERFORMANCE_DIAGNOSTICS)
         if(signed_mask || bump_candidate)motion_diagnostics_.MarkReplayPacket(packet.get(),pkey);
 #endif
         packet->rt=rt; packet->ds=ds; packet->pipeline=pipe;
@@ -3974,6 +4001,9 @@ void VulkanBackend::TraceFrame(Target& t) {
 }
 
 void VulkanBackend::Present(const Surface& front) {
+#ifdef NGB_IOS_PERFORMANCE_DIAGNOSTICS
+    motion_diagnostics_.BeginPresent(NgbMotionDiagnostics::Clock(),compile_us_,compiles_,pipes_made_);
+#endif
 #ifdef NGB_SMOOTH_MOTION
     motion_endpoint_=false; motion_ready_=nullptr;
 #endif
@@ -4180,6 +4210,9 @@ void VulkanBackend::Present(const Surface& front) {
             nv2a_present_set_external(show->image, show->w, show->h);
     }
     frame_++;
+#ifdef NGB_IOS_PERFORMANCE_DIAGNOSTICS
+    motion_diagnostics_.Complete(NgbMotionDiagnostics::Clock(),presents_);
+#endif
 }
 
 
@@ -4414,6 +4447,9 @@ void VulkanBackend::Compiler() {
             j = std::move(jobs_.front());
             jobs_.pop_front();
         }
+#ifdef NGB_IOS_PERFORMANCE_DIAGNOSTICS
+        NgbMotionDiagnostics::WorkerTimer worker_time(motion_diagnostics_,j.pipeline);
+#endif
         if (!j.pipeline) {
             std::vector<uint32_t> spirv;
             VkShaderModule m = Compile(j.factory ? j.factory() : j.hlsl, j.vertex, spirv) ? MakeModule(spirv) : VK_NULL_HANDLE;

@@ -9,6 +9,7 @@
 #include <time.h>
 #include <limits.h>
 #include <unistd.h>
+#ifndef NGB_IOS_PERFORMANCE_DIAGNOSTICS
 static char stage_path[PATH_MAX];
 static void (*show_stage)(const char *);
 void ngb_diag_stage(const char *stage){
@@ -35,6 +36,11 @@ void ngb_diag_documents(const char *documents){
  ngb_diag_stage("Documents path configured");
 }
 void ngb_diag_ui_ready(void){show_stage=(void(*)(const char*))dlsym(RTLD_DEFAULT,"ngb_macos_on_ios_diag_stage");ngb_diag_stage("UIKit event loop ready");}
+#else
+void ngb_diag_stage(const char *stage){(void)stage;}
+void ngb_diag_documents(const char *documents){(void)documents;}
+void ngb_diag_ui_ready(void){}
+#endif
 static dispatch_queue_t writer_queue;
 static FILE *motion_file;
 static unsigned pending;
@@ -42,14 +48,24 @@ static int writer_active;
 static void open_motion(void *context){
  char *path=context;motion_file=fopen(path,"w");free(path);
  if(!motion_file){__atomic_store_n(&writer_active,0,__ATOMIC_RELEASE);ngb_diag_stage("motion log open failed");return;}
- fprintf(motion_file,"NGB motion diagnostics v2 unix=%lld; native GCD writer; CPU fields are render-phase elapsed times; midpoint includes replay\n",(long long)time(NULL));fflush(motion_file);
+ #ifdef NGB_IOS_PERFORMANCE_DIAGNOSTICS
+ fprintf(motion_file,"NGB performance diagnostics v3 unix=%lld; frame boundary after submission; CPU wall times, nested phases overlap; no per-draw timers, water dumps or automatic sampler\n",(long long)time(NULL));
+#else
+ fprintf(motion_file,"NGB motion diagnostics v2 unix=%lld; native GCD writer; CPU fields are render-phase elapsed times; midpoint includes replay\n",(long long)time(NULL));
+#endif
+ fflush(motion_file);
  ngb_diag_stage("motion log writer ready");
 }
 int ngb_diag_writer_start(const char *path){
  if(writer_queue)return ngb_diag_writer_active();
  if(!path || !*path)return 0;
  char *copy=strdup(path);if(!copy)return 0;
- writer_queue=dispatch_queue_create("com.ngbrecomp.motion-diagnostics",DISPATCH_QUEUE_SERIAL);
+#ifdef NGB_IOS_PERFORMANCE_DIAGNOSTICS
+ dispatch_queue_attr_t attributes=dispatch_queue_attr_make_with_qos_class(DISPATCH_QUEUE_SERIAL,QOS_CLASS_UTILITY,0);
+#else
+ dispatch_queue_attr_t attributes=DISPATCH_QUEUE_SERIAL;
+#endif
+ writer_queue=dispatch_queue_create("com.ngbrecomp.motion-diagnostics",attributes);
  if(!writer_queue){free(copy);return 0;}
  __atomic_store_n(&writer_active,1,__ATOMIC_RELEASE);
  ngb_diag_stage("first game frame; scheduling native log writer");

@@ -5,7 +5,7 @@ from pathlib import Path
 
 def prepare(compat):
  root=Path(__file__).resolve().parent;overrides=compat/'shim/overrides'
- diagnostic=os.environ.get('NGB_MOTION_DIAGNOSTIC_BUILD')=='1'
+ diagnostic=os.environ.get('NGB_MOTION_DIAGNOSTIC_BUILD')=='1' and os.environ.get('NGB_PERFORMANCE_DIAGNOSTIC_BUILD')!='1'
  shutil.copy2(root/'diagnostics_policy.h',overrides/'diagnostics_policy.h')
  shutil.copy2(root/'CoreGraphics_NGB.m',overrides/'CoreGraphics.m')
  for name in ('CoreAudio_NGB.m','AudioToolbox_NGB.m'):shutil.copy2(root/name,overrides/name)
