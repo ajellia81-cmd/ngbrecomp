@@ -127,13 +127,13 @@ jobs:
         "$RUNNER_TEMP/ngb-vf3-scene"
         xcrun --sdk macosx clang++ -std=c++20 -O2 -DNGB_SMOOTH_MOTION=1 -ffp-contract=off -Isrc/d3d ios/motion_test.cpp src/d3d/gpu/shaders.cpp src/d3d/gpu/scene_motion.cpp third_party/vf3_scene/interpolate.cpp -o "$RUNNER_TEMP/ngb-scene-motion"
         mkdir -p "$RUNNER_TEMP/ngb-motion-shaders"
-        "$RUNNER_TEMP/ngb-scene-motion"
+        "$RUNNER_TEMP/ngb-scene-motion" "$RUNNER_TEMP/ngb-motion-shaders"
         xcrun --sdk macosx clang++ -std=c++20 -O2 -DNGB_SMOOTH_MOTION=1 -DNGB_IOS_PORT_RELEASE=1 -ffp-contract=off -Isrc/d3d ios/motion_test.cpp src/d3d/gpu/shaders.cpp src/d3d/gpu/scene_motion.cpp third_party/vf3_scene/interpolate.cpp -o "$RUNNER_TEMP/ngb-scene-motion-release"
         "$RUNNER_TEMP/ngb-scene-motion-release"
         xcrun --sdk macosx clang++ -std=c++20 -O2 -DNGB_SMOOTH_MOTION=1 -DNGB_IOS_PORT_RELEASE=1 -ffp-contract=off -Isrc/d3d -c src/d3d/gpu/scene_motion.cpp -o "$RUNNER_TEMP/ngb-scene-motion-release.o"
         if nm -u "$RUNNER_TEMP/ngb-scene-motion-release.o" | grep -E 'steady_clock|system_clock|clock_gettime'; then
           echo '::error::Diagnostic scene clock remains in release'; exit 1
-        fi "$RUNNER_TEMP/ngb-motion-shaders"
+        fi
         for shader in "$RUNNER_TEMP/ngb-motion-shaders/"*.vert.hlsl; do
           glslangValidator -D -V --target-env vulkan1.1 --auto-map-locations -S vert -e main "$shader" -o "$shader.spv"
         done
