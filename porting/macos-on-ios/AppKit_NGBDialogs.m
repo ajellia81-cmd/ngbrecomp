@@ -1,3 +1,4 @@
+#include "diagnostics_policy.h"
 // AppKit alerts used by SDL must wait for a real UIKit button selection.
 #import <UIKit/UIKit.h>
 #import <objc/runtime.h>
@@ -28,7 +29,7 @@ static UIViewController *NgbDialogController(void){
 }
 static void NgbPresentAlert(NSAlert *model,void (^completion)(NSInteger)){
     UIViewController *controller=NgbDialogController();
-    if(!controller){fprintf(stderr,"[Dialog] no active presenter; returning cancellation\n");completion(-1001);return;}
+    if(!controller){NGB_CONVERSION_DIAG("[Dialog] no active presenter; returning cancellation\n");completion(-1001);return;}
     UIAlertController *alert=[UIAlertController alertControllerWithTitle:model.messageText ?: @"Ninja Gaiden Black"
         message:model.informativeText preferredStyle:UIAlertControllerStyleAlert];
     NSArray<NgbDialogButton *> *buttons=model.buttons;
@@ -39,13 +40,13 @@ static void NgbPresentAlert(NSAlert *model,void (^completion)(NSInteger)){
         UIAlertActionStyle style=!hasCancel && [button.keyEquivalent isEqualToString:@"\033"] ? UIAlertActionStyleCancel : UIAlertActionStyleDefault;
         if(style==UIAlertActionStyleCancel)hasCancel=YES;
         UIAlertAction *action=[UIAlertAction actionWithTitle:button.title ?: @"OK" style:style handler:^(UIAlertAction *selected){
-            (void)selected;fprintf(stderr,"[Dialog] selected button %lu\n",(unsigned long)index);completion(1000+(NSInteger)index);
+            (void)selected;NGB_CONVERSION_DIAG("[Dialog] selected button %lu\n",(unsigned long)index);completion(1000+(NSInteger)index);
         }];
         action.enabled=button.enabled;[alert addAction:action];
         if([button.keyEquivalent isEqualToString:@"\r"])alert.preferredAction=action;
     }];
     [controller presentViewController:alert animated:YES completion:nil];
-    fprintf(stderr,"[Dialog] native alert presented: %lu buttons\n",(unsigned long)buttons.count);
+    NGB_CONVERSION_DIAG("[Dialog] native alert presented: %lu buttons\n",(unsigned long)buttons.count);
 }
 static BOOL sheetDone;
 static NSInteger sheetResponse;

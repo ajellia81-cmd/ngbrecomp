@@ -14,6 +14,8 @@ def main():
  root=Path(__file__).resolve().parent;info_path=o.app/'Info.plist';info=plistlib.loads(info_path.read_bytes())
  info.update(CFBundleName='Ninja Gaiden Black',CFBundleDisplayName='Ninja Gaiden Black',CFBundleVersion='3.1.'+os.environ.get('GITHUB_RUN_NUMBER','0'),CFBundleShortVersionString='3.1',NGBBuildConfiguration='Release',NGBPortMethod='macOS-on-iOS',NGBSmoothMotionEnabled=True,NGBSmoothMotionDefault=False,NGBSmoothMotionReference='vf3-recomp@842151aaf97a4bf5e59709004a385ae5735c5a05',NGBDistributionBuild=not diagnostic,NGBDiagnosticsEnabled=diagnostic,NGBShaderCompilerPolicy='macOS loading preserved; validated universal fallback',NGBUniversalShadersEnabled=True,NGBUniversalShaderDriver='MoltenVK-1.4.2-native-color-fetch',NGBSourceCommit=os.environ.get('GITHUB_SHA','local'),UIFileSharingEnabled=True,LSSupportsOpeningDocumentsInPlace=True,UIRequiresFullScreen=True,UIDeviceFamily=[1],UISupportedInterfaceOrientations=['UIInterfaceOrientationLandscapeLeft','UIInterfaceOrientationLandscapeRight'],CADisableMinimumFrameDurationOnPhone=True,MetalHudEnabled=False)
  if diagnostic:info.update(NGBDiagnosticsFile='smooth-motion-diagnostics.log',NGBDiagnosticsFormatVersion=2,NGBStartupDiagnosticsFile='ngb-startup-diagnostics.log')
+ else:
+  for key in ('NGBDiagnosticsFile','NGBDiagnosticsFormatVersion','NGBStartupDiagnosticsFile'):info.pop(key,None)
  info.pop('CFBundleIconFile',None)
  info_path.write_bytes(plistlib.dumps(info))
  run('xcrun','--sdk','macosx','swift',root/'korean/build_icons.swift',root/'assets/app-icon-source.jpg',o.app,o.app.parent/'icon-work')
@@ -21,6 +23,14 @@ def main():
  if 'platform MACOS' not in run('vtool','-show-build',mac):raise SystemExit('Input engine is not macOS code')
  if 'platform IOS' not in run('vtool','-show-build',converted):raise SystemExit('Converted platform tag is not iOS')
  if code_section(mac)!=code_section(converted):raise SystemExit('Game machine instructions changed during conversion')
+ if not diagnostic:
+  symbols=run('nm','-gj',converted)
+  if any(name.startswith('_ngb_diag_') for name in symbols.splitlines()):raise SystemExit('Diagnostic writer linked into release')
+  forbidden=(b'[frame] t=',b'[water-program]',b'[Smooth Motion pacing]',b'sampling original Mac boot thread',b'SHIM polls=',b'SHIM Metal newLibraryWithSource')
+  for binary in (converted,*(o.app/'Frameworks').glob('libShim_*.dylib')):
+   data=binary.read_bytes()
+   if any(marker in data for marker in forbidden):raise SystemExit('Diagnostic instrumentation present in release: '+binary.name)
+  print('Clean release audit: no motion writer, frame/bump reports, automatic sampler or shim polling/compiler logs')
  resources=o.app/'Mac/Contents/Resources'
  runtime=resources.parent/'Frameworks/libSDL3.0.dylib'
  if not runtime.is_file() or 'platform IOS' not in run('vtool','-show-build',runtime):raise SystemExit('The converted SDL3 runtime is missing or has the wrong platform')

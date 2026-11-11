@@ -11,6 +11,7 @@
 #include <signal.h>
 #include <dlfcn.h>
 #include "bridge.h"
+#include "diagnostics_policy.h"
 #include "korean/haptics.h"
 #define NGB_IOS_PORT_DIAG(...) ((void)0)
 typedef void SDL_Joystick;typedef int32_t SDL_JoystickID;typedef int16_t Sint16;
@@ -402,10 +403,12 @@ unsigned ngb_macos_on_ios_motion_epoch(void){return __atomic_load_n(&motionEpoch
     update_safe_area();
     CFTimeInterval duration=link.targetTimestamp-link.timestamp;
     if(duration>0 && duration<1)__atomic_store_n(&displayMilliHz,(int)lrint(1000.0/duration),__ATOMIC_RELAXED);
+#if NGB_CONVERSION_DIAGNOSTICS
     if(link.timestamp-self.lastReport>=5 && duration>0){
-        fprintf(stderr,"[Display] UIKit cadence %.1f Hz (Smooth Motion %s)\n",1.0/duration,motionEnabled ? "on" : "off");
+        NGB_CONVERSION_DIAG("[Display] UIKit cadence %.1f Hz (Smooth Motion %s)\n",1.0/duration,motionEnabled ? "on" : "off");
         self.lastReport=link.timestamp;
     }
+#endif
 }
 @end
 static NgbFrameCadence *frameCadence;
@@ -416,7 +419,7 @@ static void request_frame_cadence(void){
     float rate=MIN(60.0f,MAX(1.0f,(float)UIScreen.mainScreen.maximumFramesPerSecond));
     frameCadence.link.preferredFrameRateRange=CAFrameRateRangeMake(rate,rate,rate);
     [frameCadence.link addToRunLoop:NSRunLoop.mainRunLoop forMode:NSRunLoopCommonModes];
-    fprintf(stderr,"[Display] requested %.0f Hz; screen maximum %ld; low power %d; thermal %ld\n",rate,(long)UIScreen.mainScreen.maximumFramesPerSecond,NSProcessInfo.processInfo.lowPowerModeEnabled,(long)NSProcessInfo.processInfo.thermalState);
+    NGB_CONVERSION_DIAG("[Display] requested %.0f Hz; screen maximum %ld; low power %d; thermal %ld\n",rate,(long)UIScreen.mainScreen.maximumFramesPerSecond,NSProcessInfo.processInfo.lowPowerModeEnabled,(long)NSProcessInfo.processInfo.thermalState);
 }
 
 void ngb_macos_on_ios_motion_enabled(int enabled){
@@ -426,7 +429,7 @@ void ngb_macos_on_ios_motion_enabled(int enabled){
     float maximum=(float)UIScreen.mainScreen.maximumFramesPerSecond;
     float rate=enabled && maximum>=100 ? maximum : MIN(60.0f,maximum);
     frameCadence.link.preferredFrameRateRange=CAFrameRateRangeMake(rate,rate,rate);
-    fprintf(stderr,"[Display] requested %.0f Hz; Smooth Motion %s\n",rate,enabled ? "on" : "off");
+    NGB_CONVERSION_DIAG("[Display] requested %.0f Hz; Smooth Motion %s\n",rate,enabled ? "on" : "off");
 }
 static int active=1,previousAudioPause;
 int ngb_macos_on_ios_is_foreground(void){return __atomic_load_n(&active,__ATOMIC_ACQUIRE);}
@@ -440,6 +443,7 @@ void ngb_macos_on_ios_safe_area(float *left,float *top,float *right,float *botto
 void ngb_macos_on_ios_screen_size(int *w,int *h){CGSize p=UIScreen.mainScreen.nativeBounds.size;*w=(int)MAX(p.width,p.height);*h=(int)MIN(p.width,p.height);}
 void ngb_macos_on_ios_tick(void){for(UIWindow *window in UIApplication.sharedApplication.windows)if(window.isKeyWindow)attach_controls(window);[touchControls refresh];}
 void ngb_macos_on_ios_wait_foreground(void){while(!__atomic_load_n(&active,__ATOMIC_ACQUIRE))@autoreleasepool{if(NSThread.isMainThread)[NSRunLoop.currentRunLoop runUntilDate:[NSDate dateWithTimeIntervalSinceNow:0.05]];else usleep(50000);}}
+#if NGB_CONVERSION_DIAGNOSTICS
 // Only diagnostic builds call this optional exported progress display.
 void ngb_macos_on_ios_diag_stage(const char *stage){
     NSString *text=stage ? [NSString stringWithUTF8String:stage] : @"starting";
@@ -455,6 +459,9 @@ void ngb_macos_on_ios_diag_stage(const char *stage){
     });
 }
 static void startup_stage(const char *stage){void (*report)(const char*)=(void(*)(const char*))dlsym(RTLD_DEFAULT,"ngb_diag_stage");if(report)report(stage);}
+#else
+#define startup_stage(stage) ((void)0)
+#endif
 int ngb_macos_on_ios_prepare(const NgbConversionHost *api){@autoreleasepool{
     startup_stage("native UIKit services entered");
     if(!api || api->version!=2 || api->size!=sizeof(host))return 0;host=*api;
@@ -467,28 +474,30 @@ int ngb_macos_on_ios_prepare(const NgbConversionHost *api){@autoreleasepool{
     if(ngb_check_xbe(game.fileSystemRepresentation)!=0){NGBImport *importer=[NGBImport new];importer.destination=game;if(![importer run])return 0;}
     startup_stage("game import validated; preparing display and audio");
     request_frame_cadence();
-    fprintf(stderr,"[Startup] game data validated; configuring audio session\n");
+    NGB_CONVERSION_DIAG("[Startup] game data validated; configuring audio session\n");
     [AVAudioSession.sharedInstance setCategory:AVAudioSessionCategoryAmbient error:nil];
     [AVAudioSession.sharedInstance setPreferredSampleRate:48000 error:nil];
     NSError *audioError=nil;
     [AVAudioSession.sharedInstance setActive:YES error:&audioError];
-    fprintf(stderr,"[Audio] iOS session active: %s\n",audioError ? audioError.localizedDescription.UTF8String : "yes");
+    NGB_CONVERSION_DIAG("[Audio] iOS session active: %s\n",audioError ? audioError.localizedDescription.UTF8String : "yes");
+#if NGB_CONVERSION_DIAGNOSTICS
     // Use the original Mac hang sampler, twice only, to locate a stalled boot.
     for(unsigned seconds=25;seconds<=45;seconds+=20)dispatch_after(dispatch_time(DISPATCH_TIME_NOW,(int64_t)seconds*NSEC_PER_SEC),dispatch_get_global_queue(QOS_CLASS_UTILITY,0),^{
         struct sigaction action={0};
         if(__atomic_load_n(&active,__ATOMIC_ACQUIRE) && sigaction(SIGUSR1,NULL,&action)==0 && action.sa_handler!=SIG_DFL && action.sa_handler!=SIG_IGN){
-            fprintf(stderr,"[Startup] sampling original Mac boot thread\n");kill(getpid(),SIGUSR1);
+            NGB_CONVERSION_DIAG("[Startup] sampling original Mac boot thread\n");kill(getpid(),SIGUSR1);
         }
     });
+#endif
     NSNotificationCenter *nc=NSNotificationCenter.defaultCenter;
     [nc addObserverForName:UIApplicationWillResignActiveNotification object:nil queue:NSOperationQueue.mainQueue usingBlock:^(NSNotification *n){(void)n;if(!__atomic_exchange_n(&active,0,__ATOMIC_ACQ_REL))return;if(host.motion_cancel)host.motion_cancel();__atomic_add_fetch(&motionEpoch,1,__ATOMIC_RELAXED);frameCadence.link.paused=YES;[touchControls releaseInputs];ngb_ios_haptics_active(0);previousAudioPause=host.audio_paused();host.audio_pause(1);}];
     [nc addObserverForName:UIApplicationDidBecomeActiveNotification object:nil queue:NSOperationQueue.mainQueue usingBlock:^(NSNotification *n){(void)n;if(__atomic_exchange_n(&active,1,__ATOMIC_ACQ_REL))return;__atomic_add_fetch(&motionEpoch,1,__ATOMIC_RELAXED);frameCadence.lastReport=0;__atomic_store_n(&displayMilliHz,60000,__ATOMIC_RELAXED);frameCadence.link.paused=NO;ngb_ios_haptics_active(1);host.audio_pause(previousAudioPause);}];
     for(NSNotificationName name in @[GCControllerDidConnectNotification,GCControllerDidDisconnectNotification])
       [nc addObserverForName:name object:nil queue:NSOperationQueue.mainQueue usingBlock:^(NSNotification *n){(void)n;[touchControls refresh];for(unsigned i=0;i<4;i++)ngb_ios_haptics_prepare(i);}];
-    fprintf(stderr,"[Startup] preparing controller haptics\n");
+    NGB_CONVERSION_DIAG("[Startup] preparing controller haptics\n");
     for(unsigned i=0;i<4;i++)ngb_ios_haptics_prepare(i);
     startup_stage("native platform services ready");
-    fprintf(stderr,"[Startup] UIKit preparation complete\n");
+    NGB_CONVERSION_DIAG("[Startup] UIKit preparation complete\n");
     return 1;
 }}
 
@@ -503,13 +512,13 @@ void ngb_macos_on_ios_language_changed(int language){
         for(UIWindow *candidate in UIApplication.sharedApplication.windows)if(candidate.isKeyWindow){window=candidate;break;}
         UIViewController *controller=window.rootViewController;
         while(controller.presentedViewController)controller=controller.presentedViewController;
-        if(!controller){fprintf(stderr,"[Language] restart notice has no active window\n");return;}
+        if(!controller){NGB_CONVERSION_DIAG("[Language] restart notice has no active window\n");return;}
         BOOL korean=language==2;
         UIAlertController *alert=[UIAlertController alertControllerWithTitle:korean ? @"재시작 필요" : @"Restart required"
             message:korean ? @"표시 언어를 적용하려면 앱을 완전히 종료한 뒤 다시 실행해 주세요." : @"Fully close and reopen the app to apply the display language."
             preferredStyle:UIAlertControllerStyleAlert];
         [alert addAction:[UIAlertAction actionWithTitle:korean ? @"확인" : @"OK" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action){(void)action;showing=NO;}]];
         showing=YES;[controller presentViewController:alert animated:YES completion:nil];
-        fprintf(stderr,"[Language] native restart notice presented\n");
+        NGB_CONVERSION_DIAG("[Language] native restart notice presented\n");
     });
 }

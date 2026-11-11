@@ -157,6 +157,7 @@ void VulkanBackend::MotionPresent(const Surface& front,Image& endpoint,float bar
     if (!motion_capture_ || !motion_valid_ || !motion_3d_) return;
     motion_match_stats_=motion_history_.Resolve();
     motion_changed_=motion_match_stats_.changed;
+#ifndef NGB_IOS_PORT_RELEASE
     motion_match_window_.draws+=motion_match_stats_.draws;
     motion_match_window_.models+=motion_match_stats_.models;
     motion_match_window_.shared+=motion_match_stats_.shared;
@@ -177,6 +178,7 @@ void VulkanBackend::MotionPresent(const Surface& front,Image& endpoint,float bar
     motion_match_window_.vf.total+=motion_match_stats_.vf.total;
     motion_match_window_.vf.blended+=motion_match_stats_.vf.blended;
     motion_match_window_.cpu_ms+=motion_match_stats_.cpu_ms;
+#endif
     if (!motion_changed_ || ngb_quick_wanted() || !motion_last_ns_ || now-motion_last_ns_>50000000LL) return;
     Target *target=EnsureTarget(front,false);
     if (!target || !motion_valid_) return;

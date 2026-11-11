@@ -16,7 +16,13 @@ namespace gpu {
 namespace {
 using V=ScenePosition;
 using M=video::Mat4;
+#if defined(NGB_IOS_PORT_RELEASE) && !defined(NGB_IOS_MOTION_DIAGNOSTICS)
+struct Clock {
+    static std::chrono::steady_clock::time_point now() { return {}; }
+};
+#else
 using Clock=std::chrono::steady_clock;
+#endif
 std::atomic<uint64_t> scene_serial{0};
 struct Token {
     uint32_t t[4];

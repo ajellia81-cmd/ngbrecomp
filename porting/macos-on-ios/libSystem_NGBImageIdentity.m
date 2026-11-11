@@ -1,3 +1,4 @@
+#include "diagnostics_policy.h"
 // A converted game can be loaded as a library by LiveContainer. The Mac
 // scheduler asks for image zero to delimit its own executable code; image zero
 // is then the container, so its signal handler never preempts guest code.
@@ -29,7 +30,7 @@ const struct mach_header *_dyld_get_image_header(uint32_t index) {
         const char *base=strrchr(image.dli_fname,'/');base=base ? base+1 : image.dli_fname;
         if(strcmp(base,"NinjaGaidenBlack")==0){
             const struct mach_header *game=image.dli_fbase;
-            if(game!=original)fprintf(stderr,"[Startup] executable identity: game image selected for Mac scheduler\n");
+            if(game!=original)NGB_CONVERSION_DIAG("[Startup] executable identity: game image selected for Mac scheduler\n");
             return game;
         }
     }

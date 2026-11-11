@@ -1,3 +1,4 @@
+#include "diagnostics_policy.h"
 // macOS' named shared-memory namespace is unavailable in an iOS sandbox.
 // The Mac engine opens and immediately unlinks /xbox_map_<pid>_<sequence>.
 // Sandbox-local files preserve the same descriptor and MAP_SHARED aliasing.
@@ -47,7 +48,7 @@ int shm_open(const char *name,int flags,...) {
     int directory=NgbSharedDirectory();if(directory<0)return -1;
     int fd=openat(directory,key,flags|O_CLOEXEC|O_NOFOLLOW,mode);
     int saved=errno;close(directory);errno=saved;
-    fprintf(stderr,"[Startup] Xbox shared-memory backing: %s%s\n",fd>=0 ? "ready" : "failed",fd>=0 ? "" : strerror(errno));
+    NGB_CONVERSION_DIAG("[Startup] Xbox shared-memory backing: %s%s\n",fd>=0 ? "ready" : "failed",fd>=0 ? "" : strerror(errno));
     errno=saved;return fd;
 }
 __attribute__((visibility("default")))
