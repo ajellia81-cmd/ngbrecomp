@@ -23,6 +23,12 @@ struct Clock {
 #else
 using Clock=std::chrono::steady_clock;
 #endif
+#ifdef NGB_IOS_PERFORMANCE_DIAGNOSTICS
+// Coarse Resolve phases only; extraction/proof have no per-draw clock calls.
+using ResolveClock=std::chrono::steady_clock;
+#else
+using ResolveClock=Clock;
+#endif
 std::atomic<uint64_t> scene_serial{0};
 struct Token {
     uint32_t t[4];
@@ -739,7 +745,7 @@ bool SceneMotion::Add(const State& s,const Assembled& a,const DrawConstants& dc,
 }
 SceneMotion::Stats SceneMotion::Resolve() {
     auto& p=*impl_;if(p.resolved) return p.stats;p.resolved=true;
-    auto start=Clock::now();p.now.id=scene_serial.fetch_add(1,std::memory_order_relaxed)+1;
+    auto start=ResolveClock::now();p.now.id=scene_serial.fetch_add(1,std::memory_order_relaxed)+1;
     // Canonical viewport order is independent of this frame's draw order.
     std::vector<video::Viewport> ordered;ordered.reserve(p.now.viewports.size());
     std::vector<size_t> remap(p.now.viewports.size());
@@ -750,17 +756,44 @@ SceneMotion::Stats SceneMotion::Resolve() {
     p.stats.extract_ms=p.elapsed;
     p.stats.input_cache_bytes=p.fixed_bytes;
     bool interpolated=p.before.id && video::interpolate(p.before,p.now,.5f,output,&p.stats.vf);
-    auto projected_start=Clock::now();
+    auto projected_start=ResolveClock::now();
     p.stats.interpolate_ms=std::chrono::duration<double,std::milli>(projected_start-start).count();
     if(!interpolated) {p.stats.cuts++;p.stats.cpu_ms=p.elapsed+p.stats.interpolate_ms;return p.stats;}
+    // Material and depth passes can use identical midpoint geometry. Reuse
+    // only within this Resolve, with exact index/matrix/viewport verification.
+    // Own the cached result: callers may reuse a SceneOutput for multiple draws.
+    using ModelKey=std::pair<size_t,size_t>;
+    std::map<ModelKey,unsigned> uses;
+    for(const auto& b:p.bindings)uses[{b.viewport,b.model}]++;
+    struct Projected {const Binding* binding;std::vector<V> positions;};
+    std::unordered_map<uint64_t,std::vector<Projected>> projected;
+    size_t projection_bytes=0;
     for(const Binding& b:p.bindings) {
         const auto& m=output.viewports[b.viewport].models[b.model];
         const auto& original=p.now.viewports[b.viewport].models[b.model];
         if(!std::memcmp(m.matrix.m,original.matrix.m,64) && m.meshes==original.meshes) continue;
+        const bool shared=uses.at({b.viewport,b.model})>1;
+        uint64_t key=0;
+        if(shared) {
+            key=digest(&b.viewport,sizeof b.viewport);
+            key=digest(&b.model,sizeof b.model,key);key=digest(&b.count,sizeof b.count,key);
+            key=digest(b.projection.m,sizeof b.projection.m,key);key=digest(b.scale.data(),sizeof b.scale,key);
+            key=digest(b.offset.data(),sizeof b.offset,key);key=digest(&b.programmable,sizeof b.programmable,key);
+            bool reused=false;
+            if(auto found=projected.find(key);found!=projected.end())for(const auto& entry:found->second) {
+                const auto& old=*entry.binding;
+                if(old.viewport!=b.viewport || old.model!=b.model || old.count!=b.count || old.programmable!=b.programmable ||
+                   std::memcmp(old.projection.m,b.projection.m,sizeof b.projection.m) ||
+                   std::memcmp(old.scale.data(),b.scale.data(),sizeof b.scale) || std::memcmp(old.offset.data(),b.offset.data(),sizeof b.offset) ||
+                   (old.indices!=b.indices && *old.indices!=*b.indices))continue;
+                b.output->positions=entry.positions;p.stats.changed++;p.stats.projection_cached++;reused=true;break;
+            }
+            if(reused)continue;
+        }
         std::vector<V> screen(b.count);std::vector<uint8_t> seen(b.count);
         const auto& vertices=m.meshes->at(0).verts;
         for(size_t i=0;i<vertices.size();i++) {
-            uint32_t id=(*b.indices)[i];if(seen[id]) continue;seen[id]=1;
+            uint32_t id=(*b.indices)[i];if(seen[id]) continue;seen[id]=1;p.stats.projected_vertices++;
             V local{vertices[i].pos[0],vertices[i].pos[1],vertices[i].pos[2],1};
             V view=transform_point(m.matrix,local);view[2]*=-1;
             V clip=transform_point(b.projection,view);float w=clamp_magnitude(clip[3]);
@@ -770,8 +803,13 @@ SceneMotion::Stats SceneMotion::Resolve() {
             } else screen[id]=clip;
         }
         b.output->positions=std::move(screen);p.stats.changed++;
+        const size_t bytes=b.output->positions.size()*sizeof(V);
+        constexpr size_t budget=8u*1024u*1024u;
+        if(shared && bytes<=budget-projection_bytes) {
+            projected[key].push_back({&b,b.output->positions});projection_bytes+=bytes;
+        }
     }
-    p.stats.project_ms=std::chrono::duration<double,std::milli>(Clock::now()-projected_start).count();
+    p.stats.project_ms=std::chrono::duration<double,std::milli>(ResolveClock::now()-projected_start).count();
     p.stats.cpu_ms=p.elapsed+p.stats.interpolate_ms+p.stats.project_ms;return p.stats;
 }
 void SceneMotion::Finish() {

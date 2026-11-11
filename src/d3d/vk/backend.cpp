@@ -1035,6 +1035,12 @@ VulkanBackend::~VulkanBackend() {
         d_.vkDeviceWaitIdle(dev_);
     }
     if (dev_) {
+        // Device idle above also completes images retired in the last frame.
+        for (auto& retired:graveyard_) {
+            if (retired.view) d_.vkDestroyImageView(dev_,retired.view,nullptr);
+            DestroyImage(retired.img);
+        }
+        graveyard_.clear();
         UniversalDestroy();
 #ifdef NGB_SMOOTH_MOTION
         for (auto& [key,target]:motion_targets_) { DestroyImage(target.replay.img); DestroyImage(target.replay.fb); }
@@ -2933,8 +2939,10 @@ void VulkanBackend::Draw(const State& s, uint32_t prim, uint32_t start, uint32_t
         if(family==universal_pipes_.end())ngb_renderer_fatal("No prepared universal pipeline for this draw state.");
         pipe=family->second;
     }
-#if defined(NGB_IOS_MOTION_DIAGNOSTICS) && !defined(NGB_IOS_PERFORMANCE_DIAGNOSTICS)
+#ifdef NGB_IOS_MOTION_DIAGNOSTICS
     motion_diagnostics_.Draw(universal_draw);
+#endif
+#if defined(NGB_IOS_MOTION_DIAGNOSTICS) && !defined(NGB_IOS_PERFORMANCE_DIAGNOSTICS)
     unsigned signed_mask=0,target_mask=0,shadow_mask=0;bool bump_candidate=false;
     for(unsigned stage=0;stage<4;stage++) {
         signed_mask|=unsigned((info[stage].flags&kTexSigned)!=0)<<stage;

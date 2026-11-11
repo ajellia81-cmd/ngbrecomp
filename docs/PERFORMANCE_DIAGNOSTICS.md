@@ -6,7 +6,7 @@ Set both packaging variables `NGB_MOTION_DIAGNOSTIC_BUILD=1` and
 `NGB_PERFORMANCE_DIAGNOSTIC_BUILD=1`. The shader compiler, prewarm/cache,
 game clock, rendering decisions, VF3 interpolation and water fix stay unchanged.
 
-Output: Documents/smooth-motion-diagnostics.log, format v3. Each launch replaces
+Output: Documents/smooth-motion-diagnostics.log, format v4. Each launch replaces
 this file. Copy it after reproducing the problem and before launching again.
 No image captures, shader words, per-draw timers, automatic thread sampler,
 startup overlay or shim polling/compiler messages are enabled in this mode.
@@ -42,3 +42,24 @@ Synthetic tests cover an injected 120 ms interval with a 30 ms fence wait,
 correlated inside/outside Present times, bounded slow rows/batches, compiler
 counter handoff, no per-draw sampling, and absence of startup file/UI markers.
 The package audit rejects unrelated water/automatic-sampler/polling diagnostics.
+
+The v4 `scene-cpu` row splits coarse VF3 interpolation and projection time,
+counts original draw requests using generic shaders, and reports already
+collected vertex/input-cache counters. Draw counting adds no clock calls.
+A slow-frame row includes its own draw/generic counts. This helps distinguish
+cold generic-shader execution from synchronization or CPU geometry costs.
+
+Replay-only targets now use the backend's existing fenced retirement queue.
+They are never images leased directly by the presenter. EndRendering closes
+any pass before clearing target records; image/view destruction remains after
+the existing reused-slot fence. No extra synchronous Submit is issued solely
+for replay-target pruning after a slow frame or scene reset. The active replay
+budget stays unchanged; retired images can coexist with replacements until the
+next reused-slot fence completes.
+
+Within one Resolve, identical material/depth passes reuse projected coordinates.
+Keys verify viewport, model, vertex count, projection, scale/offset, shader mode
+and owned index values. Results are owned, not borrowed from mutable outputs,
+and are bounded to 8 MiB per Resolve. VF3 matching/interpolation is untouched.
+Tests cover shared depth/material output, differing viewport scales, reused
+output objects, multiple frames, reset, and fenced image retirement.

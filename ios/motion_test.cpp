@@ -221,6 +221,41 @@ static void fixed_scene_tests() {
         }
     }
 }
+static void projection_reuse_tests() {
+    SceneMotion history;float vertices[10][12]{};
+    for(unsigned i=0;i<10;i++) {
+        float triangle[]={0,0,0,1, 1+float(i)*.01f,0,0,1, 0,1,0,1};
+        std::copy(triangle,triangle+12,vertices[i]);
+    }
+    for(unsigned frame=0;frame<3;frame++) {
+        std::vector<SceneOutput> output(12);
+        auto add=[&](unsigned i,float scale,SceneOutput& result) {
+            Mat world=Mat::identity();world.m[12]=float(i*4);world.m[14]=100+float(i*10);
+            auto s=state(world,-float(frame));s.vsc[58][0]*=scale;DrawConstants dc{};
+            check(history.Add(s,geometry(vertices[i]),dc,result),"projection fixture rejected");
+        };
+        for(unsigned i=0;i<10;i++)add(i,1,output[i]);
+        add(9,1,output[10]);
+        // A different projection overwrites a previously reused output object.
+        // The cache must own its result and keep the viewport scale in its key.
+        add(9,2,output[10]);add(9,1,output[11]);
+        auto stats=history.Resolve();
+        if(frame) {
+            check(stats.projection_cached>=2,"identical depth/material projection not reused");
+            check(output[9].positions==output[11].positions,"owned projection cache changed after output reuse");
+            check(stats.projected_vertices==33,"shared projection repeated vertex transforms");
+            for(size_t i=0;i<output[9].positions.size();i++) {
+                near(output[10].positions[i][0],(output[9].positions[i][0]-320)*2+320,"viewport scale reused another projection");
+                for(unsigned c=1;c<4;c++)near(output[10].positions[i][c],output[9].positions[i][c],"projection reuse changed another component");
+            }
+        }
+        history.Finish();
+    }
+    history.Reset();SceneOutput fresh;Mat world=Mat::identity();world.m[14]=100;
+    auto s=state(world);DrawConstants dc{};history.Add(s,geometry(vertices[0]),dc,fresh);
+    check(history.Resolve().changed==0 && fresh.positions.empty(),"projection cache survived scene reset");
+}
+
 int main(int argc,char** argv) {
     check(UploadRingFits(0,kUploadSlotBytes),"full upload slot rejected");
     check(!UploadRingFits(31u<<20,2u<<20),"draw crosses retained frame allocation");
@@ -250,7 +285,7 @@ int main(int argc,char** argv) {
     check(stats.rigid==11,"rigid position program was not proved algebraically");
     check(stats.cached>=10,"immutable static meshes were rebuilt between frames");
     check(stats.vf.blended==0,"static meshes incorrectly became deformed meshes");
-    check(stats.shared>=1,"multipass model not shared");check(stats.vf.matched>=10,"VF3 did not pair the scene");
+    check(stats.shared>=1,"multipass model not shared");check(stats.projection_cached>=1,"multipass projection repeated");check(stats.vf.matched>=10,"VF3 did not pair the scene");
     check(!after[8].positions.empty() && !after[9].positions.empty(),"repeated instances lost midpoint");
     near(after[8].positions[0][0],320+320*19.5f/30,"right lamp moved to a different lamp");
     near(after[9].positions[0][0],320+320*-20.5f/30,"left lamp moved to a different lamp");
@@ -280,6 +315,7 @@ int main(int argc,char** argv) {
     packed.elements[0].format=14;packed.decode=kDecodeIntW1;
     check(SceneVertexPosition(s,packed,1,dc,p),"SHORT3 input decode failed");near(p[0],337.6f,"SHORT3 position changed");
     fixed_scene_tests();
+    projection_reuse_tests();
     input_cache_tests();
     matrix_proof_cache_tests();
     terrain_working_set_tests();

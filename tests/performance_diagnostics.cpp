@@ -15,6 +15,8 @@ int main(int argc,char** argv){
   NgbPerformanceDiagnostics d;int64_t now=1000000000;d.Complete(now,1);
   {NgbPerformanceDiagnostics::WorkerTimer worker(d,false);}
   auto frame=[&](unsigned n,int64_t dt,int64_t present,int64_t wait){
+   d.Draw(true);d.Draw(false);d.Projection(2,3);
+   d.SceneInput(1048576,4,2097152,0);d.SceneWork(0,0,0,5,6,0);
    d.BeginPresent(now+dt-present,4000,1,2);
    d.Note(NgbPerformanceDiagnostics::GpuWait,wait);
    d.Note(NgbPerformanceDiagnostics::FrameEnd,wait+1000000);
@@ -35,6 +37,8 @@ int main(int argc,char** argv){
  assert(text.find("gpu_fence_wait_ms=30.00")!=std::string::npos);
  assert(text.find("frame=2 dt_ms=120.00 present_ms=40.00 outside_present_ms=80.00 sync_compile_ms=4.00")!=std::string::npos);
  assert(text.find("requested=1 wanted=1 valid=1 scene=100 changed=42")!=std::string::npos);
+ assert(text.find("[scene-cpu]")!=std::string::npos);
+ assert(text.find("draws=2 generic=1")!=std::string::npos);
  assert(text.find("kind=shader jobs=1")!=std::string::npos);
  assert(text.find("kind=pipeline")!=std::string::npos);
  unsigned rows=0;for(size_t i=0;(i=text.find("[slow-frame]",i))!=std::string::npos;i+=12)rows++;

@@ -49,7 +49,7 @@ static void open_motion(void *context){
  char *path=context;motion_file=fopen(path,"w");free(path);
  if(!motion_file){__atomic_store_n(&writer_active,0,__ATOMIC_RELEASE);ngb_diag_stage("motion log open failed");return;}
  #ifdef NGB_IOS_PERFORMANCE_DIAGNOSTICS
- fprintf(motion_file,"NGB performance diagnostics v3 unix=%lld; frame boundary after submission; CPU wall times, nested phases overlap; no per-draw timers, water dumps or automatic sampler\n",(long long)time(NULL));
+ fprintf(motion_file,"NGB performance diagnostics v4 unix=%lld; frame boundary after submission; CPU wall times, nested phases overlap; no per-draw timers, water dumps or automatic sampler\n",(long long)time(NULL));
 #else
  fprintf(motion_file,"NGB motion diagnostics v2 unix=%lld; native GCD writer; CPU fields are render-phase elapsed times; midpoint includes replay\n",(long long)time(NULL));
 #endif

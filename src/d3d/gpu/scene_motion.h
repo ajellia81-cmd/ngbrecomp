@@ -19,7 +19,7 @@ public:
         uint32_t fixed_rigid=0,fixed_skin=0,vertices=0,evaluated_vertices=0,input_cached=0;
         uint64_t input_bytes=0,input_cache_bytes=0;
         uint32_t input_evictions=0;
-        uint32_t proof_tests=0,proof_cached=0;
+        uint32_t proof_tests=0,proof_cached=0,projection_cached=0,projected_vertices=0;
         video::InterpStats vf{};
         double cpu_ms=0,extract_ms=0,interpolate_ms=0,project_ms=0,proof_ms=0;
     };

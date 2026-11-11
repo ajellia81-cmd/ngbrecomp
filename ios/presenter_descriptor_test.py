@@ -155,3 +155,20 @@ if __name__ == '__main__':
     main()
     from presenter_pair_test import main as pair_main
     pair_main()
+    replay=(ROOT/'src/d3d/vk/motion_replay.inc').read_text()
+    prune=replay.split('if (prune && !motion_targets_.empty()) {',1)[1].split('#ifdef NGB_IOS_MOTION_DIAGNOSTICS',1)[0]
+    assert 'EndRendering();' in prune
+    assert 'Submit();' not in prune and 'DestroyImage(' not in prune
+    assert 'Retire(p.replay.img)' in prune and 'Retire(p.replay.fb)' in prune
+    backend=(ROOT/'src/d3d/vk/backend.cpp').read_text()
+    retire=backend.split('void VulkanBackend::Retire(',1)[1].split('\n}',1)[0]
+    assert 'graveyard_.push_back({img, extra, frame_})' in retire
+    end=backend.split('void VulkanBackend::EndFrame()',1)[1].split('\n}',1)[0]
+    assert end.index('vkWaitForFences')<end.index('DestroyImage(graveyard_')
+    assert 'graveyard_[i].frame + 2 <= frame_ + 1' in end
+    shutdown=backend.split('VulkanBackend::~VulkanBackend()',1)[1].split('\n}',1)[0]
+    assert shutdown.index('vkDeviceWaitIdle')<shutdown.index('DestroyImage(retired.img)')
+    for retired in (0,7,1000):
+        assert not retired+2<=retired+1
+        assert retired+2<=(retired+1)+1
+    print('Replay retirement: no synchronous queue drain; existing slot fence protects images through last use')

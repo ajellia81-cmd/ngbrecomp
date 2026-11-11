@@ -270,6 +270,9 @@ void VulkanBackend::MotionFinish() {
     uint64_t diagnostic_midpoints=0,diagnostic_endpoints=0,diagnostic_superseded=0;
     motion_diagnostics_.SceneInput(motion_match_stats_.input_bytes,motion_match_stats_.input_cached,motion_match_stats_.input_cache_bytes,motion_match_stats_.input_evictions,motion_match_stats_.fixed_rigid);
     motion_diagnostics_.SceneWork(motion_match_stats_.proof_ms,motion_match_stats_.proof_tests,motion_match_stats_.proof_cached,motion_match_stats_.vertices,motion_match_stats_.evaluated_vertices,motion_match_stats_.fixed_skin);
+#ifdef NGB_IOS_PERFORMANCE_DIAGNOSTICS
+    motion_diagnostics_.Projection(motion_match_stats_.projection_cached,motion_match_stats_.projected_vertices);
+#endif
     if(motion_diagnostics_.ReportDue(now))nv2a_present_pair_counts(&diagnostic_midpoints,&diagnostic_endpoints,&diagnostic_superseded);
     motion_diagnostics_.Frame(now,presents_,ngb_pc_setting(26),wanted,reset,motion_3d_,motion_changed_,motion_equal_,motion_cpu_bytes_,motion_gpu_bytes_,motion_match_stats_.extract_ms,motion_match_stats_.interpolate_ms,motion_match_stats_.project_ms,diagnostic_midpoints,diagnostic_endpoints,diagnostic_superseded,ngb_ios_display_hz(),native_w_,native_h_,msaa_,motion_valid_);
 #endif
@@ -278,13 +281,18 @@ void VulkanBackend::MotionFinish() {
     bool prune=reset;
     for (auto& [key,saved]:motion_targets_) if (frame_-saved.seen>2) prune=true;
     if (prune && !motion_targets_.empty()) {
-        Submit();
+        EndRendering();
+        // Replay targets are internal, never presenter source images. Retire
+        // them behind the existing two-slot fences instead of draining the
+        // queue again after a long frame or a change of scene.
         for (auto it=motion_targets_.begin();it!=motion_targets_.end();) {
             if (reset || frame_-it->second.seen>2) {
                 auto& p=it->second;
                 motion_gpu_bytes_-=p.replay.img.image ? uint64_t(p.replay.img.w)*p.replay.img.h*(p.replay.img.depth ? 8 : 4) : 0;
                 if (p.replay.fb.image) motion_gpu_bytes_-=uint64_t(p.replay.fb.w)*p.replay.fb.h*4;
-                DestroyImage(p.replay.img); DestroyImage(p.replay.fb); it=motion_targets_.erase(it);
+                if (p.replay.img.image) Retire(p.replay.img);
+                if (p.replay.fb.image) Retire(p.replay.fb);
+                it=motion_targets_.erase(it);
             } else ++it;
         }
         if (motion_targets_.empty()) motion_gpu_bytes_=0;
