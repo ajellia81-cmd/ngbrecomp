@@ -2,6 +2,8 @@
 #include <vulkan/vulkan.h>
 #include "gpu/universal_shaders.h"
 #include "vk/spirv.h"
+#include "gpu/scene_motion.h"
+#include "motion_projective_fixture.h"
 #include <algorithm>
 #include <array>
 #include <chrono>
@@ -122,12 +124,22 @@ public:
  VkPipelineRenderingCreateInfo rendering{VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO};rendering.colorAttachmentCount=1;rendering.pColorAttachmentFormats=&format;rendering.depthAttachmentFormat=depth_write||depth_equal?VK_FORMAT_D32_SFLOAT:VK_FORMAT_UNDEFINED;rendering.pNext=fetch?&input:nullptr;
  VkPipelineDepthStencilStateCreateInfo depth_state{VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO};depth_state.depthTestEnable=depth_write||depth_equal;depth_state.depthWriteEnable=depth_write;depth_state.depthCompareOp=depth_equal?VK_COMPARE_OP_EQUAL:VK_COMPARE_OP_ALWAYS;
  VkGraphicsPipelineCreateInfo ci{VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO};ci.pDepthStencilState=&depth_state;ci.pNext=&rendering;ci.stageCount=2;ci.pStages=stages;ci.pVertexInputState=&vi;ci.pInputAssemblyState=&ia;ci.pViewportState=&vp;ci.pRasterizationState=&rs;ci.pMultisampleState=&ms;ci.pColorBlendState=&cb;ci.pDynamicState=&dy;ci.layout=generic?universal_pipeline_layout:special_pipeline_layout;VkPipeline p;vk(vkCreateGraphicsPipelines(device,VK_NULL_HANDLE,1,&ci,nullptr,&p));return p;}
- std::vector<uint8_t> draw(const State& s,const Assembled& a,const PixelKey& pixel,DrawConstants constants,bool generic,bool fetch,bool blend,unsigned repetitions=1,bool depth_write=false,bool depth_equal=false,bool local_pass=false){
+ std::vector<uint8_t> draw(const State& s,const Assembled& a,const PixelKey& pixel,DrawConstants constants,bool generic,bool fetch,bool blend,unsigned repetitions=1,bool depth_write=false,bool depth_equal=false,bool local_pass=false,unsigned motion_mode=0){
   Image target=image(VK_IMAGE_TYPE_2D,VK_IMAGE_VIEW_TYPE_2D,VK_FORMAT_B8G8R8A8_UNORM,1,VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT|VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT|VK_IMAGE_USAGE_TRANSFER_SRC_BIT);
   uint32_t flags=a.pretransformed?uPretransformed:0;if(s.vs&&!s.vs->program.empty())flags|=uProgrammableVertex;if(blend)flags|=uBlending;
   auto universal=MakeUniversalConstants(s,a,pixel,flags);uint64_t offsets[16]{};UniversalVertexOffsets(universal,a,offsets);universal[uBlend]=src_factor;universal[uBlend+1]=dst_factor;universal[uBlend+2]=blend_op;universal[uBlend+3]=write_mask;float bf[]={.2f,.4f,.6f,.8f};std::memcpy(&universal.words[uBlendConstant/4],bf,sizeof bf);
+  if(motion_mode){
+   constants.motion[0]=motion_mode==3?0.f:1.f;
+   if(motion_mode!=2&&s.vs){auto point=FindMotionClipPoint(s.vs->program);if(point.instruction>=0){constants.motion[1]=float(point.instruction+1);constants.motion[2]=float(point.reg+1);}}
+  }
   std::memcpy(vc.mapped,s.vsc.data(),vc.size);std::memcpy(dc.mapped,&constants,sizeof constants);std::memcpy(uc.mapped,&universal,sizeof universal);
-  VkShaderModule vs=generic?universal_vs:module(s.vs&&!s.vs->program.empty()?VertexProgramHlsl(s.vs->program,a.regs,a.decode):FixedVertexHlsl(a.regs,a.pretransformed,a.decode,MakeFixedKey(s)),true);
+  VkShaderModule vs{};
+  if(generic)vs=universal_vs;
+  else{
+   auto source=s.vs&&!s.vs->program.empty()?VertexProgramHlsl(s.vs->program,a.regs,a.decode):FixedVertexHlsl(a.regs,a.pretransformed,a.decode,MakeFixedKey(s));
+   if(motion_mode)source=MotionVertexHlsl(std::move(source),motion_mode==2||!s.vs?nullptr:&s.vs->program);
+   vs=module(source,true);
+  }
   VkShaderModule ps=generic?(fetch?fetch_ps:universal_ps):module(PixelHlsl(pixel),false);
   VkPipeline p;if(generic){auto& cached=universal_pipelines[(fetch?1:0)+(depth_write?2:depth_equal?4:0)];if(!cached)cached=pipeline(true,vs,ps,a,blend,fetch,depth_write,depth_equal);p=cached;}else p=pipeline(false,vs,ps,a,blend,fetch,depth_write,depth_equal);auto set=generic?VK_NULL_HANDLE:descriptors(false,pixel,target,fetch);
   begin();barrier(target,(fetch||local_pass)?VK_IMAGE_LAYOUT_RENDERING_LOCAL_READ_KHR:VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
@@ -248,6 +260,62 @@ int main(){try{
   universal=gpu.draw(state,a,key,dc,true,false,false,1,true,false);
   reference=gpu.draw(state,a,key,dc,false,false,false,1,false,true);
   compare(reference,universal,("NV2A DP4 generic -> specialized depth "+std::to_string(trial)).c_str());cases++;
+ }
+ // Original synthetic projected-texture shader. The ground truth is the
+ // unchanged vertex varyings at the midpoint camera, not another repair path.
+ // Both sides receive identical raster positions to isolate UV correctness.
+ // Only this fixture changes the test texture from a constant to a gradient.
+ {
+  auto gradient=gpu.buffer(GPU::W*GPU::H*4,VK_BUFFER_USAGE_TRANSFER_SRC_BIT);
+  auto* pixels=static_cast<uint8_t*>(gradient.mapped);
+  for(unsigned y=0;y<GPU::H;y++)for(unsigned x=0;x<GPU::W;x++){
+   auto* p=pixels+(y*GPU::W+x)*4;p[0]=64;p[1]=uint8_t(y*255/(GPU::H-1));p[2]=uint8_t(x*255/(GPU::W-1));p[3]=255;
+  }
+  gpu.begin();gpu.barrier(gpu.tex2d,VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+  VkBufferImageCopy copy{};copy.imageSubresource={VK_IMAGE_ASPECT_COLOR_BIT,0,0,1};copy.imageExtent={GPU::W,GPU::H,1};
+  vkCmdCopyBufferToImage(gpu.cmd,gradient.buffer,gpu.tex2d.image,gpu.tex2d.layout,1,&copy);
+  gpu.barrier(gpu.tex2d,VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);gpu.submit();
+  State water;water.vs_handle=1;water.vs=std::make_shared<VertexShader>();water.vs->program=motion_fixture::projective_program();
+  water.tss[0][kTssColorOp]=water.tss[0][kTssAlphaOp]=2;
+  water.tss[0][kTssColorArg1]=water.tss[0][kTssAlphaArg1]=2;water.tss[1][kTssColorOp]=1;
+  water.vsc[58]={24,-24,1,1};water.vsc[59]={24,24,0,0};
+  water.vsc[70]={1,1,0,0};water.vsc[71]={.5f,.5f,1,1};
+  for(unsigned r=0;r<4;r++){water.vsc[64+r]={};water.vsc[64+r][r]=1;}
+  water.vsc[67][2]=.25f;
+  float vertices3[3][4]={{-.75f,-.5f,.25f,1},{.75f,-.625f,.5f,1},{-.625f,.875f,.75f,1}};
+  for(unsigned i=0;i<3;i++)std::copy(vertices3[i],vertices3[i]+4,triangle[i].position);
+  std::memcpy(gpu.vertices.mapped,triangle,sizeof triangle);
+  auto geometry=a;geometry.regs=1;geometry.pretransformed=false;
+  DrawConstants wc{};wc.surf[0]=GPU::W;wc.surf[1]=GPU::H;wc.surf[2]=wc.surf[3]=1;wc.misc[1]=7;wc.misc[2]=3;
+  for(auto& size:wc.texsize){size[0]=GPU::W;size[1]=GPU::H;}
+  TexInfo texture[4]{};texture[0].kind=kTex2D;auto pixel=MakePixelKey(water,texture);
+  for(unsigned trial=0;trial<4;trial++){
+   auto endpoint=water;
+   if(trial==2){endpoint.vsc[70][1]=-1;endpoint.vsc[71][1]=-.5f;}
+   auto midpoint=endpoint;
+   if(trial==1)midpoint.vsc[64][3]=.125f;
+   if(trial==2)midpoint.vsc[65][3]=-.125f;
+   if(trial==3){midpoint.vsc[64][0]=1.125f;midpoint.vsc[67][2]=.375f;}
+   auto* screen=static_cast<float*>(gpu.scene.mapped);
+   for(unsigned v=0;v<3;v++){
+    float clip[4]{};for(unsigned r=0;r<4;r++)for(unsigned c=0;c<4;c++)clip[r]+=midpoint.vsc[64+r][c]*vertices3[v][c];
+    for(unsigned r=0;r<3;r++)screen[v*4+r]=clip[r]/clip[3]*water.vsc[58][r]+water.vsc[59][r];
+    screen[v*4+3]=clip[3];
+   }
+   auto truth=gpu.draw(midpoint,geometry,pixel,wc,false,false,false,1,false,false,false,2);
+   auto corrected=gpu.draw(endpoint,geometry,pixel,wc,false,false,false,1,false,false,false,1);
+   compare(truth,corrected,("projective UV midpoint specialized "+std::to_string(trial)).c_str());cases++;
+   auto generic=gpu.draw(endpoint,geometry,pixel,wc,true,false,false,1,false,false,false,1);
+   compare(truth,generic,("projective UV midpoint universal "+std::to_string(trial)).c_str());cases++;
+   if(trial){
+    auto legacy=gpu.draw(endpoint,geometry,pixel,wc,false,false,false,1,false,false,false,2);
+    unsigned differs=0;for(size_t i=0;i<truth.size();i++)differs+=std::abs(int(truth[i])-int(legacy[i]))>2;
+    check(differs>100,"projective UV fixture did not reproduce the old position-only mismatch");
+   }
+  }
+  auto original=gpu.draw(water,geometry,pixel,wc,false,false,false);
+  compare(original,gpu.draw(water,geometry,pixel,wc,false,false,false,1,false,false,false,3),"projective UV specialized motion disabled");cases++;
+  compare(original,gpu.draw(water,geometry,pixel,wc,true,false,false,1,false,false,false,3),"projective UV universal motion disabled");cases++;
  }
  check(gpu.validation_errors==0,"Vulkan validation reported errors");
  check(failed_comparisons==0,"synthetic image comparisons differed; see MISMATCH diagnostics");

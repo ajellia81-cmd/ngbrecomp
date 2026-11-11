@@ -32,11 +32,11 @@ public:
  }
  // Bounded CPU state only, emitted once per variant. No texture readback or
  // frame wait. Runtime shader words stay in the user's private diagnostic log.
- void WaterState(uint64_t pixel,uint64_t vertex,bool programmable,const uint32_t* words,size_t count,unsigned tc,unsigned transform,unsigned projection,unsigned width,unsigned height,bool override_position,bool feedback){
+ void WaterState(uint64_t pixel,uint64_t vertex,bool programmable,const uint32_t* words,size_t count,unsigned tc,unsigned transform,unsigned projection,unsigned width,unsigned height,bool override_position,bool feedback,int clip_instruction=-1,int clip_register=-1){
   if(!Enabled())return;
   for(const auto& row:water_states_)if(row.used&&row.pixel==pixel&&row.vertex==vertex&&row.tc==tc&&row.transform==transform&&row.projection==projection&&row.width==width&&row.height==height&&row.feedback==feedback&&row.programmable==programmable&&row.override_position==override_position)return;
   for(auto& row:water_states_)if(!row.used){
-   row.used=true;row.pixel=pixel;row.vertex=vertex;row.programmable=programmable;row.tc=tc;row.transform=transform;row.projection=projection;row.width=width;row.height=height;row.override_position=override_position;row.feedback=feedback;row.total_words=count;
+   row.used=true;row.pixel=pixel;row.vertex=vertex;row.programmable=programmable;row.tc=tc;row.transform=transform;row.projection=projection;row.width=width;row.height=height;row.override_position=override_position;row.feedback=feedback;row.total_words=count;row.clip_instruction=clip_instruction;row.clip_register=clip_register;
    if(words&&count)row.words.assign(words,words+std::min<size_t>(count,1024));
    return;
   }
@@ -61,7 +61,7 @@ public:
   double seconds=double(now-window_)/1e9;
   std::string report;
   for(auto& row:water_states_)if(row.used&&!row.reported){
-   Append(report,"[water-state] pixel=%016llx vertex=%016llx programmable=%u viewport=%ux%u tc2=%08x transform2=%08x projection=%x override=%u feedback=%u words=%zu\n",(unsigned long long)row.pixel,(unsigned long long)row.vertex,unsigned(row.programmable),row.width,row.height,row.tc,row.transform,row.projection,unsigned(row.override_position),unsigned(row.feedback),row.total_words);
+   Append(report,"[water-state] pixel=%016llx vertex=%016llx programmable=%u viewport=%ux%u tc2=%08x transform2=%08x projection=%x override=%u feedback=%u words=%zu clip_instruction=%d clip_register=%d\n",(unsigned long long)row.pixel,(unsigned long long)row.vertex,unsigned(row.programmable),row.width,row.height,row.tc,row.transform,row.projection,unsigned(row.override_position),unsigned(row.feedback),row.total_words,row.clip_instruction,row.clip_register);
    if(!row.words.empty()){
     Append(report,"[water-program] vertex=%016llx captured=%zu data=",(unsigned long long)row.vertex,row.words.size());
     for(auto word:row.words)Append(report,"%08x ",word);
@@ -80,7 +80,7 @@ public:
  }
 private:
  struct WaterRow{uint64_t key=0;uint32_t modes=0;unsigned signed_mask=0,target_mask=0,shadow_mask=0,count=0,generic=0,blend=0,depth=0,replays=0;};
- struct WaterStateRow{uint64_t pixel=0,vertex=0;unsigned tc=0,transform=0,projection=0,width=0,height=0;bool used=false,reported=false,programmable=false,override_position=false,feedback=false;size_t total_words=0;std::vector<uint32_t> words;};
+ struct WaterStateRow{uint64_t pixel=0,vertex=0;unsigned tc=0,transform=0,projection=0,width=0,height=0;bool used=false,reported=false,programmable=false,override_position=false,feedback=false;size_t total_words=0;int clip_instruction=-1,clip_register=-1;std::vector<uint32_t> words;};
  static void Append(std::string& text,const char* format,...){
   char row[4096];va_list args;va_start(args,format);int n=std::vsnprintf(row,sizeof row,format,args);va_end(args);
   if(n>0)text.append(row,std::min<size_t>(size_t(n),sizeof row-1));

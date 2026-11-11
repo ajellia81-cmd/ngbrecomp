@@ -2627,7 +2627,7 @@ void VulkanBackend::Draw(const State& s, uint32_t prim, uint32_t start, uint32_t
         }
     }
 #ifdef NGB_SMOOTH_MOTION
-    if (motion_shader) vkey ^= 0x5646335343454E45ull;
+    if (motion_shader) vkey ^= 0x5646335343454E46ull; // v2: coherent clip-derived varyings
 #endif
     async_now_ = async_;
     auto vertex_source = [program=s.vs,regs=a.regs,decode=a.decode,pre=a.pretransformed,fk,quad,points,spark_quad,vkey,prog](bool use_motion) {
@@ -2645,7 +2645,7 @@ void VulkanBackend::Draw(const State& s, uint32_t prim, uint32_t start, uint32_t
             if (FILE* f = std::fopen(path, "w")) { std::fputs(src.c_str(), f); std::fclose(f); }
         }
 #ifdef NGB_SMOOTH_MOTION
-        if (use_motion) src=MotionVertexHlsl(std::move(src));
+        if (use_motion) src=MotionVertexHlsl(std::move(src),prog?&program->program:nullptr);
 #endif
         return src;
     };
@@ -2918,9 +2918,10 @@ void VulkanBackend::Draw(const State& s, uint32_t prim, uint32_t start, uint32_t
     if((signed_mask || bump_candidate) && target_mask) {
         bool programmable=(s.vs_handle&1)!=0;
         const auto* words=programmable && s.vs ? &s.vs->program : nullptr;
+        auto clip=words?FindMotionClipPoint(*words):MotionClipPoint{};
         motion_diagnostics_.WaterState(pkey,vkey,programmable,words?words->data():nullptr,words?words->size():0,
             s.tss[2][kTssTexCoordIndex],s.tss[2][kTssTextureTransformFlags],pk.proj,s.viewport.w,s.viewport.h,
-            motion_shader,rt && rt->fb.view && views[2]==rt->fb.view);
+            motion_shader,rt && rt->fb.view && views[2]==rt->fb.view,clip.instruction,clip.reg);
     }
 #endif
     async_now_ = false;
@@ -2941,6 +2942,12 @@ void VulkanBackend::Draw(const State& s, uint32_t prim, uint32_t start, uint32_t
     uint32_t gw, gh;
     SurfaceSize(rt ? s.rt : s.zs, gw, gh);
     DrawConstants c{};
+#ifdef NGB_SMOOTH_MOTION
+    if(motion_shader&&prog){
+        auto point=FindMotionClipPoint(s.vs->program);
+        if(point.instruction>=0){c.motion[1]=float(point.instruction+1);c.motion[2]=float(point.reg+1);}
+    }
+#endif
     c.surf[0] = float(gw);
     c.surf[1] = float(gh);
     c.surf[2] = 1.0f / s.zscale;

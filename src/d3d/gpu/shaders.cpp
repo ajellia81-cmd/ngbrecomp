@@ -1123,13 +1123,32 @@ std::string QuadHlsl(std::string s) {
 
 #ifdef NGB_SMOOTH_MOTION
 namespace gpu {
-std::string MotionVertexHlsl(std::string s) {
+std::string MotionVertexHlsl(std::string s,const std::vector<uint32_t>* bytecode) {
     // An extra read-only vertex buffer supplies the VF3 scene result. The
     // original program still computes its colours, UVs and other varyings.
     const std::string entry="VOut main(";
     size_t start=s.find(entry), end=s.find(") {",start);
     if(start==std::string::npos || end==std::string::npos) return {};
     s.insert(end,", uint scene_vertex : SV_VertexID");
+    if(bytecode){
+        auto point=FindMotionClipPoint(*bytecode);
+        if(point.instruction>=0){
+            size_t at=s.find("    int a0 = 0;");
+            for(int i=0;i<=point.instruction&&at!=std::string::npos;i++){
+                Tok k{bytecode->data()+i*4};
+                if(!k.f(1,21,4)&&!k.f(1,25,3))continue;
+                at=s.find("    {\n",at);
+                if(i==point.instruction)break;
+                if(at!=std::string::npos)at+=6;
+            }
+            if(at!=std::string::npos)s.insert(at,F(
+                "    // Motion clip coordinates before screen-derived varyings.\n"
+                "    if (motion.x > 0 && all(abs(c[58].xyz) > 1e-12)) {\n"
+                "        precise float4 scene_clip = scene_positions[scene_vertex];\n"
+                "        R%d = float4((scene_clip.xyz - c[59].xyz) / c[58].xyz * scene_clip.w, scene_clip.w);\n"
+                "    }\n",point.reg));
+        }
+    }
     const std::string program="    precise float4 p = oPos;";
     const std::string fixed="    o.pos = cp;";
     size_t at=s.find(program);

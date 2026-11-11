@@ -117,6 +117,16 @@ VOut main(uint vertex_id:SV_VertexID) {
         int address=0;
         for(uint pcounter=0;pcounter<min(U(89)/4,136u);pcounter++) {
             uint4 k=ud[48+pcounter];uint mac=(k.y>>21)&15,ilu=(k.y>>25)&7;
+)";
+#ifdef NGB_SMOOTH_MOTION
+    s+=R"(
+            if(motion.x>0 && uint(motion.y)==pcounter+1 && motion.z>=1 && motion.z<=12 && all(abs(c[58].xyz)>1e-12)) {
+                precise float4 scene_clip=universal_scene_positions[vertex_id];
+                temp[uint(motion.z)-1]=float4((scene_clip.xyz-c[59].xyz)/c[58].xyz*scene_clip.w,scene_clip.w);
+            }
+)";
+#endif
+    s+=R"(
             if(mac!=0 || ilu!=0) {
                 precise float4 a=Operand(k,0,vertex_id,address,temp),b=Operand(k,1,vertex_id,address,temp),d=Operand(k,2,vertex_id,address,temp);
                 precise float4 mr=Mac(mac,a,b,d),ir=Ilu(ilu,d);

@@ -3,6 +3,7 @@
 // unchanged; this adapter supplies geometry, model-to-view matrices and viewports.
 #include "gpu/shaders.h"
 #include "gpu/vertex.h"
+#include "gpu/motion_clip.h"
 #include "../../../third_party/vf3_scene/r3d_scene.h"
 #include <memory>
 #include <unordered_map>
@@ -38,6 +39,6 @@ private:
 // the actual declaration/streams/constants, including relative bone addressing.
 // Exposed for comparison fixtures; it never executes guest code or touches GPU state.
 bool SceneVertexPosition(const State&,const Assembled&,uint32_t,const DrawConstants&,ScenePosition&);
-std::string MotionVertexHlsl(std::string);
+std::string MotionVertexHlsl(std::string,const std::vector<uint32_t>* program=nullptr);
 #endif
 } // namespace gpu

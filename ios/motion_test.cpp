@@ -6,6 +6,7 @@
 #include <fstream>
 #include <iostream>
 #include <stdexcept>
+#include "../tests/motion_projective_fixture.h"
 using namespace gpu;
 using Mat=video::Mat4;
 static void check(bool v,const char* why) {if(!v) throw std::runtime_error(why);}
@@ -285,6 +286,32 @@ int main(int argc,char** argv) {
     std::string fixed=MotionVertexHlsl(FixedVertexHlsl(1,false));
     std::string program=MotionVertexHlsl(VertexProgramHlsl(position_program(),1));
     std::string decoded=MotionVertexHlsl(VertexProgramHlsl(position_program(),1,kDecodeIntW1));
+    auto projected_code=motion_fixture::projective_program();
+    auto clip_point=FindMotionClipPoint(projected_code);
+    check(clip_point.instruction==4&&clip_point.reg==4,"screen-derived UV clip source not proved");
+    check(FindMotionClipPoint(position_program()).instruction<0,"post-viewport position mistaken for clip coordinates");
+    std::string projected=MotionVertexHlsl(VertexProgramHlsl(projected_code,1),&projected_code);
+    auto early=projected.find("R4 = float4((scene_clip.xyz");
+    auto parallel=projected.find("precise float4 mr = (mac_mul(((R4).wwww)");
+    check(early!=std::string::npos&&early<parallel,"clip source replaced after its parallel UV consumer");
+    auto ambiguous=projected_code;
+    ambiguous[(ambiguous.size()/4-1)*4+1]^=1u<<13; // different viewport offset constant
+    check(FindMotionClipPoint(ambiguous).instruction<0,"unproved viewport normalization accepted");
+    auto overwritten=projected_code;
+    // A new reciprocal-lane write between normalization and MAD invalidates it.
+    std::vector<uint32_t> change;motion_fixture::emit(change,1,0,0,1,8,{2});
+    overwritten.insert(overwritten.end()-4,change.begin(),change.end());
+    check(FindMotionClipPoint(overwritten).instruction<0,"overwritten reciprocal accepted");
+    auto nop=projected_code;nop.insert(nop.begin()+4*4,4,0);
+    check(FindMotionClipPoint(nop).instruction==5,"NOP changed raw instruction indexing");
+    auto nop_shader=MotionVertexHlsl(VertexProgramHlsl(nop,1),&nop);
+    check(nop_shader.find("R4 = float4((scene_clip.xyz")<nop_shader.find("precise float4 mr = (mac_mul(((R4).wwww)"),"NOP shifted clip replacement past its parallel consumer");
+    auto early_consumer=projected_code;std::vector<uint32_t> read;
+    motion_fixture::emit(read,1,0,0,0,0,{1,4},{},{},0,15,10);
+    early_consumer.insert(early_consumer.begin()+4*4,read.begin(),read.end());
+    check(FindMotionClipPoint(early_consumer).instruction<0,"partially updated varying dataflow accepted");
+    auto too_long=projected_code;too_long.back()&=~1u;too_long.resize(137*4);
+    check(FindMotionClipPoint(too_long).instruction<0,"unexamined instruction tail accepted");
     check(fixed.find("scene_positions[scene_vertex]")!=std::string::npos,"fixed shader not connected to scene output");
     check(program.find("scene_positions[scene_vertex]")!=std::string::npos,"program shader not connected to scene output");
     check(decoded.find("VOut main(VRaw ri, uint scene_vertex")!=std::string::npos,"decoded vertex entry not wrapped");
@@ -296,6 +323,8 @@ int main(int argc,char** argv) {
         shader_file(std::string(argv[1])+"/motion-fixed.vert.hlsl",fixed);
         shader_file(std::string(argv[1])+"/motion-program.vert.hlsl",program);
         shader_file(std::string(argv[1])+"/motion-decoded.vert.hlsl",decoded);
+        shader_file(std::string(argv[1])+"/motion-projective.vert.hlsl",projected);
+        shader_file(std::string(argv[1])+"/motion-projective-decoded.vert.hlsl",MotionVertexHlsl(VertexProgramHlsl(projected_code,1,kDecodeIntW1),&projected_code));
     }
     std::cout<<"Unchanged VF3 core with NGB scene extraction: camera, repeated instances, shared depth passes, bone addressing, raw formats, reset and shader wrappers passed.\n";
     return 0;

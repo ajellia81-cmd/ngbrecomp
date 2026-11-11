@@ -88,3 +88,28 @@ per process. These runtime shader words are proprietary user data: keep the log
 private and never commit it or publish it as a CI artifact. No pixels are read
 back, and no synchronous GPU waits are added. This is diagnostic evidence, not
 a claim that the remaining water flicker has been fixed.
+
+## Clip-derived texture coordinates
+
+The subsequent water trace identified texture coordinates derived from the same
+clip-position temporary later copied to oPos. The old motion wrapper replaced
+oPos only at the end, leaving those screen-dependent varyings at the endpoint
+camera. Camera motion could therefore alternate between two coordinate systems.
+
+`FindMotionClipPoint` conservatively proves a complete temporary copy followed
+by the standard c58/c59 viewport normalization. It rejects earlier consumers,
+ambiguous position writes and overwritten reciprocal lanes. The motion wrapper
+reconstructs that temporary from the VF3 screen position before the original
+parallel instruction executes. The original program then computes its own
+screen-derived texture coordinates and fog from the same position. World-space
+UV calculations remain in their original program; no arbitrary constant-bank
+interpolation or private shader signature is used.
+
+Specialized and universal motion paths use the same proved instruction/register.
+Only the motion vertex-module revision changes; original endpoint generators,
+shader loading and VF3 matching remain unchanged. The diagnostic water row adds
+`clip_instruction`/`clip_register` to identify eligible dataflow. Original
+synthetic programs exercise parallel UV consumers, NOP indexing and rejection;
+GPU tests compare both motion paths to the unchanged shader at a midpoint camera
+and require the old late-only wrapper to reproduce a visible mismatch. No game
+shader words are embedded in tests. Device confirmation is still necessary.
