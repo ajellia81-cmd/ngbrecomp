@@ -107,7 +107,9 @@ def prepare(prefix,cache):
    new=relocated(text,prefix)
    if text!=new:path.chmod(path.stat().st_mode|0o200);path.write_text(new)
  for opt in (prefix/'opt').iterdir():
-  for directory in ('include','lib','share'):
+  # CMake imported targets validate packaged tools even when cross compiling.
+  # Mirror ARM tools for path completeness; never execute them on the Intel host.
+  for directory in ('bin','include','lib','share'):
    source=opt/directory
    if source.exists():mirror(source,prefix/directory)
  for name in ('libvulkan.1.dylib','libMoltenVK.dylib','libSDL3.0.dylib'):

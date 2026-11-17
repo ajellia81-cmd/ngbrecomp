@@ -12,6 +12,8 @@ assert not m.is_macho(b'plain data')
 with tempfile.TemporaryDirectory(prefix='ngb-cross-deps-') as t:
  root=Path(t);source=root/'public-keg/lib';(source/'pkgconfig').mkdir(parents=True);(source/'pkgconfig/glib.pc').write_text('fixture')
  prefix=root/'isolated';m.mirror(source,prefix/'lib');assert (prefix/'lib/pkgconfig/glib.pc').read_text()=='fixture'
+ tool=root/'public-keg/bin/glslang';tool.parent.mkdir();tool.write_text('public ARM tool fixture')
+ m.mirror(tool.parent,prefix/'bin');assert (prefix/'bin/glslang').is_file()
  text='@@HOMEBREW_PREFIX@@/opt/glib @@HOMEBREW_CELLAR@@/glib/1 /opt/homebrew/lib'
  result=m.relocated(text,prefix);assert '@@' not in result and '/opt/homebrew' not in result and str(prefix/'Cellar/glib/1') in result
 print('PASS: Java versus fat/thin Mach-O, malformed headers, isolated prefix relocation and library merge')
