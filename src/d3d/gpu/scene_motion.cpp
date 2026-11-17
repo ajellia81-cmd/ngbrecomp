@@ -57,10 +57,29 @@ struct Operation {
     unsigned mac=0,ilu=0,r=0,mm=0,im=0,om=0;
     bool output_ilu=false,arl=false;
 };
+// One reusable workspace per decoded program; no large per-draw stack object
+// or repeated allocation. Refresh every draw so changed constants never go stale.
+struct PreparedSources {
+    static constexpr size_t capacity=136;
+    std::vector<std::array<V,3>> values;
+    void Refresh(const std::vector<Operation>& ops,const State& state) {
+        values.resize(ops.size());
+        for(size_t i=0;i<ops.size();i++) {
+            const auto& op=ops[i];const Operand operands[]={op.a,op.b,op.c};
+            for(unsigned j=0;j<3;j++) {
+                const auto& operand=operands[j];
+                if(operand.mux==1 || operand.mux==2 || operand.relative)continue;
+                V base{};if(operand.constant<192)base=state.vsc[operand.constant];
+                for(unsigned lane=0;lane<4;lane++)values[i][j][lane]=(operand.neg?-1.f:1.f)*base[operand.sw[lane]];
+            }
+        }
+    }
+};
 // Slice backwards from oPos. Colour/UV/lighting calculations must not turn
 // this geometry conversion into a second full software renderer.
 struct Program {
     std::vector<Operation> ops;
+    PreparedSources prepared;
     std::array<uint8_t,192> constants{};
     uint16_t inputs=0;
     bool valid=true;
@@ -306,7 +325,16 @@ bool read_input(const Assembled& a,unsigned reg,uint32_t vertex,V& out) {
     return true;
 }
 V transform_point(const M& m,const V& p) {
+#if defined(__GNUC__) || defined(__clang__)
+    // Accumulate the same four columns in the same order as the scalar path.
+    // SIMD changes the independent lanes, not reduction order or contraction.
+    using Lanes=float __attribute__((vector_size(16)));
+    Lanes sum{};
+    for(unsigned c=0;c<4;c++){Lanes column;std::memcpy(&column,m.m+c*4,16);sum=sum+column*p[c];}
+    V out;std::memcpy(out.data(),&sum,16);return out;
+#else
     V out{};for(int r=0;r<4;r++) for(int c=0;c<4;c++) out[r]+=m.m[c*4+r]*p[c];return out;
+#endif
 }
 M constant_matrix(const float* p) {
     M m{};for(int r=0;r<4;r++) for(int c=0;c<4;c++) m.m[c*4+r]=p[r*4+c];return m;
@@ -329,11 +357,13 @@ bool affine(const M& m) {
     // A roundoff check on a mathematical invariant, not a motion threshold.
     return std::fabs(m.m[3])<2e-4f && std::fabs(m.m[7])<2e-4f && std::fabs(m.m[11])<2e-4f && std::fabs(m.m[15]-1)<2e-4f;
 }
-bool execute(const Program& p,const State& s,const Assembled& a,uint32_t vertex,V& pos) {
+bool execute(const Program& p,const State& s,const Assembled& a,uint32_t vertex,V& pos,const PreparedSources* prepared=nullptr) {
     if(!p.valid) return false;
     V inputs[16]{},r[13]{};int address=0;
     for(unsigned i=0;i<16;i++) if(p.inputs&(1u<<i)) if(!read_input(a,i,vertex,inputs[i])) return false;
-    auto source=[&](const Operand& o) {
+    const std::array<V,3>* folded=nullptr;
+    auto source=[&](const Operand& o,unsigned which) {
+        if(folded && o.mux!=1 && o.mux!=2 && !o.relative)return (*folded)[which];
         V base{};
         if(o.mux==1) {if(o.reg<=12) base=r[o.reg];}
         else if(o.mux==2) base=inputs[o.reg];
@@ -341,22 +371,26 @@ bool execute(const Program& p,const State& s,const Assembled& a,uint32_t vertex,
         V v{};for(int i=0;i<4;i++) v[i]=(o.neg?-1.f:1.f)*base[o.sw[i]];return v;
     };
     auto write=[](V& dest,const V& value,unsigned mask) {for(unsigned i=0;i<4;i++) if(mask&(8u>>i)) dest[i]=value[i];};
+    size_t instruction=0;
     for(const auto& o:p.ops) {
-        V aa=source(o.a),bb=source(o.b),cc=source(o.c),mr{},ir{};
+        folded=prepared?&prepared->values[instruction]:nullptr;instruction++;
+        V aa=source(o.a,0),bb=source(o.b,1),cc=source(o.c,2),mr{},ir{};
         float dot=0;
         if(o.mac>=5 && o.mac<=7) {
             for(int i=0;i<(o.mac==7?4:3);i++) dot+=aa[i]*bb[i];
             if(o.mac==6) dot+=bb[3];
         }
-        for(int i=0;i<4;i++) switch(o.mac) {
-        case 1:case 13:mr[i]=aa[i];break;
-        case 2:mr[i]=product(aa[i],bb[i]);break;
-        case 3:mr[i]=aa[i]+cc[i];break;
-        case 4:mr[i]=product(aa[i],bb[i])+cc[i];break;
-        case 5:case 6:case 7:mr[i]=dot;break;
-        case 8:mr[i]=i==0?1:i==1?aa[1]*bb[1]:i==2?aa[2]:bb[3];break;
-        case 9:mr[i]=std::fmin(aa[i],bb[i]);break;case 10:mr[i]=std::fmax(aa[i],bb[i]);break;
-        case 11:mr[i]=aa[i]<bb[i];break;case 12:mr[i]=aa[i]>=bb[i];break;
+        switch(o.mac) {
+        case 1:case 13:mr=aa;break;
+        case 2:for(int i=0;i<4;i++)mr[i]=product(aa[i],bb[i]);break;
+        case 3:for(int i=0;i<4;i++)mr[i]=aa[i]+cc[i];break;
+        case 4:for(int i=0;i<4;i++)mr[i]=product(aa[i],bb[i])+cc[i];break;
+        case 5:case 6:case 7:mr.fill(dot);break;
+        case 8:mr={1,aa[1]*bb[1],aa[2],bb[3]};break;
+        case 9:for(int i=0;i<4;i++)mr[i]=std::fmin(aa[i],bb[i]);break;
+        case 10:for(int i=0;i<4;i++)mr[i]=std::fmax(aa[i],bb[i]);break;
+        case 11:for(int i=0;i<4;i++)mr[i]=aa[i]<bb[i];break;
+        case 12:for(int i=0;i<4;i++)mr[i]=aa[i]>=bb[i];break;
         default:break;
         }
         switch(o.ilu) {
@@ -620,6 +654,7 @@ bool SceneMotion::Add(const State& s,const Assembled& a,const DrawConstants& dc,
     if(!retained) {
         mesh.verts.resize(ix->size());
         std::vector<V> local(a.vertex_count);std::vector<uint8_t> seen(a.vertex_count);
+        const PreparedSources* prepared=nullptr;
         for(size_t t=0;t<ix->size();t++) {
             uint32_t id=(*ix)[t];
             if(!seen[id]) {
@@ -648,7 +683,8 @@ bool SceneMotion::Add(const State& s,const Assembled& a,const DrawConstants& dc,
                     local[id]=transform_point(inv_model,posed);
                 } else {
                     p.stats.evaluated_vertices++;
-                    V screen{};if(!(program?execute(*vp,s,a,id,screen):fixed_position(s,a,id,dc,screen))) return done(false);
+                    if(program && !prepared && vp->ops.size()<=PreparedSources::capacity){vp->prepared.Refresh(vp->ops,s);prepared=&vp->prepared;}
+                    V screen{};if(!(program?execute(*vp,s,a,id,screen,prepared):fixed_position(s,a,id,dc,screen))) return done(false);
                     float w=clamp_magnitude(screen[3]);V clip{};
                     for(int i=0;i<3;i++) clip[i]=(screen[i]-offset[i])/scale[i]*w;
                     clip[3]=w;

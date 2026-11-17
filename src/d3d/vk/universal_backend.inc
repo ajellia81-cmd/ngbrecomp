@@ -1,8 +1,4 @@
 // Experimental complete pipeline bank. Never create one from a draw callback.
-static uint32_t UniversalFamily(const PipeKey& k) {
-    return (k.samples?k.samples:1)<<8 | (k.has_rt?1:0)<<6 | (k.has_ds?1:0)<<5 |
-        (k.topo==2?(k.fill==0x1B01?1:k.fill==0x1B00?2:0):0)<<2 | k.topo;
-}
 VkPipeline VulkanBackend::MakeUniversalPipeline(const PipeKey& k, VkShaderModule vs, VkShaderModule ps) {
     VkPipeline pipe = VK_NULL_HANDLE;
     if (vs && ps) {
@@ -79,7 +75,7 @@ VkPipeline VulkanBackend::MakeUniversalPipeline(const PipeKey& k, VkShaderModule
             VK_DYNAMIC_STATE_STENCIL_COMPARE_MASK,VK_DYNAMIC_STATE_STENCIL_WRITE_MASK};
         VkPipelineDynamicStateCreateInfo dy{VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO};
         dy.dynamicStateCount=sizeof(dyn)/sizeof(dyn[0]);dy.pDynamicStates=dyn;
-        if(universal_ordered_ && k.has_rt)cbs.flags=VK_PIPELINE_COLOR_BLEND_STATE_CREATE_RASTERIZATION_ORDER_ATTACHMENT_ACCESS_BIT_EXT;
+        if(universal_ordered_ && UniversalReadsColor(k))cbs.flags=VK_PIPELINE_COLOR_BLEND_STATE_CREATE_RASTERIZATION_ORDER_ATTACHMENT_ACCESS_BIT_EXT;
         VkFormat cf = kColorFormat;
         VkPipelineRenderingCreateInfo pr{VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO};
         pr.colorAttachmentCount = k.has_rt ? 1 : 0;
@@ -132,7 +128,8 @@ bool VulkanBackend::UniversalInit() {
     universal_ps_[0]=module(UniversalPixelHlsl(false),false);
     universal_ps_[1]=module(UniversalPixelHlsl(true),false);
     universal_ps_[2]=module(UniversalPixelHlsl(false,true),false);
-    if(!universal_vs_ || !universal_ps_[0] || !universal_ps_[1] || !universal_ps_[2])return false;
+    universal_ps_[3]=module(UniversalPixelHlsl(false,false,false),false);
+    if(!universal_vs_ || !universal_ps_[0] || !universal_ps_[1] || !universal_ps_[2] || !universal_ps_[3])return false;
     for(uint32_t samples=1;samples<=64;samples*=2)if(ms_counts_&samples)
         for(uint32_t targets=1;targets<4;targets++)for(uint32_t topology=0;topology<3;topology++)
             for(uint32_t fill=0;fill<3;fill++) {
@@ -143,9 +140,15 @@ bool VulkanBackend::UniversalInit() {
 #endif
                 PipeKey key{};key.samples=samples;key.topo=topology;key.has_rt=targets&1;key.has_ds=(targets>>1)&1;
                 key.fill=fill==1?0x1B01:fill==2?0x1B00:0x1B02;key.wmask=15;
-                auto pipeline=MakeUniversalPipeline(key,universal_vs_,universal_ps_[key.has_rt?(samples>1?1:0):2]);
-                if(!pipeline)return false;
-                universal_pipes_.emplace(UniversalFamily(key),pipeline);
+                // Both fixed families exist before any draw. No shader or
+                // pipeline is created synchronously at a cold material draw.
+                for(unsigned read=0;read<(key.has_rt?2u:1u);read++) {
+                    key.blend=read;
+                    unsigned shader=key.has_rt?(read?(samples>1?1:0):3):2;
+                    auto pipeline=MakeUniversalPipeline(key,universal_vs_,universal_ps_[shader]);
+                    if(!pipeline)return false;
+                    universal_pipes_.emplace(UniversalFamily(key),pipeline);
+                }
             }
     auto usage=VK_IMAGE_USAGE_SAMPLED_BIT|VK_IMAGE_USAGE_TRANSFER_DST_BIT;
     if(!CreateImage(universal_null3d_,kColorFormat,1,1,1,1,false,false,usage,1,false,true) ||

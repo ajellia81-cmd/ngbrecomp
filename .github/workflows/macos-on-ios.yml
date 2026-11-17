@@ -136,6 +136,16 @@ jobs:
         "$RUNNER_TEMP/ngb-scene-motion" "$RUNNER_TEMP/ngb-motion-shaders"
         xcrun --sdk macosx clang++ -std=c++20 -O2 -DNGB_SMOOTH_MOTION=1 -DNGB_IOS_PORT_RELEASE=1 -ffp-contract=off -Isrc/d3d ios/motion_test.cpp src/d3d/gpu/shaders.cpp src/d3d/gpu/scene_motion.cpp third_party/vf3_scene/interpolate.cpp -o "$RUNNER_TEMP/ngb-scene-motion-release"
         "$RUNNER_TEMP/ngb-scene-motion-release"
+        git show 08c8419338b0faa942eae0ded5836e55f5040e5b:src/d3d/gpu/scene_motion.cpp > "$RUNNER_TEMP/ngb-cpu-reference.cpp"
+        for implementation in reference optimized; do
+          source="$RUNNER_TEMP/ngb-cpu-reference.cpp"
+          if [ "$implementation" = optimized ]; then source=src/d3d/gpu/scene_motion.cpp; fi
+          xcrun --sdk macosx clang++ -std=c++20 -O2 -DNGB_SMOOTH_MOTION=1 -DNGB_IOS_PORT_RELEASE=1 -DNGB_IOS_MOTION_DIAGNOSTICS=1 -DNGB_IOS_PERFORMANCE_DIAGNOSTICS=1 -ffp-contract=off -Isrc/d3d tests/motion_cpu_parity.cpp src/d3d/gpu/shaders.cpp "$source" third_party/vf3_scene/interpolate.cpp -o "$RUNNER_TEMP/ngb-cpu-$implementation"
+          "$RUNNER_TEMP/ngb-cpu-$implementation" > "$RUNNER_TEMP/ngb-cpu-$implementation.txt"
+          cat "$RUNNER_TEMP/ngb-cpu-$implementation.txt"
+          sed -n '/^parity=/p' "$RUNNER_TEMP/ngb-cpu-$implementation.txt" > "$RUNNER_TEMP/ngb-cpu-$implementation.hash"
+        done
+        cmp "$RUNNER_TEMP/ngb-cpu-reference.hash" "$RUNNER_TEMP/ngb-cpu-optimized.hash"
         xcrun --sdk macosx clang++ -std=c++20 -O2 -DNGB_SMOOTH_MOTION=1 -DNGB_IOS_PORT_RELEASE=1 -ffp-contract=off -Isrc/d3d -c src/d3d/gpu/scene_motion.cpp -o "$RUNNER_TEMP/ngb-scene-motion-release.o"
         if nm -u "$RUNNER_TEMP/ngb-scene-motion-release.o" | grep -E 'steady_clock|system_clock|clock_gettime'; then
           echo '::error::Diagnostic scene clock remains in release'; exit 1

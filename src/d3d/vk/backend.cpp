@@ -45,6 +45,7 @@
 #include "gpu/texture.h"
 #include "gpu/vertex.h"
 #include "gpu/scene_motion.h"
+#include "gpu/universal_family.h"
 #include "platform/ios_port_diagnostics.h"
 #include "gpu/upload_ring.h"
 #include "gpu/shadow_depth.h"
@@ -602,7 +603,7 @@ private:
     bool universal_capable_=false,universal_ordered_=false,universal_ready_=false;
     VkDescriptorSetLayout universal_set_=VK_NULL_HANDLE;
     VkPipelineLayout universal_layout_=VK_NULL_HANDLE;
-    VkShaderModule universal_vs_=VK_NULL_HANDLE,universal_ps_[3]{};
+    VkShaderModule universal_vs_=VK_NULL_HANDLE,universal_ps_[4]{};
     std::unordered_map<uint32_t,VkPipeline> universal_pipes_;
     // Render-thread snapshots of immutable ready handles. Compiler cache file
     // writes must not send already-ready draws back through the generic path.
@@ -2941,6 +2942,9 @@ void VulkanBackend::Draw(const State& s, uint32_t prim, uint32_t start, uint32_t
     }
 #ifdef NGB_IOS_MOTION_DIAGNOSTICS
     motion_diagnostics_.Draw(universal_draw);
+#ifdef NGB_IOS_PERFORMANCE_DIAGNOSTICS
+    if(universal_draw)motion_diagnostics_.GenericFamily(UniversalReadsColor(k));
+#endif
 #endif
 #if defined(NGB_IOS_MOTION_DIAGNOSTICS) && !defined(NGB_IOS_PERFORMANCE_DIAGNOSTICS)
     unsigned signed_mask=0,target_mask=0,shadow_mask=0;bool bump_candidate=false;

@@ -6,7 +6,7 @@ Set both packaging variables `NGB_MOTION_DIAGNOSTIC_BUILD=1` and
 `NGB_PERFORMANCE_DIAGNOSTIC_BUILD=1`. The shader compiler, prewarm/cache,
 game clock, rendering decisions, VF3 interpolation and water fix stay unchanged.
 
-Output: Documents/smooth-motion-diagnostics.log, format v4. Each launch replaces
+Output: Documents/smooth-motion-diagnostics.log, format v5. Each launch replaces
 this file. Copy it after reproducing the problem and before launching again.
 No image captures, shader words, per-draw timers, automatic thread sampler,
 startup overlay or shim polling/compiler messages are enabled in this mode.
@@ -63,3 +63,14 @@ and owned index values. Results are owned, not borrowed from mutable outputs,
 and are bounded to 8 MiB per Resolve. VF3 matching/interpolation is untouched.
 Tests cover shared depth/material output, differing viewport scales, reused
 output objects, multiple frames, reset, and fenced image retirement.
+
+The v5 row distinguishes opaque and destination-read generic draws, including
+slow-frame counts. Full opaque writes use a separately precreated no-fetch
+pipeline. Blended and channel-masked writes keep the ordered attachment-read
+path. No original shader recipes, loading policy, or water math are changed.
+CPU position evaluation folds only absolute draw constants (relative bone
+indices stay dynamic), dispatches each MAC once, and uses independent SIMD
+matrix lanes with the original accumulation order and contraction disabled.
+A frozen prior evaluator provides differential opcode/addressing/posed-scene
+results; native GPU tests compare opaque local-read-pass output against the
+existing attachment-read implementation.

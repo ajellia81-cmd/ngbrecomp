@@ -3,6 +3,7 @@
 #include "gpu/universal_shaders.h"
 #include "vk/spirv.h"
 #include "gpu/scene_motion.h"
+#include "gpu/universal_family.h"
 #include "motion_projective_fixture.h"
 #include <algorithm>
 #include <array>
@@ -160,6 +161,15 @@ public:
 static unsigned failed_comparisons=0;
 static void compare(const std::vector<uint8_t>& a,const std::vector<uint8_t>& b,const char* label){unsigned mismatch=0,maximum=0;for(size_t i=0;i<a.size();i++){unsigned error=unsigned(std::abs(int(a[i])-int(b[i])));maximum=std::max(maximum,error);if(error>1)mismatch++;}if(mismatch){failed_comparisons++;std::cerr<<"MISMATCH: "<<label<<": "<<mismatch<<" channels, max error "<<maximum;unsigned shown=0;for(size_t i=0;i<a.size()&&shown<4;i++)if(std::abs(int(a[i])-int(b[i]))>1){std::cerr<<" ["<<i<<":"<<unsigned(a[i])<<"/"<<unsigned(b[i])<<"]";shown++;}std::cerr<<std::endl;return;}std::cout<<"PASS: "<<label<<std::endl;}
 int main(){try{
+ struct FamilyKey{uint32_t samples=1,has_rt=1,has_ds=1,topo=2,fill=0x1B02,blend=0,wmask=15;};
+ FamilyKey route;
+ const auto opaque_family=UniversalFamily(route);
+ for(unsigned mask=0;mask<16;mask++)for(unsigned blend=0;blend<2;blend++) {
+  route.wmask=mask;route.blend=blend;
+  if(mask==15 && !blend)check(!UniversalReadsColor(route),"opaque full-write reads destination");
+  else check(UniversalReadsColor(route) && UniversalFamily(route)!=opaque_family,"masked/blended write routed to opaque family");
+ }
+ route.has_rt=0;check(!UniversalReadsColor(route),"depth-only family reads color");
  GPU gpu;State state;state.vs_handle=0x44;state.tss[0][kTssColorOp]=2;state.tss[0][kTssColorArg1]=0;state.tss[0][kTssAlphaOp]=2;state.tss[0][kTssAlphaArg1]=0;state.tss[1][kTssColorOp]=1;
  Vertex triangle[12]{};float positions[3][4]={{2,2,.4f,1},{44,2,.4f,1},{2,44,.4f,1}};
  for(unsigned i=0;i<12;i++){std::copy(positions[i%3],positions[i%3]+4,triangle[i].position);float color[]={.21f,.37f,.53f,.61f};std::copy(color,color+4,triangle[i].color);triangle[i].uv[0]=.25f;triangle[i].uv[1]=.75f;triangle[i].uv[3]=1;triangle[i].normal[2]=1;triangle[i].weights[0]=1;}
@@ -170,6 +180,7 @@ int main(){try{
  auto reference=gpu.draw(state,a,key,dc,false,false,false);auto universal=gpu.draw(state,a,key,dc,true,false,false);compare(reference,universal,"universal pretransformed diffuse");
  auto mixed=gpu.draw(state,a,key,dc,false,false,false,1,false,false,true);compare(reference,mixed,"specialized pipeline in a local-read render pass");
  auto fetch=gpu.draw(state,a,key,dc,true,true,false);compare(reference,fetch,"framebuffer fetch opaque");
+ auto opaque_local=gpu.draw(state,a,key,dc,true,false,false,1,false,false,true);compare(fetch,opaque_local,"opaque universal without fetch in local-read pass");
  auto additive_reference=gpu.draw(state,a,key,dc,false,false,true,2);auto additive_generic=gpu.draw(state,a,key,dc,true,true,true,2);compare(additive_reference,additive_generic,"overlapping primitives programmable blend");
  unsigned cases=4;
  textures[0].kind=kTex2D;
@@ -178,6 +189,7 @@ int main(){try{
   state.tss[0][kTssAlphaOp]=op;state.tss[0][kTssAlphaArg1]=0;state.tss[0][kTssAlphaArg2]=2;state.tss[0][kTssAlphaArg0]=3;
   key=MakePixelKey(state,textures);reference=gpu.draw(state,a,key,dc,false,false,false);universal=gpu.draw(state,a,key,dc,true,false,false);compare(reference,universal,("texture combiner "+std::to_string(op)).c_str());cases++;
   universal=gpu.draw(state,a,key,dc,true,true,false);compare(reference,universal,("native fetch plus sampled texture "+std::to_string(op)).c_str());cases++;
+  auto no_read=gpu.draw(state,a,key,dc,true,false,false,1,false,false,true);compare(universal,no_read,("opaque local-read pass without destination "+std::to_string(op)).c_str());cases++;
  }
 
  // Generated legal register-combiner states, independent of gameplay recipes.
