@@ -9,21 +9,17 @@ concurrency:
   cancel-in-progress: true
 jobs:
   check:
-    strategy:
-      fail-fast: false
-      matrix:
-        runner: [macos-latest, ubuntu-latest]
-    runs-on: ${{ matrix.runner }}
+    runs-on: macos-15-intel
     timeout-minutes: 5
     steps:
-    - name: Confirm runner scheduling and installed toolchains
+    - name: Confirm Intel Mac host and ARM64 cross compiler
       shell: bash
       run: |
-        uname -m
-        if [ "${{ runner.os }}" = macOS ]; then
-          test "$(uname -m)" = arm64
-          sw_vers
-          xcodebuild -version
-          xcrun --sdk macosx --show-sdk-version
-          for app in /Applications/Xcode*.app; do basename "$app"; done
-        fi
+        test "$(uname -m)" = x86_64
+        sw_vers
+        xcodebuild -version
+        xcrun --sdk macosx --show-sdk-version
+        for app in /Applications/Xcode*.app; do basename "$app"; done
+        printf 'int fixture(void){return 1;}\n' > "$RUNNER_TEMP/arm64-fixture.c"
+        xcrun --sdk macosx clang -arch arm64 -c "$RUNNER_TEMP/arm64-fixture.c" -o "$RUNNER_TEMP/arm64-fixture.o"
+        file "$RUNNER_TEMP/arm64-fixture.o"
