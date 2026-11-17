@@ -35,6 +35,12 @@ def prepare(prefix,cache):
  while pending:
   name=pending.pop(0).strip()
   if not name or name in seen:continue
+  formula=json.loads(run('brew','info','--json=v2','--variations','--formula',name,env=env))['formulae'][0]
+  pending.extend(formula.get('dependencies',[]))
+  pending.extend(formula.get('recommended_dependencies',[]))
+  for platform,variation in (formula.get('variations') or {}).items():
+   if platform.startswith('arm64_') and 'linux' not in platform:
+    pending.extend(variation.get('dependencies',[]));pending.extend(variation.get('recommended_dependencies',[]))
   # Platform-specific Homebrew API responses expose only that platform's bottles.
   # Simulate ARM64 explicitly, rather than reading Intel formula metadata.
   archive=None;tag=None
@@ -47,15 +53,18 @@ def prepare(prefix,cache):
   if archive is None:raise SystemExit('No supported ARM64 Mac bottle: '+name)
   # brew fetch verifies against Homebrew's published digest before this point.
   digest=hashlib.sha256(archive.read_bytes()).hexdigest()
-  before=set((prefix/'Cellar').glob('*/*/INSTALL_RECEIPT.json'))
+  before=set(p for p in (prefix/'Cellar').glob('*/*') if p.is_dir())
   with tarfile.open(archive) as tar:tar.extractall(prefix/'Cellar',filter='data')
-  receipts=set((prefix/'Cellar').glob('*/*/INSTALL_RECEIPT.json'))-before
-  if len(receipts)!=1:raise SystemExit('Unexpected bottle layout: '+name)
-  receipt=receipts.pop();keg=receipt.parent;canonical=keg.parent.name
+  kegs=set(p for p in (prefix/'Cellar').glob('*/*') if p.is_dir())-before
+  if len(kegs)!=1:
+   raise SystemExit('Unexpected bottle layout: '+name+'; top entries: '+str(list((prefix/'Cellar').glob('*/*'))[:12]))
+  keg=kegs.pop();canonical=keg.parent.name
   alias=prefix/'opt'/canonical
   if not alias.exists():alias.symlink_to(keg)
-  data=json.loads(receipt.read_text())
-  pending.extend(x['full_name'] for x in data.get('runtime_dependencies',[]))
+  # Modern bottles can omit the installed receipt. Formula dependencies are
+  # already included above; use receipt metadata as an additional check when present.
+  receipt=keg/'INSTALL_RECEIPT.json'
+  if receipt.is_file():pending.extend(x['full_name'] for x in json.loads(receipt.read_text()).get('runtime_dependencies',[]))
   seen.add(name);seen.add(canonical)
   manifest.append({'formula':name,'tag':tag,'sha256':digest,'keg':str(keg.relative_to(prefix))})
   # The cache belongs solely to this task, not to the host Homebrew installation.
@@ -70,7 +79,10 @@ def prepare(prefix,cache):
    path.chmod(path.stat().st_mode|0o200)
    if len(architectures)>1:
     thin=path.with_name(path.name+'.arm64');subprocess.run(['lipo',str(path),'-thin','arm64','-output',str(thin)],check=True);thin.replace(path)
+    with path.open('rb') as f:head=f.read(4096)
    if head.startswith(b'!<arch>\n'):continue
+   endian='little' if head[:4]==b'\xcf\xfa\xed\xfe' else 'big'
+   if int.from_bytes(head[12:16],endian) not in (6,8):continue
    rows=run('otool','-L',path).splitlines()[1:]
    for row in rows:
     dep=row.strip().split(' (')[0];new=relocated(dep,prefix)
