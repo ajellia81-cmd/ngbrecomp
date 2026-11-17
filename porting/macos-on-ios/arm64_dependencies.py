@@ -25,7 +25,11 @@ def prepare(prefix,cache):
  if run('uname','-m')!='x86_64':raise SystemExit('This fallback is for an Intel Mac build host')
  if prefix.exists():raise SystemExit('Use a new isolated dependency prefix')
  prefix.mkdir(parents=True);(prefix/'Cellar').mkdir();(prefix/'opt').mkdir();cache.mkdir(parents=True,exist_ok=True)
- env=os.environ.copy();env.update(HOMEBREW_CACHE=str(cache),HOMEBREW_NO_AUTO_UPDATE='1',HOMEBREW_NO_ENV_HINTS='1')
+ env=os.environ.copy();env.update(HOMEBREW_CACHE=str(cache),HOMEBREW_NO_AUTO_UPDATE='1',HOMEBREW_NO_ENV_HINTS='1',HOMEBREW_NO_INSTALL_FROM_API='1')
+ # Intel's compatibility API intentionally omits current ARM bottles. The
+ # public formula checkout retains all architectures and their verified hashes.
+ core=Path(run('brew','--repo','homebrew/core',env=env))
+ if not (core/'Formula').is_dir():subprocess.run(['brew','tap','--force','homebrew/core'],env=env,check=True)
  # Required runtime dependencies only; receipt metadata below also covers ARM-specific dependencies.
  pending=list(ROOTS);seen=set();manifest=[]
  while pending:
