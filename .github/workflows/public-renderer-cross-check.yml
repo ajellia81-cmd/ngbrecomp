@@ -1,0 +1,38 @@
+name: Public ARM64 renderer cross-build check
+on:
+  push:
+    branches: [macos-on-ios-upstream072-cross-check]
+permissions:
+  contents: read
+concurrency:
+  group: public-cross-check-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  renderer:
+    runs-on: macos-15-intel
+    timeout-minutes: 25
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.3.app/Contents/Developer
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        persist-credentials: false
+    - name: Prepare public ARM64 dependencies
+      shell: bash
+      run: |
+        set -euo pipefail
+        brew install cmake ninja pkg-config
+        bash xboxrecomp/third_party/fetch.sh
+        python3 porting/macos-on-ios/arm64_dependencies.py "$RUNNER_TEMP/public-arm-prefix" "$RUNNER_TEMP/public-arm-bottles"
+    - name: Configure and compile only the public renderer object target
+      shell: bash
+      run: |
+        set -euo pipefail
+        # A configure-only synthetic file satisfies the source-list check.
+        # No game input, game target, executable, IPA or artifact is produced.
+        mkdir -p src/recomp/gen
+        printf '/* Public configure fixture; contains no game code. */\nvoid configure_fixture(void){}\n' > src/recomp/gen/public_fixture.c
+        export PKG_CONFIG_LIBDIR="$RUNNER_TEMP/public-arm-prefix/lib/pkgconfig:$RUNNER_TEMP/public-arm-prefix/share/pkgconfig"
+        export PKG_CONFIG_PATH="$PKG_CONFIG_LIBDIR"
+        cmake -S . -B "$RUNNER_TEMP/public-renderer" -G Ninja -DCMAKE_BUILD_TYPE=Release -DNGB_MACOS_ON_IOS=ON -DCMAKE_TOOLCHAIN_FILE="$PWD/porting/macos-on-ios/arm64-cross.cmake" -DCMAKE_PREFIX_PATH="$RUNNER_TEMP/public-arm-prefix" -DPKG_CONFIG_EXECUTABLE="$(command -v pkg-config)" -DCMAKE_DISABLE_FIND_PACKAGE_Qt6=TRUE
+        cmake --build "$RUNNER_TEMP/public-renderer" --target ngb_d3d --parallel 2
