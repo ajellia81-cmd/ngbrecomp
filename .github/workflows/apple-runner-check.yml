@@ -4,16 +4,26 @@ on:
     branches: [macos-on-ios-upstream072-runner-check]
 permissions:
   contents: read
+concurrency:
+  group: runner-check-${{ github.ref }}
+  cancel-in-progress: true
 jobs:
   check:
-    runs-on: macos-26
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [macos-latest, ubuntu-latest]
+    runs-on: ${{ matrix.runner }}
     timeout-minutes: 5
     steps:
-    - name: Confirm Apple Silicon and installed toolchains
+    - name: Confirm runner scheduling and installed toolchains
       shell: bash
       run: |
-        test "$(uname -m)" = arm64
-        sw_vers
-        xcodebuild -version
-        xcrun --sdk macosx --show-sdk-version
-        for app in /Applications/Xcode*.app; do basename "$app"; done
+        uname -m
+        if [ "${{ runner.os }}" = macOS ]; then
+          test "$(uname -m)" = arm64
+          sw_vers
+          xcodebuild -version
+          xcrun --sdk macosx --show-sdk-version
+          for app in /Applications/Xcode*.app; do basename "$app"; done
+        fi
