@@ -33,7 +33,7 @@
 #include "usb/usb_gamepad.h"
 #include "apu/apu.h"
 
-enum { KEY_UP = 1, KEY_DOWN, KEY_LEFT, KEY_RIGHT, KEY_OK, KEY_BACK, KEY_CLEAR };
+enum { KEY_UP = 1, KEY_DOWN, KEY_LEFT, KEY_RIGHT, KEY_OK, KEY_BACK, KEY_CLEAR, KEY_ALT_OK };
 
 /* The settings the game runs with; what the menu starts from. */
 static NgbSettings s_running;
@@ -150,6 +150,7 @@ int ngb_pc_setting(int which)
     }
     switch (which) {
     case 0:  return s_running.scale;
+    case 46: return s_running.ios_text_language;
     case 1:  return s_running.anisotropy;
     case 2:  return s_running.shadow_scale;
     case 3:  return s_running.fullscreen;
@@ -193,6 +194,7 @@ void ngb_pc_set_setting(int which, int value)
     }
     ngb_pc_setting(0);
     switch (which) {
+    case 46: s_running.ios_text_language=value<0?0:value>2?2:value; s_running.text_language_options=1; break;
     case 14: s_running.all_difficulties = value; ngb_set_all_difficulties(value); break;
     case 16: s_running.all_costumes = value; ngb_set_all_costumes(value); break;
     case 26: case 27: case 28: s_running.unlock[which - 26] = !!value; ngb_set_unlock(which - 26, !!value); break;
@@ -242,9 +244,15 @@ void ngb_pc_set_setting(int which, int value)
         break;
     }
     if (which <= 2 || which == 10)
-        nv2a_set_quality(s_running.scale, s_running.anisotropy, s_running.shadow_scale, s_running.msaa);
+        nv2a_set_quality(ngb_settings_runtime_scale(&s_running), s_running.anisotropy, s_running.shadow_scale, s_running.msaa);
     if (!getenv("NGB_NO_SETTINGS"))
         ngb_settings_save(&s_running);
+#ifdef NGB_IOS_KOREAN
+    if (which==46) {
+        extern void ngb_ios_language_changed(int language);
+        ngb_ios_language_changed(s_running.ios_text_language);
+    }
+#endif
 }
 
 /* Opens the recomp settings menu at the next frame (the main menu's "RECOMP SETTINGS"). */
@@ -366,7 +374,7 @@ int ngb_pause_tab_key(int *focus)
     static const struct { uint32_t bit; int key; } map[] = {
         { XBOX_GAMEPAD_DPAD_UP, KEY_UP }, { XBOX_GAMEPAD_DPAD_DOWN, KEY_DOWN },
         { XBOX_GAMEPAD_DPAD_LEFT, KEY_LEFT }, { XBOX_GAMEPAD_DPAD_RIGHT, KEY_RIGHT },
-        { 1u << 16, KEY_OK }, { 1u << 17, KEY_BACK }, { XBOX_GAMEPAD_START, KEY_BACK }, { 1u << 20, KEY_CLEAR },
+        { 1u << 16, KEY_OK }, { 1u << 17, KEY_BACK }, { XBOX_GAMEPAD_START, KEY_BACK }, { 1u << 20, KEY_ALT_OK },
     };
     uint64_t now = mono_ms();
     {
@@ -428,6 +436,7 @@ int ngb_pause_tab_key(int *focus)
         s_tab_rbit = 0;
 
     if (!*focus) {
+        if(key==KEY_ALT_OK)key=KEY_OK;
         if (key == KEY_OK && !s_open) {
             *focus = s_tab_focus = 1;
             usb_gamepad_block = 1;
@@ -1701,7 +1710,7 @@ static void apply_and_close(void)
         nv2a_present_set_show_fps(n->show_fps);
     if (n->scale != o->scale || n->anisotropy != o->anisotropy || n->msaa != o->msaa ||
         n->shadow_scale != o->shadow_scale)
-        nv2a_set_quality(n->scale, n->anisotropy, n->shadow_scale, n->msaa);
+        nv2a_set_quality(ngb_settings_runtime_scale(n), n->anisotropy, n->shadow_scale, n->msaa);
     if (memcmp(n, o, sizeof *n) && !getenv("NGB_NO_SETTINGS"))
         ngb_settings_save(n);
     s_running = *n;

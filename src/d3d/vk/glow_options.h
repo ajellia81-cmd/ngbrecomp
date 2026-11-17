@@ -1,3 +1,6 @@
+#ifdef NGB_CONVERTED_DISPLAY
+extern "C" double ngb_ios_native_aspect(void);
+#endif
 // Optional quality profile, based on the preferred launcher 18 comparison: RECOMP SETTINGS ->
 // Graphics -> Smoother Glow (ngb_pc_setting 18), off by default; NGB_GLOW_QUALITY=1 or 0 overrides it.
 // Stock rendering is unchanged otherwise.
@@ -61,6 +64,9 @@ inline GlowFootprintValues GlowFootprint() {
     case 2: result.aspect=16.0/10.0;break;
     case 3: result.aspect=64.0/27.0;break;
     case 4: result.aspect=32.0/9.0;break;
+#ifdef NGB_CONVERTED_DISPLAY
+    case 5: result.aspect=ngb_ios_native_aspect();break;
+#endif
     default: break;
     }
     result.x*= (16.0/9.0)/result.aspect;

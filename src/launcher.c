@@ -33,7 +33,11 @@ static void config_path(char *out, size_t n, int make_dir)
     snprintf(out, n, "%s/settings.ini", dir);
 }
 
-static const char *const ASPECT_NAMES[ASPECT_COUNT] = { "4:3", "16:9", "16:10", "21:9", "32:9" };
+static const char *const ASPECT_NAMES[ASPECT_COUNT] = { "4:3", "16:9", "16:10", "21:9", "32:9"
+#ifdef NGB_CONVERTED_DISPLAY
+, "iphone-native"
+#endif
+};
 
 /* Window sizes offered for each aspect ratio, smallest first. */
 static const int SIZES_4_3[][2] = {
@@ -52,6 +56,13 @@ static const int SIZES_32_9[][2] = {     /* two 16:9 screens side by side (#74) 
 
 static const int (*sizes_for(int aspect))[2]
 {
+#ifdef NGB_CONVERTED_DISPLAY
+    static int native[2][2];
+    if (aspect == ASPECT_IPHONE) {
+        ngb_ios_screen_size(&native[0][0], &native[0][1]);
+        return native;
+    }
+#endif
     return aspect == ASPECT_4_3 ? SIZES_4_3
          : aspect == ASPECT_16_10 ? SIZES_16_10 : aspect == ASPECT_21_9 ? SIZES_21_9
          : aspect == ASPECT_32_9 ? SIZES_32_9 : SIZES_16_9;
@@ -100,6 +111,19 @@ static void snap_size(NgbSettings *s)
 
 void ngb_settings_snap_size(NgbSettings *s) { snap_size(s); }
 
+int ngb_settings_runtime_scale(const NgbSettings *s)
+{
+#ifdef NGB_CONVERTED_DISPLAY
+    if (s->scale == NGB_RENDER_SCALE_IPHONE_NATIVE) {
+        int w, h;
+        ngb_ios_screen_size(&w, &h);
+        int scale = (h + 479) / 480;
+        return scale < 1 ? 1 : scale > 10 ? 10 : scale;
+    }
+#endif
+    return s->scale;
+}
+
 /* The quick menu's size: 25 to 150 percent in quarters, or 0 (Off). A size saved before (in tens) is the
  * nearest quarter. */
 int ngb_quick_scale_value(int v)
@@ -140,6 +164,7 @@ void ngb_settings_load(NgbSettings *s)
     s->scale = 1;
     s->vsync = 0;
     s->show_fps = 0;
+    s->ios_text_language = 1;
     s->anisotropy = 16;
     s->msaa = 1;
     s->shadow_scale = 1;   /* the console's (Original): 0.9.45; 4x before */
@@ -177,7 +202,7 @@ void ngb_settings_load(NgbSettings *s)
             s->fullscreen = atoi(val) < 0 ? 0 : atoi(val) > 2 ? 2 : atoi(val);
         } else if (!strcmp(key, "render_scale")) {
             int v = atoi(val);
-            s->scale = v < 1 ? 1 : v > 10 ? 10 : v;
+            s->scale = v < 1 ? 1 : v > NGB_RENDER_SCALE_COUNT ? NGB_RENDER_SCALE_COUNT : v;
         } else if (!strcmp(key, "vsync")) {
             s->vsync = atoi(val) < 0 ? 0 : atoi(val) > 3 ? 3 : atoi(val);
         } else if (!strcmp(key, "shadow_resolution")) {
@@ -210,6 +235,10 @@ void ngb_settings_load(NgbSettings *s)
         } else if (!strcmp(key, "frame_interpolation")) {
             s->frame_interp = atoi(val) < 0 ? 0 : atoi(val) > 3 ? 3 : atoi(val);   /* 0 off, 1 Full Rate, 2 Half Rate, 3 2x */
         } else if (!strcmp(key, "text_language")) {
+#ifdef NGB_IOS_KOREAN
+            if (val[0]>='0' && val[0]<='2' && !val[1]) {s->ios_text_language=val[0]-'0';s->text_language_options=1;}
+            else
+#endif
             s->text_language = !SDL_strncasecmp(val, "en", 2) ? 1 : !SDL_strncasecmp(val, "ja", 2) ? 2 : 0;   /* english, en, Japanese, ja... */
         } else if (!strcmp(key, "bow_crosshair")) {
             s->bow_crosshair = atoi(val) != 0;
@@ -237,6 +266,11 @@ void ngb_settings_load(NgbSettings *s)
             s->responsive_menus = atoi(val) != 0;
         } else if (!strcmp(key, "movie_ratio")) {
             s->movie_43 = !strcmp(val, "4:3");
+        } else if (!strcmp(key, "text_language_options")) {
+            s->text_language_options=atoi(val)!=0;
+        } else if (!strcmp(key, "ios_text_language")) {
+            int language=atoi(val);
+            s->ios_text_language=language<0 ? 0 : language>2 ? 2 : language;
         } else if (!strcmp(key, "show_fps")) {
             s->show_fps = atoi(val) != 0;
         } else if (!strcmp(key, "quick_menu_freeze")) {
@@ -284,6 +318,10 @@ void ngb_settings_save(const NgbSettings *s)
     fprintf(f, "window = %dx%d\n", s->width, s->height);
     fprintf(f, "fullscreen = %d\n", s->fullscreen);
     fprintf(f, "render_scale = %d\n", s->scale);
+#ifdef NGB_IOS_KOREAN
+    fprintf(f, "ios_text_language = %d\n", s->ios_text_language);
+    fprintf(f, "text_language_options = %d\n", s->text_language_options);
+#endif
     fprintf(f, "vsync = %d\n", s->vsync);
     fprintf(f, "show_fps = %d\n", s->show_fps);
     fprintf(f, "anisotropic_filtering = %d\n", s->anisotropy);
@@ -321,6 +359,13 @@ void ngb_settings_save(const NgbSettings *s)
 double ngb_settings_aspect_ratio(const NgbSettings *s)
 {
     switch (s->aspect) {
+#ifdef NGB_CONVERTED_DISPLAY
+    case ASPECT_IPHONE: {
+        int w, h;
+        ngb_ios_screen_size(&w, &h);
+        return (double)w / h;
+    }
+#endif
     case ASPECT_4_3:   return 4.0 / 3.0;
     case ASPECT_16_10: return 16.0 / 10.0;
     case ASPECT_21_9: {
@@ -460,7 +505,7 @@ void ngb_settings_change(NgbSettings *s, int row, int dir)
         break;
     }
     case ROW_DISPLAY: s->fullscreen = (s->fullscreen + (dir < 0 ? 2 : 1)) % 3; break;
-    case ROW_SCALE:   s->scale = (s->scale - 1 + dir + 10) % 10 + 1; break;
+    case ROW_SCALE:   s->scale = (s->scale - 1 + dir + NGB_RENDER_SCALE_COUNT) % NGB_RENDER_SCALE_COUNT + 1; break;
     case ROW_VSYNC:   s->vsync = ngb_vsync_step(s->vsync, dir); break;
     case ROW_FPS:     s->show_fps = !s->show_fps; break;
     case ROW_TEXFILTER: {
@@ -491,11 +536,19 @@ void ngb_settings_change(NgbSettings *s, int row, int dir)
 
 void ngb_settings_row_text(const NgbSettings *s, int row, const char **label, char *val, size_t n)
 {
-    static const char *const ASPECT_LABEL[ASPECT_COUNT] = { "4:3", "16:9", "16:10", "21:9", "32:9" };
+    static const char *const ASPECT_LABEL[ASPECT_COUNT] = { "4:3", "16:9", "16:10", "21:9", "32:9"
+#ifdef NGB_CONVERTED_DISPLAY
+, "iPhone Native"
+#endif
+};
     /* the game draws a 720x480 picture at every aspect (480p); the scale multiplies it (#105) */
-    static const char *const SCALE_LABEL[10] = {
+    static const char *const SCALE_LABEL[NGB_RENDER_SCALE_COUNT] = {
         "1x 720x480", "2x 1440x960", "3x 2160x1440", "4x 2880x1920", "5x 3600x2400",
-        "6x 4320x2880", "7x 5040x3360", "8x 5760x3840", "9x 6480x4320", "10x 7200x4800" };
+        "6x 4320x2880", "7x 5040x3360", "8x 5760x3840", "9x 6480x4320", "10x 7200x4800"
+#ifdef NGB_CONVERTED_DISPLAY
+, "iPhone Native"
+#endif
+};
     val[0] = 0;
     switch (row) {
     case ROW_ASPECT:  *label = "Aspect ratio";  snprintf(val, n, "%s", ASPECT_LABEL[s->aspect]); break;

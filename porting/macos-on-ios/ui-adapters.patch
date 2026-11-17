@@ -1,0 +1,149 @@
+diff --git a/src/main_menu.c b/src/main_menu.c
+index d4f2dd6..2c21eec 100644
+--- a/src/main_menu.c
++++ b/src/main_menu.c
+@@ -31,0 +32 @@
++#include "quit_label.h"
+@@ -56 +57 @@ void ngb_general_page_init(void)
+-        static const char t[] = "EXIT TO DESKTOP";
++        static const char t[] = NGB_MAIN_QUIT_LABEL;
+@@ -74,0 +76,6 @@ void ngb_general_page_init(void)
++#ifdef NGB_IOS_KOREAN
++    /* The Korean drawer has its own language-aware layout continuation.
++     * Keep its matching original General row table, including Flag Select. */
++    extern int ngb_korean_active(void);
++    if (ngb_korean_active()) return;
++#endif
+@@ -1333,0 +1341,3 @@ loc_0017CC98: ;
++#ifdef NGB_IOS_KOREAN
++    eax = ngb_ios_game_text_language(MEM32(0xDB9890));
++#else
+@@ -1334,0 +1345 @@ loc_0017CC98: ;
++#endif
+diff --git a/src/pause_tab.c b/src/pause_tab.c
+index 0f55686..04ec827 100644
+--- a/src/pause_tab.c
++++ b/src/pause_tab.c
+@@ -35,0 +36 @@
++#include "quit_label.h"
+@@ -222 +223,5 @@ static void value_text(int row, char *out, size_t n)
+-    case S_RENDER:  snprintf(out, n, "%dx %dx%d", v, 720 * v, 480 * v); break;   /* the game's 720x480 times it (#105) */
++    case S_RENDER:
++#ifdef NGB_CONVERTED_DISPLAY
++        if(v==NGB_RENDER_SCALE_IPHONE_NATIVE){snprintf(out,n,"iPhone Native");break;}
++#endif
++        snprintf(out, n, "%dx %dx%d", v, 720 * v, 480 * v); break;   /* the game's 720x480 times it (#105) */
+@@ -234 +239,5 @@ static void value_text(int row, char *out, size_t n)
+-    case S_ASPECT:  snprintf(out, n, "%s", v == 4 ? "32:9" : v == 3 ? "21:9" : v == 2 ? "16:10" : v ? "16:9" : "4:3"); break;
++    case S_ASPECT:
++#ifdef NGB_CONVERTED_DISPLAY
++        if(v==ASPECT_IPHONE){snprintf(out,n,"iPhone Native");break;}
++#endif
++        snprintf(out, n, "%s", v == 4 ? "32:9" : v == 3 ? "21:9" : v == 2 ? "16:10" : v ? "16:9" : "4:3"); break;
+@@ -260 +269 @@ static void change(int row, int step)
+-        ngb_pc_set_setting(0, v < 1 ? 10 : v > 10 ? 1 : v);
++        ngb_pc_set_setting(0, v < 1 ? NGB_RENDER_SCALE_COUNT : v > NGB_RENDER_SCALE_COUNT ? 1 : v);
+@@ -622,0 +632,2 @@ static void tab_word(uint8_t *m, int mw, int mh, float cx, float cy, float bw, f
++    float text_height = bh;
++    int localized = 0;
+@@ -627,2 +638,11 @@ static void tab_word(uint8_t *m, int mw, int mh, float cx, float cy, float bw, f
+-        float a = draw_text(tmp, 400, 160, &s_font_tab, "S", cap, sx, 6, base);
+-        draw_text(tmp, 400, 160, &s_font_tab, "ettings", rest, sx, 6 + a - 2, base);
++#ifdef NGB_IOS_KOREAN
++        extern int ngb_korean_active(void);
++        extern int ngb_ios_settings_tab_mask(uint8_t *, int, int);
++        localized = ngb_korean_active() && ngb_ios_settings_tab_mask(tmp, 400, 160);
++        if (localized) { text_height = bh * 30.0f / 38.0f; cy -= 2.0f * mh / 64.0f; }
++        if (!localized)
++#endif
++        {
++            float a = draw_text(tmp, 400, 160, &s_font_tab, "S", cap, sx, 6, base);
++            draw_text(tmp, 400, 160, &s_font_tab, "ettings", rest, sx, 6 + a - 2, base);
++        }
+@@ -643,2 +663,3 @@ static void tab_word(uint8_t *m, int mw, int mh, float cx, float cy, float bw, f
+-    float k = fminf(fminf(bw / tw, bh / th), 1.0f);
+-    int ow = (int)(tw * k), oh = (int)(th * k);
++    float k = fminf(fminf(bw / tw, text_height / th), 1.0f);
++    int ow = localized ? (int)lroundf(tw * k) : (int)(tw * k);
++    int oh = localized ? (int)lroundf(th * k) : (int)(th * k);
+@@ -650,5 +671,16 @@ static void tab_word(uint8_t *m, int mw, int mh, float cx, float cy, float bw, f
+-            for (float yy = sy0; yy < sy0 + 1 / k; yy += 0.5f)
+-                for (float xx = sx0; xx < sx0 + 1 / k; xx += 0.5f) {
+-                    int X = (int)xx, Y = (int)yy;
+-                    if (X <= x1 && Y <= y1) { sum += tmp[Y * 400 + X]; n++; }
+-                }
++            if (localized) {
++                // Integrate coverage instead of point sampling thin strokes.
++                float sx1=fminf(sx0+1/k,x1+1), sy1=fminf(sy0+1/k,y1+1);
++                for (int Y=(int)floorf(sy0); Y<(int)ceilf(sy1); Y++)
++                    for (int X=(int)floorf(sx0); X<(int)ceilf(sx1); X++) {
++                        float area=(fminf(X+1,sx1)-fmaxf(X,sx0))*
++                                   (fminf(Y+1,sy1)-fmaxf(Y,sy0));
++                        if (area>0) { sum+=tmp[Y*400+X]*area; n+=area; }
++                    }
++            } else {
++                for (float yy = sy0; yy < sy0 + 1 / k; yy += 0.5f)
++                    for (float xx = sx0; xx < sx0 + 1 / k; xx += 0.5f) {
++                        int X = (int)xx, Y = (int)yy;
++                        if (X <= x1 && Y <= y1) { sum += tmp[Y * 400 + X]; n++; }
++                    }
++            }
+@@ -2066 +2098 @@ void ngb_menu_mark(void);            /* src/menu_mouse.c */
+-enum { K_UP = 1, K_DOWN, K_LEFT, K_RIGHT, K_OK, K_BACK, K_CLEAR, K_ROW = 0x10000 };
++enum { K_UP = 1, K_DOWN, K_LEFT, K_RIGHT, K_OK, K_BACK, K_CLEAR, K_ALT_OK, K_ROW = 0x10000 };
+@@ -2196,0 +2229 @@ static void pt_draw(void)
++    if(key==K_ALT_OK)key=s_cat==CAT_CTL && s_row>=0?K_CLEAR:K_OK;
+@@ -2435,0 +2469 @@ static int ngb_confirm_tick(void)
++    if(key==K_ALT_OK)key=K_OK;
+@@ -2567,0 +2602 @@ void ngb_controls_panel_tick(int want)
++    if(key==K_ALT_OK)key=K_CLEAR;
+@@ -2749 +2784 @@ void ngb_main_menu_exit(void)
+-    if (!s_mm_exit && ngb_confirm_open("Exit to Desktop?", 0))
++    if (!s_mm_exit && ngb_confirm_open(NGB_QUIT_QUESTION, 0))
+@@ -2779 +2814 @@ void ngb_quit_to_desktop(void);
+-static const char *const s_exit_label[EXIT_ROWS] = { "Return to Game", "Return to Main Menu", "Exit to Desktop" };
++static const char *const s_exit_label[EXIT_ROWS] = { "Return to Game", "Return to Main Menu", NGB_QUIT_LABEL };
+@@ -2785 +2820 @@ static const char *const s_exit_help[EXIT_ROWS] = {
+-static const char *const s_exit_q[EXIT_ROWS] = { "", "Return to the Main Menu?", "Exit to Desktop?" };
++static const char *const s_exit_q[EXIT_ROWS] = { "", "Return to the Main Menu?", NGB_QUIT_QUESTION };
+@@ -2831,0 +2867 @@ static void pt_exit_draw(void)
++    if(key==K_ALT_OK)key=s_cat==CAT_CTL && s_row>=0?K_CLEAR:K_OK;
+@@ -5267,0 +5304,10 @@ static void edge_inset(uint32_t p, uint32_t verts)
++#ifdef NGB_IOS_KOREAN
++        // Korean ink reaches the last cell row. QuadSnap already clamps to
++        // console sample centres; another vertical inset cuts off its fade.
++        // Keep horizontal seam protection and every non-font sprite intact.
++        extern int ngb_korean_active(void);
++        uint32_t id = MEM32(p) & 0xFFFF;
++        if (axis == 1 && ngb_korean_active() &&
++            (id == 0x56D || id == 0x587 || id == 0x588))
++            continue;
++#endif
+diff --git a/src/pc_menu.c b/src/pc_menu.c
+index ff59a45..c7b05a5 100644
+--- a/src/pc_menu.c
++++ b/src/pc_menu.c
+@@ -235,0 +236,5 @@ static const struct { uint32_t id; const char *text; } s_text[] = {
++#ifdef NGB_IOS_KOREAN
++    { 0x20200, "Text Language" },
++    { 0x20201, "Text language. Restart to apply Korean." },
++    { 0x20210, "Japanese" }, { 0x20211, "English" }, { 0x20212, "Korean" },
++#endif
+@@ -321,0 +327,4 @@ static const struct { uint32_t id; const char *text; } s_text[] = {
++#ifdef NGB_CONVERTED_DISPLAY
++    { T_SCALE0 + 10, "iPhone Native" },
++    { T_ASPECT0 + ASPECT_IPHONE, "iPhone Native" },
++#endif
+@@ -408 +417 @@ static uint32_t make_rows(const uint8_t *kinds, int n)
+-        case ROW_RENDER:  src = 0x429984; max = 9; break;
++        case ROW_RENDER:  src = 0x429984; max = NGB_RENDER_SCALE_COUNT - 1; break;
+@@ -414 +423 @@ static uint32_t make_rows(const uint8_t *kinds, int n)
+-        case ROW_ASPECT:  src = 0x429984; max = 3; break;
++        case ROW_ASPECT:  src = 0x429984; max = ASPECT_COUNT - 1; break;
+@@ -932 +941 @@ static int pc_value_change(int row, int delta)
+-        ngb_pc_set_setting(0, v < 1 ? 10 : v > 10 ? 1 : v);
++        ngb_pc_set_setting(0, v < 1 ? NGB_RENDER_SCALE_COUNT : v > NGB_RENDER_SCALE_COUNT ? 1 : v);
+@@ -2173,0 +2183,3 @@ float ngb_hud_shape(void)
++#ifdef NGB_CONVERTED_DISPLAY
++    if (a==ASPECT_IPHONE) {NgbSettings native={0};native.aspect=a;return (float)((4.0/3.0)/ngb_settings_aspect_ratio(&native));}
++#endif

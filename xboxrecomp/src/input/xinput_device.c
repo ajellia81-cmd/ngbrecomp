@@ -1,3 +1,6 @@
+#ifdef __APPLE__
+#include <dlfcn.h>
+#endif
 /**
  * Xbox Input Compatibility Layer
  *
@@ -847,6 +850,13 @@ DWORD xbox_InputSetState(DWORD dwPort, const XBOX_VIBRATION *pVibration)
         return ERROR_DEVICE_NOT_CONNECTED;
     SDL_LockMutex(g_pad_lock);
     SDL_GameController *c = g_pads[dwPort];
+#ifdef __APPLE__
+    typedef void (*ConvertedRumble)(unsigned,uint16_t,uint16_t);
+    static ConvertedRumble rumble;static int checked;
+    if(!checked){rumble=(ConvertedRumble)dlsym(RTLD_DEFAULT,"ngb_macos_on_ios_haptics_set");checked=1;}
+    if(rumble)rumble(dwPort,pVibration->wLeftMotorSpeed,pVibration->wRightMotorSpeed);
+    else
+#endif
     /* SDL rumble needs a duration: 1 s, renewed every half second while the
      * speeds stay the same. The title sends its motors' speeds every few
      * milliseconds, changed or not, and each SDL call is a write to the

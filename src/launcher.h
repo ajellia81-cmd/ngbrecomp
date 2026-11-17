@@ -6,7 +6,19 @@
 #define NGB_LAUNCHER_H
 #include <stddef.h>
 
-enum { ASPECT_4_3, ASPECT_16_9, ASPECT_16_10, ASPECT_21_9, ASPECT_32_9, ASPECT_COUNT };
+enum { ASPECT_4_3, ASPECT_16_9, ASPECT_16_10, ASPECT_21_9, ASPECT_32_9,
+#ifdef NGB_CONVERTED_DISPLAY
+ASPECT_IPHONE,
+#endif
+ASPECT_COUNT };
+
+#ifdef NGB_CONVERTED_DISPLAY
+#define NGB_RENDER_SCALE_COUNT 11
+#define NGB_RENDER_SCALE_IPHONE_NATIVE 11
+void ngb_ios_screen_size(int *, int *);
+#else
+#define NGB_RENDER_SCALE_COUNT 10
+#endif
 
 typedef struct NgbSettings {
     int aspect;          /* ASPECT_* */
@@ -15,6 +27,8 @@ typedef struct NgbSettings {
     int scale;           /* render scale 1..10 */
     int vsync;
     int show_fps;        /* frame rate and frame time overlay */
+    int text_language_options; /* original Options selector has taken ownership */
+    int ios_text_language; /* 0 Japanese, 1 English, 2 Korean; next launch */
     int anisotropy;      /* 0 the console's texture filtering; 2, 4, 8, 16 trilinear + anisotropic */
     int msaa;            /* MSAA samples: 1 (off), 2, 4, 8 */
     int shadow_scale;    /* shadow map resolution multiple: 1, 2, 4 or 8 */
@@ -77,6 +91,7 @@ void ngb_settings_snap_size(NgbSettings *s);   /* the nearest size of s's aspect
 
 /* Width/height of the aspect, for the presenter. */
 double ngb_settings_aspect_ratio(const NgbSettings *s);
+int ngb_settings_runtime_scale(const NgbSettings *s);
 
 /* Runs the settings screen in its own window. Returns 1 to start the game,
  * 0 to quit. Saves the settings when the game is started. */

@@ -130,6 +130,11 @@ void ngb_gpu_frame_reached(void);   /* src/d3d/d3d.c: the GPU's end-of-frame cal
 
 recomp_func_t recomp_lookup_manual(uint32_t xbox_va)
 {
+#ifdef NGB_IOS_KOREAN
+    extern recomp_func_t ngb_korean_lookup(unsigned);
+    recomp_func_t translated=ngb_korean_lookup(xbox_va);
+    if(translated)return translated;
+#endif
     icall_hist(xbox_va);
 #ifndef TRILOGY_XBE
     if (xbox_va == 0x0030E060)

@@ -1,0 +1,194 @@
+name: Ninja Gaiden Black upstream 0.9.72 IPA
+'on':
+  push:
+    branches:
+    - macos-on-ios-upstream072
+  workflow_dispatch: null
+permissions:
+  contents: read
+concurrency:
+  group: ngb-mac-conversion-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  convert:
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.3.app/Contents/Developer
+    runs-on: macos-15
+    timeout-minutes: 120
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        persist-credentials: false
+        fetch-depth: 0
+    - name: Apply reviewed Korean and iPhone UI changes to public upstream menus
+      run: git apply --unidiff-zero porting/macos-on-ios/ui-adapters.patch
+    - name: Check upstream graphics baseline and iPhone adapters
+      run: 'python3 porting/macos-on-ios/check_baseline.py
+
+        python3 porting/macos-on-ios/tests/codegen_adapters.py
+
+        python3 porting/macos-on-ios/tests/compact_macho.py
+
+        python3 porting/macos-on-ios/tests/settings_migration.py'
+    - name: Check Korean save links after container relocation
+      run: 'xcrun --sdk macosx clang -fobjc-arc -Wall -Wextra -Werror -fsanitize=address porting/macos-on-ios/tests/save_paths.m -framework Foundation -o "$RUNNER_TEMP/ngb-save-paths-test"
+
+        mkdir -p "$RUNNER_TEMP/ngb-save-paths-fixture"
+
+        "$RUNNER_TEMP/ngb-save-paths-test" "$RUNNER_TEMP/ngb-save-paths-fixture"
+
+        '
+    - name: Check Korean asset links after container relocation
+      run: 'xcrun --sdk macosx clang -fobjc-arc -Wall -Wextra -Werror -fsanitize=address porting/macos-on-ios/tests/game_links.m -framework Foundation -o "$RUNNER_TEMP/ngb-game-links-test"
+
+        mkdir -p "$RUNNER_TEMP/ngb-game-links-fixture"
+
+        "$RUNNER_TEMP/ngb-game-links-test" "$RUNNER_TEMP/ngb-game-links-fixture"
+
+        '
+    - name: Compile public iPhone compatibility UI before private generation
+      run: 'xcrun --sdk iphoneos clang -target arm64-apple-ios17.0 -fobjc-arc -Iporting/macos-on-ios -c porting/macos-on-ios/AppKit_NGB.m -o "$RUNNER_TEMP/ngb-ui-bridge.o"
+
+        xcrun --sdk iphoneos clang -target arm64-apple-ios17.0 -fobjc-arc -c porting/macos-on-ios/AppKit_NGBDialogs.m -o "$RUNNER_TEMP/ngb-native-dialogs.o"
+
+        xcrun --sdk iphoneos clang -target arm64-apple-ios17.0 -fobjc-arc -c porting/macos-on-ios/korean/haptics.m -o "$RUNNER_TEMP/ngb-haptics-bridge.o"
+
+        '
+    - name: Check SDL cursor image storage and ownership without game data
+      run: 'xcrun --sdk iphoneos clang -target arm64-apple-ios17.0 -fobjc-arc -c porting/macos-on-ios/AppKit_NGBImages.m -o "$RUNNER_TEMP/ngb-image-bridge.o"
+
+        xcrun --sdk macosx clang -fobjc-arc -fsanitize=address porting/macos-on-ios/tests/image_storage.m -framework Foundation -framework CoreGraphics -framework ImageIO -o "$RUNNER_TEMP/ngb-image-storage-test"
+
+        "$RUNNER_TEMP/ngb-image-storage-test"
+
+        '
+    - name: Check sandbox-local Xbox shared-memory aliases without game data
+      run: 'xcrun --sdk iphoneos clang -target arm64-apple-ios17.0 -fobjc-arc -c porting/macos-on-ios/libSystem_NGBSharedMemory.m -o "$RUNNER_TEMP/ngb-shared-memory.o"
+
+        xcrun --sdk macosx clang -fobjc-arc -fsanitize=address porting/macos-on-ios/tests/shared_memory.m -framework Foundation -o "$RUNNER_TEMP/ngb-shared-memory-test"
+
+        "$RUNNER_TEMP/ngb-shared-memory-test"
+
+        '
+    - name: Check Mac scheduler image identity in a container-style host
+      run: 'xcrun --sdk iphoneos clang -target arm64-apple-ios17.0 -c porting/macos-on-ios/libSystem_NGBImageIdentity.m -o "$RUNNER_TEMP/ngb-image-identity.o"
+
+        xcrun --sdk macosx clang -DNGB_IMAGE_IDENTITY_TEST=1 -fsanitize=address -dynamiclib porting/macos-on-ios/libSystem_NGBImageIdentity.m porting/macos-on-ios/tests/game_image_probe.c -Wl,-install_name,@rpath/NinjaGaidenBlack -o "$RUNNER_TEMP/NinjaGaidenBlack"
+
+        xcrun --sdk macosx clang -fsanitize=address porting/macos-on-ios/tests/image_identity.c "$RUNNER_TEMP/NinjaGaidenBlack" -Wl,-rpath,"$RUNNER_TEMP" -o "$RUNNER_TEMP/ngb-image-identity-test"
+
+        "$RUNNER_TEMP/ngb-image-identity-test"
+
+        '
+    - name: Check logical Mac audio-device enumeration without playing audio
+      run: 'xcrun --sdk iphoneos clang -target arm64-apple-ios17.0 -fobjc-arc -c porting/macos-on-ios/CoreAudio_NGB.m -o "$RUNNER_TEMP/ngb-coreaudio.o"
+
+        xcrun --sdk iphoneos clang -target arm64-apple-ios17.0 -fobjc-arc -c porting/macos-on-ios/AudioToolbox_NGB.m -o "$RUNNER_TEMP/ngb-audioqueue.o"
+
+        xcrun --sdk macosx clang -fobjc-arc -fsanitize=address porting/macos-on-ios/tests/audio_device.m -framework Foundation -framework AudioToolbox -o "$RUNNER_TEMP/ngb-audio-device-test"
+
+        "$RUNNER_TEMP/ngb-audio-device-test"
+
+        '
+    - name: Check relocated Korean DirectSound mailbox handshake
+      run: 'xcrun --sdk macosx clang -std=c11 -Wall -Wextra -fsanitize=address,undefined porting/macos-on-ios/dsp_mailbox.c porting/macos-on-ios/tests/dsp_mailbox.c -o "$RUNNER_TEMP/ngb-dsp-mailbox-test"
+
+        "$RUNNER_TEMP/ngb-dsp-mailbox-test"
+
+        '
+    - name: Check iOS presentation image count and driver limits
+      run: 'xcrun --sdk macosx clang -std=c11 -Wall -Wextra -fsanitize=address,undefined porting/macos-on-ios/tests/display_policy.c -o "$RUNNER_TEMP/ngb-display-policy-test"
+
+        "$RUNNER_TEMP/ngb-display-policy-test"
+
+        '
+    - name: Check menu input, resume timing, FPS safety and haptic recovery without hardware
+      shell: bash
+      run: 'set -euo pipefail
+
+        python3 porting/macos-on-ios/tests/menu_regressions.py
+
+        xcrun --sdk macosx clang -std=c11 -Wall -Wextra -fsanitize=address,undefined porting/macos-on-ios/tests/runtime_regressions.c -o "$RUNNER_TEMP/ngb-runtime-regressions"
+
+        "$RUNNER_TEMP/ngb-runtime-regressions"
+
+        xcrun --sdk macosx clang -fobjc-arc -fsanitize=address porting/macos-on-ios/tests/haptic_recovery.m -framework Foundation -framework GameController -framework CoreHaptics -o "$RUNNER_TEMP/ngb-haptic-recovery"
+
+        "$RUNNER_TEMP/ngb-haptic-recovery"
+
+        '
+    - name: Prepare native macOS ARM64 dependencies
+      run: 'brew install cmake ninja pkg-config sdl2-compat sdl3 libepoxy glib glslang molten-vk vulkan-loader sevenzip
+
+        bash xboxrecomp/third_party/fetch.sh'
+    - name: Require private disc input
+      env:
+        NGB_DISC_URL: ${{ secrets.NGB_DISC_URL }}
+      run: "if [ -z \"$NGB_DISC_URL\" ]; then\n  echo '::error::Add repository Actions secret NGB_DISC_URL containing the owner-provided Google Drive file link. No ISO or generated source is uploaded by this workflow.'\n  exit 1\nfi\n"
+    - uses: actions/setup-python@v5
+      with:
+        python-version: '3.12'
+    - name: Prepare isolated download and generation tools
+      run: 'python3 -m venv "$RUNNER_TEMP/ngb-input-tools"
+
+        "$RUNNER_TEMP/ngb-input-tools/bin/pip" install ''gdown==6.4.2''
+
+        python3 -m venv xboxrecomp/.venv
+
+        xboxrecomp/.venv/bin/pip install ''capstone==5.0.3''
+
+
+        xboxrecomp/.venv/bin/python -m unittest xboxrecomp.tools.disasm.test_observed_seeds xboxrecomp.tools.recomp.test_lifter_sse
+
+        '
+    - name: Download disc and validate the supported executable
+      env:
+        NGB_DISC_URL: ${{ secrets.NGB_DISC_URL }}
+        NGB_DISC_SHA256: ${{ secrets.NGB_DISC_SHA256 }}
+      run: "\"$RUNNER_TEMP/ngb-input-tools/bin/python\" porting/macos-on-ios/korean/private_input.py \\\n  --download --iso \"$RUNNER_TEMP/ngb-private.iso\"\nrm -f \"$RUNNER_TEMP/ngb-private.iso\"\n"
+    - name: Generate real game C using the existing pipeline
+      shell: bash
+      run: "set -euo pipefail\nif ! bash tools/pipeline.sh > \"$RUNNER_TEMP/ngb-pipeline-private.log\" 2>&1; then\n  echo '::error::Private recompilation failed. Raw logs are withheld because they can contain game-derived code. No placeholder executable was built.'\n  exit 1\nfi\ntest -s src/recomp/gen/recomp_types.h\npython3 - <<'PY'\nfrom pathlib import Path\nsources = list(Path('src/recomp/gen').glob('*.c'))\nif not sources:\n    raise SystemExit('No generated game C files')\nprint('Generated game C translation units:', len(sources))\nPY\n"
+    - name: Prepare verified Korean variants without replacing original game functions
+      shell: bash
+      run: "set -euo pipefail\npython3 porting/macos-on-ios/korean/prepare_korean.py --source game_files/default.xbe \\\n  --zip \"$RUNNER_TEMP/ngb-korean-patch.zip\" --download --output \"$RUNNER_TEMP/ngb-korean\"\nexport NGB_RECOMP_XBE=\"$RUNNER_TEMP/ngb-korean/korean.xbe\"\nexport NGB_RECOMP_GEN_DIR=\"$RUNNER_TEMP/ngb-korean/gen\"\nexport NGB_RECOMP_MANUAL=\"$RUNNER_TEMP/ngb-korean/manual-korean.json\"\nexport NGB_RECOMP_ANALYSIS=\"$RUNNER_TEMP/ngb-korean/analysis.json\"\nready=0\nfor pass in 1 2 3 4 5 6; do\n  if [ -s \"$RUNNER_TEMP/ngb-korean/continuations.json\" ]; then\n    export NGB_RECOMP_EXTRA_SEEDS=\"$RUNNER_TEMP/ngb-korean/continuations.json\"\n  fi\n  if ! bash tools/pipeline.sh > \"$RUNNER_TEMP/ngb-korean-pipeline-private.log\" 2>&1; then\n    echo '::error::Private Korean code generation failed; raw game-derived logs are withheld.'\n    exit 1\n  fi\n  set +e\n  python3 porting/macos-on-ios/korean/merge_korean_codegen.py --original src/recomp/gen --translated \"$NGB_RECOMP_GEN_DIR\" \\\n    --missing-seeds \"$RUNNER_TEMP/ngb-korean/continuations.json\"\n  result=$?\n  set -e\n  if [ \"$result\" -eq 0 ]; then ready=1; break; fi\n  if [ \"$result\" -ne 2 ]; then exit \"$result\"; fi\ndone\nif [ \"$ready\" -ne 1 ]; then\n  echo '::error::Korean continuations remain untranslated; refusing to substitute stubs.'\n  exit 1\nfi\n"
+    - name: Bind original Options text language to the private Korean boot
+      run: python3 porting/macos-on-ios/korean/wrap_game_codegen.py src/recomp/gen
+    - name: Compile original engine for macOS ARM64, not iPhoneOS
+      shell: bash
+      run: "set -euo pipefail\ncmake -S . -B \"$RUNNER_TEMP/ngb-mac-engine\" -G Ninja -DCMAKE_BUILD_TYPE=Release -DNGB_IOS_PORT_RELEASE=ON -DNGB_MACOS_ON_IOS=ON -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ -DCMAKE_OSX_ARCHITECTURES=arm64 -DCMAKE_PREFIX_PATH=\"$(brew --prefix)\" -DCMAKE_DISABLE_FIND_PACKAGE_Qt6=TRUE > \"$RUNNER_TEMP/mac-config-private.log\" 2>&1\nif ! cmake --build \"$RUNNER_TEMP/ngb-mac-engine\" --target NinjaGaidenBlack -j2 -- -k0 > \"$RUNNER_TEMP/mac-compile-private.log\" 2>&1; then\n echo '::error::Native macOS build failed. Generated-code diagnostics remain private.'\n python3 porting/macos-on-ios/report_build_errors.py \"$RUNNER_TEMP/mac-compile-private.log\"\n exit 1\nfi\npython3 porting/macos-on-ios/package_mac.py \"$RUNNER_TEMP/ngb-mac-engine/NinjaGaidenBlack\" \"$RUNNER_TEMP/Ninja Gaiden Black.app\" \"$RUNNER_TEMP/ngb-korean/KoreanPatch\""
+    - name: Fetch checksum-pinned macOS-on-iOS compatibility layer
+      run: 'git clone https://github.com/zorrobyte/macos-on-ios-public.git "$RUNNER_TEMP/ngb-compat"
+
+        git -C "$RUNNER_TEMP/ngb-compat" checkout c2562a333d4de4c08da4ceb4a4f1485bddb84e04
+
+        python3 porting/macos-on-ios/prepare_conversion.py "$RUNNER_TEMP/ngb-compat"'
+      shell: bash
+    - name: Convert Mac app, preserving original game machine instructions
+      run: 'set -euo pipefail
+
+        mkdir -p "$RUNNER_TEMP/ngb-converted"
+
+        python3 "$RUNNER_TEMP/ngb-compat/tools/convert_app.py" "$RUNNER_TEMP/Ninja Gaiden Black.app" "$RUNNER_TEMP/ngb-converted/NinjaGaidenBlack.app" com.ngbrecomp.game --profile /dev/null --identity - --team UNSIGNED --no-metal-hud > "$RUNNER_TEMP/conversion-private.log" 2>&1 || { echo ''::error::Compatibility conversion failed.''; python3 porting/macos-on-ios/report_build_errors.py "$RUNNER_TEMP/conversion-private.log"; exit 1; }
+
+        python3 porting/macos-on-ios/package_ipa.py "$RUNNER_TEMP/Ninja Gaiden Black.app" "$RUNNER_TEMP/ngb-converted/NinjaGaidenBlack.app" "$RUNNER_TEMP/ngb-package/NinjaGaidenBlack-macos-on-ios.ipa"'
+      shell: bash
+    - name: Prepare private artifact delivery
+      id: delivery
+      env:
+        NGB_IPA_PASSWORD: ${{ secrets.NGB_IPA_PASSWORD }}
+      shell: bash
+      run: "set -euo pipefail\nif [ -z \"$NGB_IPA_PASSWORD\" ]; then\n  echo 'ready=false' >> \"$GITHUB_OUTPUT\"\n  echo 'Game IPA was built, but not published. Add NGB_IPA_PASSWORD to deliver it as an encrypted artifact.'\n  exit 0\nfi\nif [ \"${#NGB_IPA_PASSWORD}\" -lt 16 ]; then\n  echo '::error::NGB_IPA_PASSWORD must contain at least 16 characters.'\n  exit 1\nfi\nif ! command -v 7zz >/dev/null; then brew install sevenzip; fi\nmkdir -p build/private-delivery\nARCHIVE=\"$PWD/build/private-delivery/NinjaGaidenBlack-macos-on-ios.ipa.7z\"\n(cd \"$RUNNER_TEMP/ngb-package\" && \\\n  7zz a -t7z -mx=0 -mhe=on -p\"$NGB_IPA_PASSWORD\" -bso0 -bsp0 \\\n    \"$ARCHIVE\" NinjaGaidenBlack-macos-on-ios.ipa)\n7zz t -p\"$NGB_IPA_PASSWORD\" -bso0 -bsp0 \\\n  build/private-delivery/NinjaGaidenBlack-macos-on-ios.ipa.7z\necho 'ready=true' >> \"$GITHUB_OUTPUT\"\n"
+    - name: Upload encrypted game IPA only
+      if: steps.delivery.outputs.ready == 'true'
+      uses: actions/upload-artifact@v4
+      with:
+        name: NinjaGaidenBlack-upstream-0.9.72-encrypted-IPA
+        path: build/private-delivery/*.ipa.7z
+        if-no-files-found: error
+        retention-days: 7
+    - name: Remove private build inputs
+      if: always()
+      run: 'rm -rf game_files src/recomp/gen "$RUNNER_TEMP/ngb-korean" "$RUNNER_TEMP/ngb-mac-engine" "$RUNNER_TEMP/Ninja Gaiden Black.app" "$RUNNER_TEMP/ngb-converted" "$RUNNER_TEMP/ngb-package"
+
+        rm -f "$RUNNER_TEMP/ngb-private.iso" "$RUNNER_TEMP/"*private.log'

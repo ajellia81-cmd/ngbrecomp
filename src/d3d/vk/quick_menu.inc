@@ -1,3 +1,7 @@
+#ifdef NGB_CONVERTED_DISPLAY
+extern "C" double ngb_ios_native_aspect(void);
+extern "C" void ngb_ios_safe_area(float *,float *,float *,float *);
+#endif
 // Only the carousel crosses from CPU to GPU. The game frame stays on the GPU,
 // with the usual frame fences and presentation cadence in both pause modes.
 // The background while the quick menu pauses the game: the frame made small (each small pixel the average
@@ -142,6 +146,9 @@ void VulkanBackend::QuickMenu(Image& dst) {
     int mode = ngb_pc_setting(7);
     float aspect = mode == 0 ? 4.0f / 3 : mode == 2 ? 16.0f / 10 : mode == 3 ? 64.0f / 27 : mode == 4 ? 32.0f / 9
                  : 16.0f / 9;
+#ifdef NGB_CONVERTED_DISPLAY
+    if(mode==5)aspect=float(ngb_ios_native_aspect());
+#endif
     float sx = float(dst.w) / (720 * aspect), sy = float(dst.h) / 720;
     float scale = percent / 100.0f;
     sx *= scale; sy *= scale;
@@ -247,6 +254,9 @@ void VulkanBackend::TextScale(const Image& dst, float* sx, float* up) {
     int mode = ngb_pc_setting(7);
     float aspect = mode == 0 ? 4.0f / 3 : mode == 2 ? 16.0f / 10 : mode == 3 ? 64.0f / 27 : mode == 4 ? 32.0f / 9
                  : 16.0f / 9;
+#ifdef NGB_CONVERTED_DISPLAY
+    if(mode==5)aspect=float(ngb_ios_native_aspect());
+#endif
     *sx = float(dst.w) / (float(dst.h) * aspect);
     ngb_fps_cap(int(dst.h), up);
 }
@@ -257,7 +267,12 @@ void VulkanBackend::FpsCounter(Image& dst) {
     float sx, up;
     TextScale(dst, &sx, &up);
     // (not lettered yet, the game's font not loaded: the presenter's own letters meanwhile)
-    if (TextLayerDraw(dst, fps_layer_, fps_pending_, fps_lettered_, dst.h * 0.012f * sx, dst.h * 0.004f))
+    float left=0.012f,top=0.004f;
+#ifdef NGB_CONVERTED_DISPLAY
+    float right,bottom;ngb_ios_safe_area(&left,&top,&right,&bottom);
+    left=std::max(left,0.012f);top=std::max(top,0.004f);
+#endif
+    if (TextLayerDraw(dst, fps_layer_, fps_pending_, fps_lettered_, std::max(dst.h * 0.012f * sx,dst.w*left), dst.h * top))
         nv2a_fps_drawn_outside = 1;
 }
 

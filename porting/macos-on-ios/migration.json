@@ -1,0 +1,26 @@
+{
+  "baseline": {
+    "version": "0.9.72",
+    "commit": "2606383704e2675b687fec89fb3dfa965b068d46",
+    "tag": "v0.9.72"
+  },
+  "method": "Native macOS ARM64 engine converted with pinned macos-on-ios compatibility layer",
+  "preserve": [
+    "All upstream features including official Frame Interpolation, menus, shader compilation, prewarm, loading and game timing",
+    "Korean patch variants, font clipping/spacing/punctuation, sprite and paragraph placement, approved Settings art, movie subtitles",
+    "iPhone native aspect/resolution, safe areas, touch input and controllers",
+    "iOS haptic preparation/recovery and foreground recovery",
+    "ISO import, portable save/config locations, Korean link repair after container relocation",
+    "Ninja Gaiden Black display name and approved icon",
+    "Original upstream debugging and F7 behavior"
+  ],
+  "exclude": [
+    "Prior iOS VF3 Smooth Motion adapter and its performance/water experiments",
+    "Prior custom universal shader fallback and patched MoltenVK",
+    "Port-added diagnostic writers, samplers, dump files and overlays",
+    "Prior loading/cache acceleration, shader preparation gates and user-captured recipes"
+  ],
+  "settings_migration": "Upstream text_language uses Auto/English/Japanese; separate ios_text_language and original Options selector support Korean. Audio Output 25 and Frame Interpolation 45 retain upstream numbers; Korean uses internal 46.",
+  "compatibility_commit": "c2562a333d4de4c08da4ceb4a4f1485bddb84e04",
+  "source_safety": "No private game files, generated C, device logs, captured shaders or credentials in source. Encrypted IPA only."
+}

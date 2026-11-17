@@ -1,3 +1,6 @@
+#ifdef NGB_CONVERTED_DISPLAY
+extern "C" double ngb_ios_native_aspect(void);
+#endif
 // Aspect correction for untextured two-vertex impact streaks (#65, HammerD72; NGB_SPARK_ASPECT_FIX=0: off).
 // Rasterize their stroke in a 16:9 pixel metric, then compensate its X
 // footprint for ultrawide presentation. Endpoints stay in the original WVP.
@@ -7,6 +10,9 @@ inline double SparkAspect() {
     case 2: return 16.0/10.0;
     case 3: return 64.0/27.0;
     case 4: return 32.0/9.0;
+#ifdef NGB_CONVERTED_DISPLAY
+    case 5: return ngb_ios_native_aspect();
+#endif
     default: return 4.0/3.0;
     }
 }
