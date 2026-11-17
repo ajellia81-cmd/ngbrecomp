@@ -35,7 +35,7 @@ def prepare(prefix,cache):
   # Simulate ARM64 explicitly, rather than reading Intel formula metadata.
   archive=None;tag=None
   for system in ('sequoia','sonoma','tahoe'):
-   flags=['--arch=arm64','--os='+system,'--force-bottle']
+   flags=['--arch=arm','--os='+system,'--force-bottle']
    result=subprocess.run(['brew','fetch','--formula','--retry',*flags,name],env=env)
    if result.returncode:continue
    candidate=run('brew','--cache',*flags,name,env=env)
