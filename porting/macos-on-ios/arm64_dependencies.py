@@ -4,7 +4,7 @@
 Only the isolated output prefix is written. ARM64 tools are never executed;
 Homebrew, Python, pkg-config, CMake and the Apple compiler run on the host.
 """
-import argparse,json,os,shutil,subprocess,tarfile
+import argparse,hashlib,json,os,shutil,subprocess,tarfile
 from pathlib import Path
 
 ROOTS=['sdl2-compat','sdl3','libepoxy','glib','glslang','molten-vk','vulkan-loader']
@@ -27,17 +27,22 @@ def prepare(prefix,cache):
  prefix.mkdir(parents=True);(prefix/'Cellar').mkdir();(prefix/'opt').mkdir();cache.mkdir(parents=True,exist_ok=True)
  env=os.environ.copy();env.update(HOMEBREW_CACHE=str(cache),HOMEBREW_NO_AUTO_UPDATE='1',HOMEBREW_NO_ENV_HINTS='1')
  # Required runtime dependencies only; receipt metadata below also covers ARM-specific dependencies.
- pending=list(ROOTS)+run('brew','deps','--formula',*ROOTS,env=env).splitlines();seen=set();manifest=[]
+ pending=list(ROOTS);seen=set();manifest=[]
  while pending:
   name=pending.pop(0).strip()
   if not name or name in seen:continue
-  formula=json.loads(run('brew','info','--json=v2','--formula',name,env=env))['formulae'][0]
-  tags=formula.get('bottle',{}).get('stable',{}).get('files',{})
-  tag=next((t for t in ('arm64_sequoia','arm64_sonoma','arm64_tahoe') if t in tags),None)
-  if not tag:raise SystemExit('No supported ARM64 Mac bottle: '+name)
-  subprocess.run(['brew','fetch','--formula','--retry','--bottle-tag='+tag,name],env=env,check=True)
-  archive=Path(run('brew','--cache','--bottle-tag='+tag,name,env=env))
-  if not archive.is_file():raise SystemExit('Missing fetched bottle: '+name)
+  # Platform-specific Homebrew API responses expose only that platform's bottles.
+  # Simulate ARM64 explicitly, rather than reading Intel formula metadata.
+  archive=None;tag=None
+  for system in ('sequoia','sonoma','tahoe'):
+   flags=['--arch=arm64','--os='+system,'--force-bottle']
+   result=subprocess.run(['brew','fetch','--formula','--retry',*flags,name],env=env)
+   if result.returncode:continue
+   candidate=run('brew','--cache',*flags,name,env=env)
+   if candidate and '.bottle' in candidate and Path(candidate).is_file():archive=Path(candidate);tag='arm64_'+system;break
+  if archive is None:raise SystemExit('No supported ARM64 Mac bottle: '+name)
+  # brew fetch verifies against Homebrew's published digest before this point.
+  digest=hashlib.sha256(archive.read_bytes()).hexdigest()
   before=set((prefix/'Cellar').glob('*/*/INSTALL_RECEIPT.json'))
   with tarfile.open(archive) as tar:tar.extractall(prefix/'Cellar',filter='data')
   receipts=set((prefix/'Cellar').glob('*/*/INSTALL_RECEIPT.json'))-before
@@ -48,7 +53,7 @@ def prepare(prefix,cache):
   data=json.loads(receipt.read_text())
   pending.extend(x['full_name'] for x in data.get('runtime_dependencies',[]))
   seen.add(name);seen.add(canonical)
-  manifest.append({'formula':name,'tag':tag,'sha256':tags[tag]['sha256'],'keg':str(keg.relative_to(prefix))})
+  manifest.append({'formula':name,'tag':tag,'sha256':digest,'keg':str(keg.relative_to(prefix))})
   # The cache belongs solely to this task, not to the host Homebrew installation.
   if archive.resolve().is_relative_to(cache.resolve()):archive.unlink()
  # Relocate bottle text placeholders and dynamic linkage, never machine instructions.
