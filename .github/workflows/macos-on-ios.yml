@@ -13,7 +13,7 @@ jobs:
   convert:
     env:
       DEVELOPER_DIR: /Applications/Xcode_26.3.app/Contents/Developer
-    runs-on: macos-15
+    runs-on: macos-15-intel
     timeout-minutes: 120
     steps:
     - uses: actions/checkout@v4
@@ -117,10 +117,22 @@ jobs:
         "$RUNNER_TEMP/ngb-haptic-recovery"
 
         '
-    - name: Prepare native macOS ARM64 dependencies
-      run: 'brew install cmake ninja pkg-config sdl2-compat sdl3 libepoxy glib glslang molten-vk vulkan-loader sevenzip
+    - name: Prepare host tools and public ARM64 Mac cross dependencies
+      run: 'set -euo pipefail
 
-        bash xboxrecomp/third_party/fetch.sh'
+        brew install cmake ninja pkg-config sevenzip
+
+        bash xboxrecomp/third_party/fetch.sh
+
+        python3 porting/macos-on-ios/arm64_dependencies.py "$RUNNER_TEMP/ngb-arm-dependencies" "$RUNNER_TEMP/ngb-arm-bottle-cache"
+
+        echo "NGB_DEPENDENCY_PREFIX=$RUNNER_TEMP/ngb-arm-dependencies" >> "$GITHUB_ENV"
+
+        echo "PKG_CONFIG_LIBDIR=$RUNNER_TEMP/ngb-arm-dependencies/lib/pkgconfig:$RUNNER_TEMP/ngb-arm-dependencies/share/pkgconfig" >> "$GITHUB_ENV"
+
+        echo "PKG_CONFIG_PATH=$RUNNER_TEMP/ngb-arm-dependencies/lib/pkgconfig:$RUNNER_TEMP/ngb-arm-dependencies/share/pkgconfig" >> "$GITHUB_ENV"
+
+        '
     - name: Require private disc input
       env:
         NGB_DISC_URL: ${{ secrets.NGB_DISC_URL }}
@@ -156,7 +168,7 @@ jobs:
       run: python3 porting/macos-on-ios/korean/wrap_game_codegen.py src/recomp/gen
     - name: Compile original engine for macOS ARM64, not iPhoneOS
       shell: bash
-      run: "set -euo pipefail\ncmake -S . -B \"$RUNNER_TEMP/ngb-mac-engine\" -G Ninja -DCMAKE_BUILD_TYPE=Release -DNGB_IOS_PORT_RELEASE=ON -DNGB_MACOS_ON_IOS=ON -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ -DCMAKE_OSX_ARCHITECTURES=arm64 -DCMAKE_PREFIX_PATH=\"$(brew --prefix)\" -DCMAKE_DISABLE_FIND_PACKAGE_Qt6=TRUE > \"$RUNNER_TEMP/mac-config-private.log\" 2>&1\nif ! cmake --build \"$RUNNER_TEMP/ngb-mac-engine\" --target NinjaGaidenBlack -j2 -- -k0 > \"$RUNNER_TEMP/mac-compile-private.log\" 2>&1; then\n echo '::error::Native macOS build failed. Generated-code diagnostics remain private.'\n python3 porting/macos-on-ios/report_build_errors.py \"$RUNNER_TEMP/mac-compile-private.log\"\n exit 1\nfi\npython3 porting/macos-on-ios/package_mac.py \"$RUNNER_TEMP/ngb-mac-engine/NinjaGaidenBlack\" \"$RUNNER_TEMP/Ninja Gaiden Black.app\" \"$RUNNER_TEMP/ngb-korean/KoreanPatch\""
+      run: "set -euo pipefail\ncmake -S . -B \"$RUNNER_TEMP/ngb-mac-engine\" -G Ninja -DCMAKE_BUILD_TYPE=Release -DNGB_IOS_PORT_RELEASE=ON -DNGB_MACOS_ON_IOS=ON -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ -DCMAKE_TOOLCHAIN_FILE=\"$PWD/porting/macos-on-ios/arm64-cross.cmake\" -DCMAKE_PREFIX_PATH=\"$NGB_DEPENDENCY_PREFIX\" -DPKG_CONFIG_EXECUTABLE=\"$(command -v pkg-config)\" -DCMAKE_DISABLE_FIND_PACKAGE_Qt6=TRUE > \"$RUNNER_TEMP/mac-config-private.log\" 2>&1\nif ! cmake --build \"$RUNNER_TEMP/ngb-mac-engine\" --target NinjaGaidenBlack -j2 -- -k0 > \"$RUNNER_TEMP/mac-compile-private.log\" 2>&1; then\n echo '::error::Native macOS build failed. Generated-code diagnostics remain private.'\n python3 porting/macos-on-ios/report_build_errors.py \"$RUNNER_TEMP/mac-compile-private.log\"\n exit 1\nfi\npython3 porting/macos-on-ios/package_mac.py \"$RUNNER_TEMP/ngb-mac-engine/NinjaGaidenBlack\" \"$RUNNER_TEMP/Ninja Gaiden Black.app\" \"$RUNNER_TEMP/ngb-korean/KoreanPatch\""
     - name: Fetch checksum-pinned macOS-on-iOS compatibility layer
       run: 'git clone https://github.com/zorrobyte/macos-on-ios-public.git "$RUNNER_TEMP/ngb-compat"
 

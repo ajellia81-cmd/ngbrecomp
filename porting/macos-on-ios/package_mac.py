@@ -20,9 +20,10 @@ def compact_macho(binary):
 def main():
  a=argparse.ArgumentParser();a.add_argument('binary',type=Path);a.add_argument('app',type=Path);a.add_argument('korean',type=Path);o=a.parse_args()
  if o.app.exists():raise SystemExit('Output exists; use a new scratch path')
- root=Path(__file__).resolve().parents[2];prefix=Path(run('brew','--prefix').strip());res=o.app/'Contents/Resources';libs=o.app/'Contents/Frameworks';mac=o.app/'Contents/MacOS'
+ root=Path(__file__).resolve().parents[2];prefix=Path(os.environ.get('NGB_DEPENDENCY_PREFIX') or run('brew','--prefix').strip());res=o.app/'Contents/Resources';libs=o.app/'Contents/Frameworks';mac=o.app/'Contents/MacOS'
  for p in (res,libs,mac):p.mkdir(parents=True)
  binary=mac/'NinjaGaidenBlack';shutil.copy2(o.binary,binary)
+ if run('lipo','-archs',binary)!='arm64':raise SystemExit('Engine must be ARM64 macOS code')
  queue=[(binary,o.binary)];seen={};requested=['libvulkan.1.dylib','libMoltenVK.dylib','libSDL3.0.dylib']
  for name in requested:
   src=Path(os.environ['NGB_MOLTENVK_LIBRARY']) if name=='libMoltenVK.dylib' and os.environ.get('NGB_MOLTENVK_LIBRARY') else prefix/'lib'/name;dst=libs/name;shutil.copy2(src.resolve(),dst);seen[name]=src;queue.append((dst,src))
@@ -62,6 +63,7 @@ def main():
  saved=0
  for p in [*libs.iterdir(),binary]:
   if not p.is_symlink():
+   if run('lipo','-archs',p)!='arm64':raise SystemExit('Non-ARM64 library in Mac bundle: '+p.name)
    before,after=compact_macho(p);saved+=before-after
    run('codesign','--force','--sign','-',p)
  print('Removed non-runtime symbol bytes:',saved)
