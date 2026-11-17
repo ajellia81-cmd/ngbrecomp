@@ -325,16 +325,7 @@ bool read_input(const Assembled& a,unsigned reg,uint32_t vertex,V& out) {
     return true;
 }
 V transform_point(const M& m,const V& p) {
-#if defined(__GNUC__) || defined(__clang__)
-    // Accumulate the same four columns in the same order as the scalar path.
-    // SIMD changes the independent lanes, not reduction order or contraction.
-    using Lanes=float __attribute__((vector_size(16)));
-    Lanes sum{};
-    for(unsigned c=0;c<4;c++){Lanes column;std::memcpy(&column,m.m+c*4,16);sum=sum+column*p[c];}
-    V out;std::memcpy(out.data(),&sum,16);return out;
-#else
     V out{};for(int r=0;r<4;r++) for(int c=0;c<4;c++) out[r]+=m.m[c*4+r]*p[c];return out;
-#endif
 }
 M constant_matrix(const float* p) {
     M m{};for(int r=0;r<4;r++) for(int c=0;c<4;c++) m.m[c*4+r]=p[r*4+c];return m;

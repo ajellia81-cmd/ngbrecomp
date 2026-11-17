@@ -69,8 +69,11 @@ slow-frame counts. Full opaque writes use a separately precreated no-fetch
 pipeline. Blended and channel-masked writes keep the ordered attachment-read
 path. No original shader recipes, loading policy, or water math are changed.
 CPU position evaluation folds only absolute draw constants (relative bone
-indices stay dynamic), dispatches each MAC once, and uses independent SIMD
-matrix lanes with the original accumulation order and contraction disabled.
+indices stay dynamic) and dispatches each MAC once. Matrix transforms retain
+the prior scalar arithmetic and accumulation order, with contraction disabled.
+A public synthetic Apple ARM benchmark used nine interleaved rounds and equal
+output hashes to select this variant. Its timing is not an iPhone frame-rate
+guarantee; the standalone benchmark branch retains the full comparison.
 A frozen prior evaluator provides differential opcode/addressing/posed-scene
 results; native GPU tests compare opaque local-read-pass output against the
 existing attachment-read implementation.
