@@ -17,6 +17,8 @@ jobs:
     - uses: actions/checkout@v4
       with:
         persist-credentials: false
+    - name: Apply reviewed public UI patch
+      run: git apply --unidiff-zero porting/macos-on-ios/ui-adapters.patch
     - name: Prepare public ARM64 dependencies
       shell: bash
       run: |
@@ -35,4 +37,7 @@ jobs:
         export PKG_CONFIG_LIBDIR="$RUNNER_TEMP/public-arm-prefix/lib/pkgconfig:$RUNNER_TEMP/public-arm-prefix/share/pkgconfig"
         export PKG_CONFIG_PATH="$PKG_CONFIG_LIBDIR"
         cmake -S . -B "$RUNNER_TEMP/public-renderer" -G Ninja -DCMAKE_BUILD_TYPE=Release -DNGB_MACOS_ON_IOS=ON -DCMAKE_TOOLCHAIN_FILE="$PWD/porting/macos-on-ios/arm64-cross.cmake" -DCMAKE_PREFIX_PATH="$RUNNER_TEMP/public-arm-prefix" -DPKG_CONFIG_EXECUTABLE="$(command -v pkg-config)" -DCMAKE_DISABLE_FIND_PACKAGE_Qt6=TRUE
-        cmake --build "$RUNNER_TEMP/public-renderer" --target ngb_d3d --parallel 2
+        cmake --build "$RUNNER_TEMP/public-renderer" --target ngb_d3d ngb_audio xbox_nv2a_vk xbox_kernel xbox_dsound xbox_input xbox_usb xbox_video xbox_apu platform --parallel 2
+        ninja -C "$RUNNER_TEMP/public-renderer" -t targets all | sed -n 's/:.*//p' | awk '/CMakeFiles\/NinjaGaidenBlack.dir\/src\/.*\.o$/' > "$RUNNER_TEMP/public-main-objects.txt"
+        test -s "$RUNNER_TEMP/public-main-objects.txt"
+        xargs ninja -C "$RUNNER_TEMP/public-renderer" < "$RUNNER_TEMP/public-main-objects.txt"
