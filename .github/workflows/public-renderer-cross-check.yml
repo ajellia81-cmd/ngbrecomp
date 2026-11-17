@@ -26,18 +26,14 @@ jobs:
         brew install cmake ninja pkg-config
         bash xboxrecomp/third_party/fetch.sh
         python3 porting/macos-on-ios/arm64_dependencies.py "$RUNNER_TEMP/public-arm-prefix" "$RUNNER_TEMP/public-arm-bottles"
-    - name: Configure and compile only the public renderer object target
+    - name: Package a public ARM64 fixture without any game input or IPA
       shell: bash
       run: |
         set -euo pipefail
-        # A configure-only synthetic file satisfies the source-list check.
-        # No game input, game target, executable, IPA or artifact is produced.
-        mkdir -p src/recomp/gen
-        printf '/* Public configure fixture; contains no game code. */\nvoid configure_fixture(void){}\n' > src/recomp/gen/public_fixture.c
-        export PKG_CONFIG_LIBDIR="$RUNNER_TEMP/public-arm-prefix/lib/pkgconfig:$RUNNER_TEMP/public-arm-prefix/share/pkgconfig"
-        export PKG_CONFIG_PATH="$PKG_CONFIG_LIBDIR"
-        cmake -S . -B "$RUNNER_TEMP/public-renderer" -G Ninja -DCMAKE_BUILD_TYPE=Release -DNGB_MACOS_ON_IOS=ON -DCMAKE_TOOLCHAIN_FILE="$PWD/porting/macos-on-ios/arm64-cross.cmake" -DCMAKE_PREFIX_PATH="$RUNNER_TEMP/public-arm-prefix" -DPKG_CONFIG_EXECUTABLE="$(command -v pkg-config)" -DCMAKE_DISABLE_FIND_PACKAGE_Qt6=TRUE
-        cmake --build "$RUNNER_TEMP/public-renderer" --target ngb_d3d ngb_audio xbox_nv2a_vk xbox_kernel xbox_dsound xbox_input xbox_usb xbox_video xbox_apu platform --parallel 2
-        ninja -C "$RUNNER_TEMP/public-renderer" -t targets all | sed -n 's/:.*//p' | awk '/CMakeFiles\/ninja_gaiden_black.dir\/src\/.*\.o$/' > "$RUNNER_TEMP/public-main-objects.txt"
-        test -s "$RUNNER_TEMP/public-main-objects.txt"
-        xargs ninja -C "$RUNNER_TEMP/public-renderer" < "$RUNNER_TEMP/public-main-objects.txt"
+        # This synthetic executable only tests library bundling and is never delivered.
+        printf 'int main(void){return 0;}\n' > "$RUNNER_TEMP/public-fixture.c"
+        xcrun --sdk macosx clang -arch arm64 "$RUNNER_TEMP/public-fixture.c" -o "$RUNNER_TEMP/public-fixture"
+        mkdir "$RUNNER_TEMP/public-korean-fixture"
+        printf '{"fixture":true}\n' > "$RUNNER_TEMP/public-korean-fixture/manifest.json"
+        export NGB_DEPENDENCY_PREFIX="$RUNNER_TEMP/public-arm-prefix"
+        python3 porting/macos-on-ios/package_mac.py "$RUNNER_TEMP/public-fixture" "$RUNNER_TEMP/PublicFixture.app" "$RUNNER_TEMP/public-korean-fixture"

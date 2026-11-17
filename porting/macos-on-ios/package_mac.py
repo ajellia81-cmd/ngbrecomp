@@ -3,7 +3,7 @@
 import argparse,json,os,plistlib,shutil,subprocess
 from pathlib import Path
 
-def run(*a):return subprocess.check_output([str(x) for x in a],text=True)
+def run(*a):return subprocess.check_output([str(x) for x in a],text=True).strip()
 def dependencies(p):return [l.strip().split(' (')[0] for l in run('otool','-L',p).splitlines()[1:]]
 def compact_macho(binary):
  # Keep all externally visible names: the conversion bridge uses dlsym.
