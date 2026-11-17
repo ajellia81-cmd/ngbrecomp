@@ -32,7 +32,7 @@ jobs:
         set -euo pipefail
         # This synthetic executable only tests library bundling and is never delivered.
         printf 'int main(void){return 0;}\n' > "$RUNNER_TEMP/public-fixture.c"
-        xcrun --sdk macosx clang -arch arm64 "$RUNNER_TEMP/public-fixture.c" -o "$RUNNER_TEMP/public-fixture"
+        xcrun --sdk macosx clang -arch arm64 -Wl,-headerpad_max_install_names "$RUNNER_TEMP/public-fixture.c" -o "$RUNNER_TEMP/public-fixture"
         mkdir "$RUNNER_TEMP/public-korean-fixture"
         printf '{"fixture":true}\n' > "$RUNNER_TEMP/public-korean-fixture/manifest.json"
         export NGB_DEPENDENCY_PREFIX="$RUNNER_TEMP/public-arm-prefix"
