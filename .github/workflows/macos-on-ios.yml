@@ -29,7 +29,11 @@ jobs:
 
         python3 porting/macos-on-ios/tests/compact_macho.py
 
-        python3 porting/macos-on-ios/tests/settings_migration.py'
+        python3 porting/macos-on-ios/tests/settings_migration.py
+
+        python3 porting/macos-on-ios/tests/cross_dependencies.py
+
+        '
     - name: Check Korean save links after container relocation
       run: 'xcrun --sdk macosx clang -fobjc-arc -Wall -Wextra -Werror -fsanitize=address porting/macos-on-ios/tests/save_paths.m -framework Foundation -o "$RUNNER_TEMP/ngb-save-paths-test"
 
@@ -117,22 +121,20 @@ jobs:
         "$RUNNER_TEMP/ngb-haptic-recovery"
 
         '
+    - name: Restore verified public ARM64 dependencies
+      id: arm_deps_cache
+      uses: actions/cache/restore@v4
+      with:
+        path: ${{ runner.temp }}/ngb-arm-dependencies
+        key: ngb-arm64-cross-xcode26.3-${{ runner.arch }}-${{ hashFiles('porting/macos-on-ios/arm64_dependencies.py') }}
     - name: Prepare host tools and public ARM64 Mac cross dependencies
-      run: 'set -euo pipefail
-
-        brew install cmake ninja pkg-config sevenzip
-
-        bash xboxrecomp/third_party/fetch.sh
-
-        python3 porting/macos-on-ios/arm64_dependencies.py "$RUNNER_TEMP/ngb-arm-dependencies" "$RUNNER_TEMP/ngb-arm-bottle-cache"
-
-        echo "NGB_DEPENDENCY_PREFIX=$RUNNER_TEMP/ngb-arm-dependencies" >> "$GITHUB_ENV"
-
-        echo "PKG_CONFIG_LIBDIR=$RUNNER_TEMP/ngb-arm-dependencies/lib/pkgconfig:$RUNNER_TEMP/ngb-arm-dependencies/share/pkgconfig" >> "$GITHUB_ENV"
-
-        echo "PKG_CONFIG_PATH=$RUNNER_TEMP/ngb-arm-dependencies/lib/pkgconfig:$RUNNER_TEMP/ngb-arm-dependencies/share/pkgconfig" >> "$GITHUB_ENV"
-
-        '
+      run: "set -euo pipefail\nbrew install cmake ninja pkg-config sevenzip\nbash xboxrecomp/third_party/fetch.sh\nif [ ! -f \"$RUNNER_TEMP/ngb-arm-dependencies/arm64-bottles.json\" ]; then\n  python3 porting/macos-on-ios/arm64_dependencies.py \"$RUNNER_TEMP/ngb-arm-dependencies\" \"$RUNNER_TEMP/ngb-arm-bottle-cache\"\nfi\necho \"NGB_DEPENDENCY_PREFIX=$RUNNER_TEMP/ngb-arm-dependencies\" >> \"$GITHUB_ENV\"\necho \"PKG_CONFIG_LIBDIR=$RUNNER_TEMP/ngb-arm-dependencies/lib/pkgconfig:$RUNNER_TEMP/ngb-arm-dependencies/share/pkgconfig\" >> \"$GITHUB_ENV\"\necho \"PKG_CONFIG_PATH=$RUNNER_TEMP/ngb-arm-dependencies/lib/pkgconfig:$RUNNER_TEMP/ngb-arm-dependencies/share/pkgconfig\" >> \"$GITHUB_ENV\"\n"
+    - name: Cache verified public ARM64 dependencies before private input
+      if: steps.arm_deps_cache.outputs.cache-hit != 'true'
+      uses: actions/cache/save@v4
+      with:
+        path: ${{ runner.temp }}/ngb-arm-dependencies
+        key: ${{ steps.arm_deps_cache.outputs.cache-primary-key }}
     - name: Require private disc input
       env:
         NGB_DISC_URL: ${{ secrets.NGB_DISC_URL }}

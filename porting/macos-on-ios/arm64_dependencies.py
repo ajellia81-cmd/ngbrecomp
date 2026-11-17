@@ -8,7 +8,17 @@ import argparse,hashlib,json,os,shutil,subprocess,tarfile
 from pathlib import Path
 
 ROOTS=['sdl2-compat','sdl3','libepoxy','glib','glslang','molten-vk','vulkan-loader']
-MACHO=(b'\xcf\xfa\xed\xfe',b'\xfe\xed\xfa\xcf',b'\xca\xfe\xba\xbe',b'\xbe\xba\xfe\xca',b'\xca\xfe\xba\xbf')
+def is_macho(head):
+ # Java class files share CAFEBABE with fat Mach-O. Validate the architecture
+ # table, rather than treating every matching four-byte magic as executable.
+ magic=head[:4]
+ if magic in (b'\xcf\xfa\xed\xfe',b'\xfe\xed\xfa\xcf'):return len(head)>=32
+ if magic not in (b'\xca\xfe\xba\xbe',b'\xbe\xba\xfe\xca',b'\xca\xfe\xba\xbf'):return False
+ endian='little' if magic==b'\xbe\xba\xfe\xca' else 'big'
+ count=int.from_bytes(head[4:8],endian);width=32 if magic==b'\xca\xfe\xba\xbf' else 20
+ if not 1<=count<=64 or len(head)<8+width*count:return False
+ cpus={7,12,18,0x01000007,0x0100000c,0x01000012,0x0200000c}
+ return all(int.from_bytes(head[8+i*width:12+i*width],endian) in cpus for i in range(count))
 def run(*args,env=None):return subprocess.check_output([str(x) for x in args],text=True,env=env).strip()
 def mapping(prefix):
  return {'@@HOMEBREW_CELLAR@@':str(prefix/'Cellar'),'@@HOMEBREW_PREFIX@@':str(prefix),'@@HOMEBREW_REPOSITORY@@':str(prefix),'/opt/homebrew':str(prefix)}
@@ -73,7 +83,7 @@ def prepare(prefix,cache):
  for path in (prefix/'Cellar').rglob('*'):
   if not path.is_file() or path.is_symlink():continue
   with path.open('rb') as f:head=f.read(4096)
-  if head[:4] in MACHO or head.startswith(b'!<arch>\n'):
+  if is_macho(head) or head.startswith(b'!<arch>\n'):
    architectures=run('lipo','-archs',path).split()
    if 'arm64' not in architectures:raise SystemExit('Non-ARM64 object in ARM bottle: '+str(path))
    path.chmod(path.stat().st_mode|0o200)
