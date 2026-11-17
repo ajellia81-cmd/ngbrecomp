@@ -14,7 +14,8 @@ toolkit=${XBOXRECOMP_DIR:-$here/xboxrecomp}
 toolkit=$(cd "$toolkit" && pwd)
 iso=${1:-$here/disc/ngb.xiso}
 files=$here/game_files
-xbe=$files/default.xbe
+xbe=${NGB_RECOMP_XBE:-$files/default.xbe}
+gen_dir=${NGB_RECOMP_GEN_DIR:-$here/src/recomp/gen}
 
 if [ ! -x "$toolkit/.venv/bin/python" ]; then
     python3 -m venv "$toolkit/.venv"
@@ -30,7 +31,7 @@ fi
 
 # The analysis JSON stays out of game_files: the title enumerates its own
 # root directory at boot, and a stray file there is one it never shipped with.
-analysis=$here/build/analysis/default_analysis.json
+analysis=${NGB_RECOMP_ANALYSIS:-$here/build/analysis/default_analysis.json}
 mkdir -p "$(dirname "$analysis")"
 echo "== parse";    "$py" -m tools.xbe_parser "$xbe" --json "$analysis" >/dev/null
 # Indirect-branch targets measured by earlier runs (tools/feedback.sh) seed
@@ -40,6 +41,7 @@ seeds=()
 # it seeds; feedback.sh merges new targets into it.
 db=$here/src/icall_targets.json
 [ -f "$db" ] && seeds=(--seed-functions "$db")
+[ -n "${NGB_RECOMP_EXTRA_SEEDS:-}" ] && seeds+=(--seed-functions "$NGB_RECOMP_EXTRA_SEEDS")
 echo "== disasm";   "$py" -m tools.disasm "$xbe" --force --analysis-json "$analysis" "${seeds[@]}" >/dev/null
 echo "== func_id";  "$py" -m tools.func_id "$xbe" >/dev/null
 echo "== abi";      "$py" -m tools.abi_analysis "$xbe" >/dev/null
@@ -50,7 +52,7 @@ echo "== recomp"
 "$py" -m tools.recomp "$xbe" --all --split 250 \
     --game-name "Ninja Gaiden Black" \
     --exclude-manual "$here/src/recomp_manual.c" \
-    --manual-functions "$here/src/manual_functions.json" \
-    --gen-dir "$here/src/recomp/gen" > "$here/recomp_log.txt" 2>&1 \
+    --manual-functions "${NGB_RECOMP_MANUAL:-$here/src/manual_functions.json}" \
+    --gen-dir "$gen_dir" > "$here/recomp_log.txt" 2>&1 \
     || { tail -20 "$here/recomp_log.txt"; exit 1; }
 tail -3 "$here/recomp_log.txt"
