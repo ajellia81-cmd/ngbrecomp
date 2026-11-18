@@ -10,10 +10,12 @@ def code_section(binary):
  return hashlib.sha256(''.join(''.join(l.split()[1:]) for l in lines).encode()).hexdigest()
 def main():
  a=argparse.ArgumentParser();a.add_argument('mac_app',type=Path);a.add_argument('app',type=Path);a.add_argument('ipa',type=Path);o=a.parse_args()
+ diagnostic=os.environ.get('NGB_IOS_PERF_PROBE')=='1'
  root=Path(__file__).resolve().parent;info_path=o.app/'Info.plist';info=plistlib.loads(info_path.read_bytes())
- info.update(CFBundleName='Ninja Gaiden Black',CFBundleDisplayName='Ninja Gaiden Black',CFBundleVersion='4.0.'+os.environ.get('GITHUB_RUN_NUMBER','0'),CFBundleShortVersionString='4.0',NGBBuildConfiguration='Release',NGBPortMethod='macOS-on-iOS',NGBUpstreamVersion='0.9.72',NGBUpstreamCommit='2606383704e2675b687fec89fb3dfa965b068d46',NGBFrameInterpolation='upstream',NGBDistributionBuild=True,NGBDiagnosticsEnabled=False,NGBShaderCompilerPolicy='upstream 0.9.72',NGBSourceCommit=os.environ.get('GITHUB_SHA','local'),UIFileSharingEnabled=True,LSSupportsOpeningDocumentsInPlace=True,UIRequiresFullScreen=True,UIDeviceFamily=[1],UISupportedInterfaceOrientations=['UIInterfaceOrientationLandscapeLeft','UIInterfaceOrientationLandscapeRight'],CADisableMinimumFrameDurationOnPhone=True,MetalHudEnabled=False)
+ info.update(CFBundleName='Ninja Gaiden Black',CFBundleDisplayName='Ninja Gaiden Black',CFBundleVersion='4.0.'+os.environ.get('GITHUB_RUN_NUMBER','0'),CFBundleShortVersionString='4.0',NGBBuildConfiguration='Release-Diagnostic' if diagnostic else 'Release',NGBPortMethod='macOS-on-iOS',NGBUpstreamVersion='0.9.72',NGBUpstreamCommit='2606383704e2675b687fec89fb3dfa965b068d46',NGBFrameInterpolation='upstream',NGBDistributionBuild=not diagnostic,NGBDiagnosticsEnabled=diagnostic,NGBShaderCompilerPolicy='upstream 0.9.72',NGBSourceCommit=os.environ.get('GITHUB_SHA','local'),UIFileSharingEnabled=True,LSSupportsOpeningDocumentsInPlace=True,UIRequiresFullScreen=True,UIDeviceFamily=[1],UISupportedInterfaceOrientations=['UIInterfaceOrientationLandscapeLeft','UIInterfaceOrientationLandscapeRight'],CADisableMinimumFrameDurationOnPhone=True,MetalHudEnabled=False)
  for key in ('NGBSmoothMotionEnabled','NGBSmoothMotionDefault','NGBSmoothMotionReference','NGBUniversalShadersEnabled','NGBUniversalShaderDriver','NGBDiagnosticsFile','NGBDiagnosticsFormatVersion','NGBStartupDiagnosticsFile'):
   info.pop(key,None)
+ if diagnostic:info.update(NGBDiagnosticsFile='fps-diagnostics.log',NGBDiagnosticsFormatVersion=1)
  info.pop('CFBundleIconFile',None)
  info_path.write_bytes(plistlib.dumps(info))
  run('xcrun','--sdk','macosx','swift',root/'korean/build_icons.swift',root/'assets/app-icon-source.jpg',o.app,o.app.parent/'icon-work')
@@ -22,11 +24,13 @@ def main():
  if 'platform IOS' not in run('vtool','-show-build',converted):raise SystemExit('Converted platform tag is not iOS')
  if code_section(mac)!=code_section(converted):raise SystemExit('Game machine instructions changed during conversion')
  symbols=run('nm','-gj',converted)
+ if diagnostic and '_ngb_perf_start' not in symbols.splitlines():raise SystemExit('Diagnostic observer is missing')
+ if not diagnostic and any(name.startswith('_ngb_perf_') for name in symbols.splitlines()):raise SystemExit('Diagnostic observer linked into clean release')
  if any(name.startswith('_ngb_diag_') for name in symbols.splitlines()):raise SystemExit('Port diagnostic writer linked into release')
  forbidden=(b'[frame] t=',b'[water-program]',b'[Smooth Motion pacing]',b'sampling original Mac boot thread',b'SHIM polls=',b'SHIM Metal newLibraryWithSource')
  for binary in (converted,*(o.app/'Frameworks').glob('libShim_*.dylib')):
   if any(marker in binary.read_bytes() for marker in forbidden):raise SystemExit('Added port diagnostic instrumentation present: '+binary.name)
- print('Clean release audit: no added port log writer, water dumps, automatic sampler or shim polling logs')
+ print('Diagnostic audit: aggregate frame observer; no per-draw log, old water dumps or shim polling' if diagnostic else 'Clean release audit: no added port log writer, water dumps, automatic sampler or shim polling logs')
  resources=o.app/'Mac/Contents/Resources'
  runtime=resources.parent/'Frameworks/libSDL3.0.dylib'
  if not runtime.is_file() or 'platform IOS' not in run('vtool','-show-build',runtime):raise SystemExit('The converted SDL3 runtime is missing or has the wrong platform')

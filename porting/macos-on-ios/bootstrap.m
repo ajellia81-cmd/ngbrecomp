@@ -9,6 +9,9 @@
 #include <string.h>
 #define NGB_IOS_PORT_DIAG(...) ((void)0)
 #define NGB_DIAG_STAGE(stage) ((void)0)
+#ifdef NGB_IOS_PERF_PROBE
+#include "performance_probe.h"
+#endif
 #include "bridge.h"
 #include "save_paths.h"
 #include "launcher.h"
@@ -115,6 +118,10 @@ int ngb_conversion_startup(void){@autoreleasepool {
         NGB_IOS_PORT_DIAG("[Startup] preparing import and device services\n");
         if(!prepare(&api)){NGB_DIAG_STAGE("platform preparation returned failure");NGB_IOS_PORT_DIAG("[Startup] preparation failed or cancelled\n");return 0;}
         NGB_IOS_PORT_DIAG("[Startup] import and device services complete\n");
+#ifdef NGB_IOS_PERF_PROBE
+        NSString *probeDocuments=NSSearchPathForDirectoriesInDomains(NSDocumentDirectory,NSUserDomainMask,YES).firstObject;
+        ngb_perf_start([[probeDocuments stringByAppendingPathComponent:@"fps-diagnostics.log"] fileSystemRepresentation]);
+#endif
         void (*screen)(int*,int*)=(void(*)(int*,int*))dlsym(RTLD_DEFAULT,"ngb_macos_on_ios_screen_size");
         if(screen)screen(&w,&h);
         bridge_safe_area=(void(*)(float*,float*,float*,float*))dlsym(RTLD_DEFAULT,"ngb_macos_on_ios_safe_area");
@@ -169,3 +176,11 @@ void ngb_conversion_render_size(int *width,int *height){
     double ratio=ngb_settings_aspect_ratio(&settings);int w=sw,h=(int)lround(sw/ratio);
     if(h>sh){h=sh;w=(int)lround(sh*ratio);}*width=w;*height=h;
 }
+
+#ifdef NGB_IOS_PERF_PROBE
+void ngb_perf_context(int *thermal,int *lowPower,int *foreground){@autoreleasepool {
+    NSProcessInfo *p=NSProcessInfo.processInfo;
+    *thermal=(int)p.thermalState;*lowPower=p.lowPowerModeEnabled?1:0;
+    *foreground=bridge_foreground?bridge_foreground():1;
+}}
+#endif

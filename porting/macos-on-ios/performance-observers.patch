@@ -1,0 +1,95 @@
+diff --git a/src/d3d/gpu/threaded.cpp b/src/d3d/gpu/threaded.cpp
+--- a/src/d3d/gpu/threaded.cpp
++++ b/src/d3d/gpu/threaded.cpp
+@@ -29,0 +30,3 @@
++#ifdef NGB_IOS_PERF_PROBE
++#include "performance_probe.h"
++#endif
+@@ -618,0 +622,3 @@
++#ifdef NGB_IOS_PERF_PROBE
++        if (presented_) ngb_perf_mode(g_interp.load(std::memory_order_relaxed), nv2a_present_refresh_hz());
++#endif
+@@ -648,0 +655,3 @@
++#ifdef NGB_IOS_PERF_PROBE
++        uint64_t probe_cpu = ngb_perf_cpu_us(), probe_wall = uint64_t(nv2a_present_now_us()), probe_replays = 0;
++#endif
+@@ -675,0 +685,3 @@
++#ifdef NGB_IOS_PERF_PROBE
++                probe_replays++;
++#endif
+@@ -683,0 +696,3 @@
++#ifdef NGB_IOS_PERF_PROBE
++        ngb_perf_interp(ngb_perf_cpu_us() - probe_cpu, uint64_t(nv2a_present_now_us()) - probe_wall, probe_replays, k, whole);
++#endif
+@@ -1281,0 +1297,3 @@
++#ifdef NGB_IOS_PERF_PROBE
++        ngb_perf_match(cut, matched, cur_draws_.size());
++#endif
+diff --git a/src/d3d/vk/backend.cpp b/src/d3d/vk/backend.cpp
+--- a/src/d3d/vk/backend.cpp
++++ b/src/d3d/vk/backend.cpp
+@@ -41,0 +42,3 @@
++#ifdef NGB_IOS_PERF_PROBE
++#include "performance_probe.h"
++#endif
+@@ -574,2 +577,7 @@
+-            t[1] > t[0])
+-            gpu_ns_ += uint64_t(double(t[1] - t[0]) * ts_period_ns_);
++            t[1] > t[0]) {
++            uint64_t span = uint64_t(double(t[1] - t[0]) * ts_period_ns_);
++            gpu_ns_ += span;
++#ifdef NGB_IOS_PERF_PROBE
++            ngb_perf_gpu(span);
++#endif
++        }
+@@ -1026,0 +1035,3 @@
++#ifdef NGB_IOS_PERF_PROBE
++    stats_ = true;   // Existing nonblocking GPU timestamps, without the verbose stats dump.
++#endif
+@@ -1052,0 +1064,3 @@
++#ifdef NGB_IOS_PERF_PROBE
++    ngb_perf_gpu_support(ts_pool_[0] && ts_pool_[1]);
++#endif
+@@ -1183,0 +1198,3 @@
++#ifdef NGB_IOS_PERF_PROBE
++    uint64_t probe_wait_before = sync_us_;
++#endif
+@@ -1188,0 +1206,3 @@
++#ifdef NGB_IOS_PERF_PROBE
++    ngb_perf_wait(sync_us_ - probe_wait_before);
++#endif
+@@ -4691,0 +4712,3 @@
++#ifdef NGB_IOS_PERF_PROBE
++    ngb_perf_backend(compile_us_, compiles_, pipes_made_, st_.draws, st_.drawn, st_.nopipe, replay_);
++#endif
+@@ -4717,0 +4741 @@
++#ifndef NGB_IOS_PERF_PROBE
+@@ -4732,0 +4757,4 @@
++#else
++    gpu_ns_ = sync_us_ = 0;
++    syncs_ = stat_frames_ = 0;
++#endif
+@@ -5133 +5161,7 @@
+-        }
++#ifdef NGB_IOS_PERF_PROBE
++            ngb_perf_queue(jobs_.size());
++#endif
++        }
++#ifdef NGB_IOS_PERF_PROBE
++        auto probe_compile_begin = std::chrono::steady_clock::now();
++#endif
+@@ -5171,0 +5206,3 @@
++#ifdef NGB_IOS_PERF_PROBE
++        ngb_perf_async(uint64_t(std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - probe_compile_begin).count()), j.pipeline);
++#endif
+diff --git a/xboxrecomp/src/nv2a_vk/host/present_sdl.c b/xboxrecomp/src/nv2a_vk/host/present_sdl.c
+--- a/xboxrecomp/src/nv2a_vk/host/present_sdl.c
++++ b/xboxrecomp/src/nv2a_vk/host/present_sdl.c
+@@ -22,0 +23,3 @@
++#ifdef NGB_IOS_PERF_PROBE
++#include "performance_probe.h"
++#endif
+@@ -435,0 +439,3 @@
++#ifdef NGB_IOS_PERF_PROBE
++        ngb_perf_fps(frames_logged, count, (now - window_ns) / 1000, (uint64_t)(max_ms * 1000.0), gap > 0 ? (uint64_t)gap : 0);
++#endif
