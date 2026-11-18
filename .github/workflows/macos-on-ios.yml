@@ -1,8 +1,8 @@
-name: Ninja Gaiden Black frame diagnostics IPA
+name: Ninja Gaiden Black clean release IPA
 'on':
   push:
     branches:
-    - macos-on-ios-upstream072-diagnostics
+    - macos-on-ios-upstream072-clean
   workflow_dispatch: null
 permissions:
   contents: read
@@ -13,7 +13,7 @@ jobs:
   convert:
     env:
       DEVELOPER_DIR: /Applications/Xcode_26.3.app/Contents/Developer
-      NGB_IOS_PERF_PROBE: '1'
+      NGB_IOS_PERF_PROBE: '0'
     runs-on: macos-15-intel
     timeout-minutes: 120
     steps:
@@ -150,11 +150,9 @@ jobs:
       with:
         path: ${{ runner.temp }}/ngb-arm-dependencies
         key: ${{ steps.arm_deps_cache.outputs.cache-primary-key }}
-    - name: Apply and cross-compile public performance observers before private generation
+    - name: Cross-compile clean public renderer before private generation
       shell: bash
       run: 'set -euo pipefail
-
-        git apply --unidiff-zero porting/macos-on-ios/performance-observers.patch
 
         # Configure-only public fixture. No executable is linked or delivered at this stage.
 
@@ -166,7 +164,7 @@ jobs:
 
         '' > src/recomp/gen/public_fixture.c
 
-        cmake -S . -B "$RUNNER_TEMP/ngb-mac-engine" -G Ninja -DCMAKE_BUILD_TYPE=Release -DNGB_IOS_PORT_RELEASE=ON -DNGB_MACOS_ON_IOS=ON -DNGB_IOS_PERF_PROBE=ON -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ -DCMAKE_TOOLCHAIN_FILE="$PWD/porting/macos-on-ios/arm64-cross.cmake" -DCMAKE_PREFIX_PATH="$NGB_DEPENDENCY_PREFIX" -DPKG_CONFIG_EXECUTABLE="$(command -v pkg-config)" -DCMAKE_DISABLE_FIND_PACKAGE_Qt6=TRUE
+        cmake -S . -B "$RUNNER_TEMP/ngb-mac-engine" -G Ninja -DCMAKE_BUILD_TYPE=Release -DNGB_IOS_PORT_RELEASE=ON -DNGB_MACOS_ON_IOS=ON -DNGB_IOS_PERF_PROBE=OFF -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ -DCMAKE_TOOLCHAIN_FILE="$PWD/porting/macos-on-ios/arm64-cross.cmake" -DCMAKE_PREFIX_PATH="$NGB_DEPENDENCY_PREFIX" -DPKG_CONFIG_EXECUTABLE="$(command -v pkg-config)" -DCMAKE_DISABLE_FIND_PACKAGE_Qt6=TRUE
 
         cmake --build "$RUNNER_TEMP/ngb-mac-engine" --target ngb_d3d xbox_nv2a_vk --parallel 2
 
@@ -211,7 +209,7 @@ jobs:
       run: python3 porting/macos-on-ios/korean/wrap_game_codegen.py src/recomp/gen
     - name: Compile original engine for macOS ARM64, not iPhoneOS
       shell: bash
-      run: "set -euo pipefail\nif ! cmake -S . -B \"$RUNNER_TEMP/ngb-mac-engine\" -G Ninja -DCMAKE_BUILD_TYPE=Release -DNGB_IOS_PORT_RELEASE=ON -DNGB_MACOS_ON_IOS=ON -DNGB_IOS_PERF_PROBE=ON -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ -DCMAKE_TOOLCHAIN_FILE=\"$PWD/porting/macos-on-ios/arm64-cross.cmake\" -DCMAKE_PREFIX_PATH=\"$NGB_DEPENDENCY_PREFIX\" -DPKG_CONFIG_EXECUTABLE=\"$(command -v pkg-config)\" -DCMAKE_DISABLE_FIND_PACKAGE_Qt6=TRUE > \"$RUNNER_TEMP/mac-config-private.log\" 2>&1; then\n echo '::error::Native macOS CMake configuration failed.'\n python3 porting/macos-on-ios/report_build_errors.py \"$RUNNER_TEMP/mac-config-private.log\"\n exit 1\nfi\nif ! cmake --build \"$RUNNER_TEMP/ngb-mac-engine\" --target ninja_gaiden_black -j2 -- -k0 > \"$RUNNER_TEMP/mac-compile-private.log\" 2>&1; then\n echo '::error::Native macOS build failed. Generated-code diagnostics remain private.'\n python3 porting/macos-on-ios/report_build_errors.py \"$RUNNER_TEMP/mac-compile-private.log\"\n\
+      run: "set -euo pipefail\nif ! cmake -S . -B \"$RUNNER_TEMP/ngb-mac-engine\" -G Ninja -DCMAKE_BUILD_TYPE=Release -DNGB_IOS_PORT_RELEASE=ON -DNGB_MACOS_ON_IOS=ON -DNGB_IOS_PERF_PROBE=OFF -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ -DCMAKE_TOOLCHAIN_FILE=\"$PWD/porting/macos-on-ios/arm64-cross.cmake\" -DCMAKE_PREFIX_PATH=\"$NGB_DEPENDENCY_PREFIX\" -DPKG_CONFIG_EXECUTABLE=\"$(command -v pkg-config)\" -DCMAKE_DISABLE_FIND_PACKAGE_Qt6=TRUE > \"$RUNNER_TEMP/mac-config-private.log\" 2>&1; then\n echo '::error::Native macOS CMake configuration failed.'\n python3 porting/macos-on-ios/report_build_errors.py \"$RUNNER_TEMP/mac-config-private.log\"\n exit 1\nfi\nif ! cmake --build \"$RUNNER_TEMP/ngb-mac-engine\" --target ninja_gaiden_black -j2 -- -k0 > \"$RUNNER_TEMP/mac-compile-private.log\" 2>&1; then\n echo '::error::Native macOS build failed. Generated-code diagnostics remain private.'\n python3 porting/macos-on-ios/report_build_errors.py \"$RUNNER_TEMP/mac-compile-private.log\"\n\
         \ exit 1\nfi\npython3 porting/macos-on-ios/package_mac.py \"$RUNNER_TEMP/ngb-mac-engine/NinjaGaidenBlack\" \"$RUNNER_TEMP/Ninja Gaiden Black.app\" \"$RUNNER_TEMP/ngb-korean/KoreanPatch\""
     - name: Fetch checksum-pinned macOS-on-iOS compatibility layer
       run: 'git clone https://github.com/zorrobyte/macos-on-ios-public.git "$RUNNER_TEMP/ngb-compat"
