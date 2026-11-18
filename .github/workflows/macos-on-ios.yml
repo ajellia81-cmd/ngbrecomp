@@ -41,6 +41,11 @@ jobs:
 
         "$RUNNER_TEMP/ngb-save-paths-test" "$RUNNER_TEMP/ngb-save-paths-fixture"
 
+
+        openssl smime -encrypt -binary -aes256 -in porting/macos-on-ios/migration.json -outform DER -out "$RUNNER_TEMP/public-delivery-fixture.p7m" porting/macos-on-ios/delivery-recipient.pem
+
+        test -s "$RUNNER_TEMP/public-delivery-fixture.p7m"
+
         '
     - name: Check Korean asset links after container relocation
       run: 'xcrun --sdk macosx clang -fobjc-arc -Wall -Wextra -Werror -fsanitize=address porting/macos-on-ios/tests/game_links.m -framework Foundation -o "$RUNNER_TEMP/ngb-game-links-test"
@@ -165,12 +170,14 @@ jobs:
       run: "set -euo pipefail\nif ! bash tools/pipeline.sh > \"$RUNNER_TEMP/ngb-pipeline-private.log\" 2>&1; then\n  echo '::error::Private recompilation failed. Raw logs are withheld because they can contain game-derived code. No placeholder executable was built.'\n  exit 1\nfi\ntest -s src/recomp/gen/recomp_types.h\npython3 - <<'PY'\nfrom pathlib import Path\nsources = list(Path('src/recomp/gen').glob('*.c'))\nif not sources:\n    raise SystemExit('No generated game C files')\nprint('Generated game C translation units:', len(sources))\nPY\n"
     - name: Prepare verified Korean variants without replacing original game functions
       shell: bash
-      run: "set -euo pipefail\npython3 porting/macos-on-ios/korean/prepare_korean.py --source game_files/default.xbe \\\n  --zip \"$RUNNER_TEMP/ngb-korean-patch.zip\" --download --output \"$RUNNER_TEMP/ngb-korean\"\nexport NGB_RECOMP_XBE=\"$RUNNER_TEMP/ngb-korean/korean.xbe\"\nexport NGB_RECOMP_GEN_DIR=\"$RUNNER_TEMP/ngb-korean/gen\"\nexport NGB_RECOMP_MANUAL=\"$RUNNER_TEMP/ngb-korean/manual-korean.json\"\nexport NGB_RECOMP_ANALYSIS=\"$RUNNER_TEMP/ngb-korean/analysis.json\"\nready=0\nfor pass in 1 2 3 4 5 6; do\n  if [ -s \"$RUNNER_TEMP/ngb-korean/continuations.json\" ]; then\n    export NGB_RECOMP_EXTRA_SEEDS=\"$RUNNER_TEMP/ngb-korean/continuations.json\"\n  fi\n  if ! bash tools/pipeline.sh > \"$RUNNER_TEMP/ngb-korean-pipeline-private.log\" 2>&1; then\n    echo '::error::Private Korean code generation failed; raw game-derived logs are withheld.'\n    exit 1\n  fi\n  set +e\n  python3 porting/macos-on-ios/korean/merge_korean_codegen.py --original src/recomp/gen --translated \"$NGB_RECOMP_GEN_DIR\" \\\n    --missing-seeds \"$RUNNER_TEMP/ngb-korean/continuations.json\"\n  result=$?\n  set -e\n  if [ \"$result\" -eq 0 ]; then ready=1; break; fi\n  if [ \"$result\" -ne 2 ]; then exit \"$result\"; fi\ndone\nif [ \"$ready\" -ne 1 ]; then\n  echo '::error::Korean continuations remain untranslated; refusing to substitute stubs.'\n  exit 1\nfi\n"
+      run: "set -euo pipefail\npython3 porting/macos-on-ios/korean/prepare_korean.py --source game_files/default.xbe \\\n  --zip \"$RUNNER_TEMP/ngb-korean-patch.zip\" --download --output \"$RUNNER_TEMP/ngb-korean\"\nexport NGB_RECOMP_XBE=\"$RUNNER_TEMP/ngb-korean/korean.xbe\"\nexport NGB_RECOMP_GEN_DIR=\"$RUNNER_TEMP/ngb-korean/gen\"\nexport NGB_RECOMP_MANUAL=\"$RUNNER_TEMP/ngb-korean/manual-korean.json\"\nexport NGB_RECOMP_ANALYSIS=\"$RUNNER_TEMP/ngb-korean/analysis.json\"\nready=0\nfor pass in 1 2 3 4 5 6; do\n  if [ -s \"$RUNNER_TEMP/ngb-korean/continuations.json\" ]; then\n    export NGB_RECOMP_EXTRA_SEEDS=\"$RUNNER_TEMP/ngb-korean/continuations.json\"\n  fi\n  if ! bash tools/pipeline.sh > \"$RUNNER_TEMP/ngb-korean-pipeline-private.log\" 2>&1; then\n    echo '::error::Private Korean code generation failed; raw game-derived logs are withheld.'\n    exit 1\n  fi\n  set +e\n  python3 porting/macos-on-ios/korean/merge_korean_codegen.py --original src/recomp/gen --translated \"$NGB_RECOMP_GEN_DIR\"\
+        \ \\\n    --missing-seeds \"$RUNNER_TEMP/ngb-korean/continuations.json\"\n  result=$?\n  set -e\n  if [ \"$result\" -eq 0 ]; then ready=1; break; fi\n  if [ \"$result\" -ne 2 ]; then exit \"$result\"; fi\ndone\nif [ \"$ready\" -ne 1 ]; then\n  echo '::error::Korean continuations remain untranslated; refusing to substitute stubs.'\n  exit 1\nfi\n"
     - name: Bind original Options text language to the private Korean boot
       run: python3 porting/macos-on-ios/korean/wrap_game_codegen.py src/recomp/gen
     - name: Compile original engine for macOS ARM64, not iPhoneOS
       shell: bash
-      run: "set -euo pipefail\nif ! cmake -S . -B \"$RUNNER_TEMP/ngb-mac-engine\" -G Ninja -DCMAKE_BUILD_TYPE=Release -DNGB_IOS_PORT_RELEASE=ON -DNGB_MACOS_ON_IOS=ON -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ -DCMAKE_TOOLCHAIN_FILE=\"$PWD/porting/macos-on-ios/arm64-cross.cmake\" -DCMAKE_PREFIX_PATH=\"$NGB_DEPENDENCY_PREFIX\" -DPKG_CONFIG_EXECUTABLE=\"$(command -v pkg-config)\" -DCMAKE_DISABLE_FIND_PACKAGE_Qt6=TRUE > \"$RUNNER_TEMP/mac-config-private.log\" 2>&1; then\n echo '::error::Native macOS CMake configuration failed.'\n python3 porting/macos-on-ios/report_build_errors.py \"$RUNNER_TEMP/mac-config-private.log\"\n exit 1\nfi\nif ! cmake --build \"$RUNNER_TEMP/ngb-mac-engine\" --target ninja_gaiden_black -j2 -- -k0 > \"$RUNNER_TEMP/mac-compile-private.log\" 2>&1; then\n echo '::error::Native macOS build failed. Generated-code diagnostics remain private.'\n python3 porting/macos-on-ios/report_build_errors.py \"$RUNNER_TEMP/mac-compile-private.log\"\n exit 1\nfi\npython3 porting/macos-on-ios/package_mac.py \"$RUNNER_TEMP/ngb-mac-engine/NinjaGaidenBlack\" \"$RUNNER_TEMP/Ninja Gaiden Black.app\" \"$RUNNER_TEMP/ngb-korean/KoreanPatch\""
+      run: "set -euo pipefail\nif ! cmake -S . -B \"$RUNNER_TEMP/ngb-mac-engine\" -G Ninja -DCMAKE_BUILD_TYPE=Release -DNGB_IOS_PORT_RELEASE=ON -DNGB_MACOS_ON_IOS=ON -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ -DCMAKE_TOOLCHAIN_FILE=\"$PWD/porting/macos-on-ios/arm64-cross.cmake\" -DCMAKE_PREFIX_PATH=\"$NGB_DEPENDENCY_PREFIX\" -DPKG_CONFIG_EXECUTABLE=\"$(command -v pkg-config)\" -DCMAKE_DISABLE_FIND_PACKAGE_Qt6=TRUE > \"$RUNNER_TEMP/mac-config-private.log\" 2>&1; then\n echo '::error::Native macOS CMake configuration failed.'\n python3 porting/macos-on-ios/report_build_errors.py \"$RUNNER_TEMP/mac-config-private.log\"\n exit 1\nfi\nif ! cmake --build \"$RUNNER_TEMP/ngb-mac-engine\" --target ninja_gaiden_black -j2 -- -k0 > \"$RUNNER_TEMP/mac-compile-private.log\" 2>&1; then\n echo '::error::Native macOS build failed. Generated-code diagnostics remain private.'\n python3 porting/macos-on-ios/report_build_errors.py \"$RUNNER_TEMP/mac-compile-private.log\"\n exit 1\nfi\npython3 porting/macos-on-ios/package_mac.py\
+        \ \"$RUNNER_TEMP/ngb-mac-engine/NinjaGaidenBlack\" \"$RUNNER_TEMP/Ninja Gaiden Black.app\" \"$RUNNER_TEMP/ngb-korean/KoreanPatch\""
     - name: Fetch checksum-pinned macOS-on-iOS compatibility layer
       run: 'git clone https://github.com/zorrobyte/macos-on-ios-public.git "$RUNNER_TEMP/ngb-compat"
 
@@ -189,16 +196,14 @@ jobs:
       shell: bash
     - name: Prepare private artifact delivery
       id: delivery
-      env:
-        NGB_IPA_PASSWORD: ${{ secrets.NGB_IPA_PASSWORD }}
       shell: bash
-      run: "set -euo pipefail\nif [ -z \"$NGB_IPA_PASSWORD\" ]; then\n  echo 'ready=false' >> \"$GITHUB_OUTPUT\"\n  echo 'Game IPA was built, but not published. Add NGB_IPA_PASSWORD to deliver it as an encrypted artifact.'\n  exit 0\nfi\nif [ \"${#NGB_IPA_PASSWORD}\" -lt 16 ]; then\n  echo '::error::NGB_IPA_PASSWORD must contain at least 16 characters.'\n  exit 1\nfi\nif ! command -v 7zz >/dev/null; then brew install sevenzip; fi\nmkdir -p build/private-delivery\nARCHIVE=\"$PWD/build/private-delivery/NinjaGaidenBlack-macos-on-ios.ipa.7z\"\n(cd \"$RUNNER_TEMP/ngb-package\" && \\\n  7zz a -t7z -mx=0 -mhe=on -p\"$NGB_IPA_PASSWORD\" -bso0 -bsp0 \\\n    \"$ARCHIVE\" NinjaGaidenBlack-macos-on-ios.ipa)\n7zz t -p\"$NGB_IPA_PASSWORD\" -bso0 -bsp0 \\\n  build/private-delivery/NinjaGaidenBlack-macos-on-ios.ipa.7z\necho 'ready=true' >> \"$GITHUB_OUTPUT\"\n"
+      run: "set -euo pipefail\numask 077\nmkdir -p build/private-delivery\nopenssl smime -encrypt -binary -aes256 \\\n  -in \"$RUNNER_TEMP/ngb-package/NinjaGaidenBlack-macos-on-ios.ipa\" \\\n  -outform DER -out build/private-delivery/NinjaGaidenBlack-macos-on-ios.ipa.p7m \\\n  porting/macos-on-ios/delivery-recipient.pem\ntest -s build/private-delivery/NinjaGaidenBlack-macos-on-ios.ipa.p7m\necho 'ready=true' >> \"$GITHUB_OUTPUT\"\necho 'Encrypted transport prepared; the recipient private key is never present in Actions.'\n"
     - name: Upload encrypted game IPA only
       if: steps.delivery.outputs.ready == 'true'
       uses: actions/upload-artifact@v4
       with:
         name: NinjaGaidenBlack-upstream-0.9.72-encrypted-IPA
-        path: build/private-delivery/*.ipa.7z
+        path: build/private-delivery/*.ipa.p7m
         if-no-files-found: error
         retention-days: 7
     - name: Remove private build inputs

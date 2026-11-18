@@ -59,6 +59,35 @@ int main(void){
  for(int i=0;i<CAT_ROWS && s_cat_rows[0][i]>=0;i++)pause+=s_cat_rows[0][i]==S_INTERP;
  for(unsigned i=0;i<sizeof s_rows_gfx;i++)pc+=s_rows_gfx[i]==ROW_INTERP;
  assert(pause==1 && pc==1);
+ int pw=0,pd=0,cw=0,cd=0;
+ for(int i=0;i<CAT_ROWS && s_cat_rows[1][i]>=0;i++){pw+=s_cat_rows[1][i]==S_WINDOW;pd+=s_cat_rows[1][i]==S_DISPLAY;}
+ for(unsigned i=0;i<sizeof s_rows_disp;i++){cw+=s_rows_disp[i]==ROW_WINDOW;cd+=s_rows_disp[i]==ROW_DISPLAY;}
+#ifdef NGB_CONVERTED_DISPLAY
+ assert(!pw && !pd && !cw && !cd && CTL_FIRST_COL==2);
+#else
+ assert(pw==1 && pd==1 && cw==1 && cd==1 && CTL_FIRST_COL==0);
+#endif
+ int row=0;s_ctl_col=CTL_FIRST_COL;
+ ctl_keys(K_LEFT,&row,0);assert(s_ctl_col==CTL_FIRST_COL);
+ ctl_keys(K_RIGHT,&row,0);
+#ifdef NGB_CONVERTED_DISPLAY
+ assert(s_ctl_col==2);
+#else
+ assert(s_ctl_col==1);s_ctl_col=2;
+#endif
+ capture_slot=-1;ctl_keys(K_OK,&row,0);assert(capture_slot==2);
+ changed_slot=-1;ctl_keys(K_CLEAR,&row,0);assert(changed_slot==2);
+ row=1;capture_slot=-1;changed_slot=-1;
+ ctl_keys(K_OK,&row,0);ctl_keys(K_CLEAR,&row,0);assert(capture_slot==-1 && changed_slot==-1);
+ ctl_mouse(HIT_CTL+0*4+2,&row);assert(row==0 && s_ctl_col==2);
+ assert(ctl_hit(s_ctl_cx[2],CTL_Y0+1)==HIT_CTL+2);
+#ifdef NGB_CONVERTED_DISPLAY
+ ctl_mouse(HIT_CTL+0*4+0,&row);assert(s_ctl_col==2);
+ assert(ctl_hit(252,CTL_Y0+1)==HIT_CTL+3);
+ assert(ctl_hit(343,CTL_Y0+1)==HIT_CTL+2);
+#endif
+ row=CTL_MOUSE;ctl_keys(K_RIGHT,&row,0);assert(sensitivity_steps==1);
+ row=CTL_PROMPTS;ctl_keys(K_LEFT,&row,0);assert(prompt_steps==-1);
  return 0;
 }
 '''
@@ -66,10 +95,40 @@ pause=(root/'src/pause_tab.c').read_text();pc=(root/'src/pc_menu.c').read_text()
 tables=re.search(r'enum \{ S_RENDER.*?\};',pause,re.S)[0]+ '\n#define CATS 6\n#define CAT_ROWS 9\n'+block(pause,'static const signed char s_cat_rows')+';\n'
 tables+=re.search(r'enum \{ ROW_SCREEN.*?\};',pc,re.S)[0]+'\n'
 for name in ('s_rows_gfx','s_rows_disp'):tables+=block(pc,'static const uint8_t '+name)+';\n'
+control_prefix=r"""
+#include <math.h>
+#define A_COUNT 3
+#define CTL_INVX A_COUNT
+#define CTL_MOUSE (A_COUNT+5)
+#define CTL_PROMPTS (A_COUNT+6)
+#define CTL_DEF (A_COUNT+7)
+#define CTL_ROWS (A_COUNT+8)
+#define CTL_TOGGLE(r) ((r)>=CTL_INVX && (r)<=A_COUNT+4)
+#define CTL_Y0 74
+#define CTL_SHOWN 6
+#define PAGE_W 450
+#define ROW_H 30
+#define HIT_CTL 128
+static int capture_slot=-1,changed_slot=-1,sensitivity_steps,prompt_steps;
+void play_sound(int n){(void)n;}
+void ctl_toggle_flip(int n){(void)n;}
+void ngb_bind_step_mouse_sensitivity(int n){sensitivity_steps+=n;}
+void ngb_bind_step_prompts(int n){prompt_steps+=n;}
+void ngb_bind_defaults(void){}
+int ngb_bind_get(int row,int slot){return 42;}
+void ngb_bind_set(int row,int slot,int n){changed_slot=slot;}
+int ngb_bind_pad_fixed(int row){return row==1;}
+void ngb_bind_capture_begin(int row,int slot){capture_slot=slot;}
+"""
+a=pause.index('#ifdef NGB_CONVERTED_DISPLAY',pause.index('#define CTL_NAME_X'))
+b=pause.index('static void ctl_scroll',a)
+control_source=re.search(r'enum \{ K_UP.*?\};',pause,re.S)[0]+control_prefix+pause[a:b]
+for name in ('static int ctl_hit(', 'static int ctl_keys(', 'static void ctl_mouse('):
+ control_source+=block(pause,name)+'\n'
 assert 'K_ALT_OK' in pause
 with tempfile.TemporaryDirectory() as folder:
- p=Path(folder)/'test.c';p.write_text(prefix+keys+'\n'+function+'\n'+tables+main)
+ p=Path(folder)/'test.c';p.write_text(prefix+keys+'\n'+function+'\n'+tables+control_source+main)
  for define in ([],['-DNGB_CONVERTED_DISPLAY=1']):
-  exe=Path(folder)/'test';subprocess.run([os.environ.get('CC','cc'),'-std=c11',*define,str(p),'-o',str(exe)],check=True)
+  exe=Path(folder)/'test';subprocess.run([os.environ.get('CC','cc'),'-std=c11',*define,str(p),'-lm','-o',str(exe)],check=True)
   subprocess.run([str(exe)],check=True)
-print('PASS: production A/X focus and row input, held-button debounce, Delete separation, upstream Frame Interpolation in both menus')
+print('PASS: A/X focus, hidden iOS window rows, controller-only navigation/capture/clear/hit tests, fixed sticks and desktop controls retained')

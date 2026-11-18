@@ -21,32 +21,39 @@ index d4f2dd6..2c21eec 100644
 @@ -1334,0 +1345 @@ loc_0017CC98: ;
 +#endif
 diff --git a/src/pause_tab.c b/src/pause_tab.c
-index 0f55686..04ec827 100644
+index 0f55686..a6f593e 100644
 --- a/src/pause_tab.c
 +++ b/src/pause_tab.c
 @@ -35,0 +36 @@
 +#include "quit_label.h"
-@@ -222 +223,5 @@ static void value_text(int row, char *out, size_t n)
+@@ -159 +160,5 @@ static const signed char s_cat_rows[CATS + 1][CAT_ROWS] = {
+-    { S_ASPECT, S_WINDOW, S_DISPLAY, S_VSYNC, S_FPS, S_HUD, S_HUDSTYLE, S_HUDASPECT, S_SKIP },   /* (a full page) */
++    { S_ASPECT,
++#ifndef NGB_CONVERTED_DISPLAY
++      S_WINDOW, S_DISPLAY,
++#endif
++      S_VSYNC, S_FPS, S_HUD, S_HUDSTYLE, S_HUDASPECT, S_SKIP },   /* (a full page) */
+@@ -222 +227,5 @@ static void value_text(int row, char *out, size_t n)
 -    case S_RENDER:  snprintf(out, n, "%dx %dx%d", v, 720 * v, 480 * v); break;   /* the game's 720x480 times it (#105) */
 +    case S_RENDER:
 +#ifdef NGB_CONVERTED_DISPLAY
 +        if(v==NGB_RENDER_SCALE_IPHONE_NATIVE){snprintf(out,n,"iPhone Native");break;}
 +#endif
 +        snprintf(out, n, "%dx %dx%d", v, 720 * v, 480 * v); break;   /* the game's 720x480 times it (#105) */
-@@ -234 +239,5 @@ static void value_text(int row, char *out, size_t n)
+@@ -234 +243,5 @@ static void value_text(int row, char *out, size_t n)
 -    case S_ASPECT:  snprintf(out, n, "%s", v == 4 ? "32:9" : v == 3 ? "21:9" : v == 2 ? "16:10" : v ? "16:9" : "4:3"); break;
 +    case S_ASPECT:
 +#ifdef NGB_CONVERTED_DISPLAY
 +        if(v==ASPECT_IPHONE){snprintf(out,n,"iPhone Native");break;}
 +#endif
 +        snprintf(out, n, "%s", v == 4 ? "32:9" : v == 3 ? "21:9" : v == 2 ? "16:10" : v ? "16:9" : "4:3"); break;
-@@ -260 +269 @@ static void change(int row, int step)
+@@ -260 +273 @@ static void change(int row, int step)
 -        ngb_pc_set_setting(0, v < 1 ? 10 : v > 10 ? 1 : v);
 +        ngb_pc_set_setting(0, v < 1 ? NGB_RENDER_SCALE_COUNT : v > NGB_RENDER_SCALE_COUNT ? 1 : v);
-@@ -622,0 +632,2 @@ static void tab_word(uint8_t *m, int mw, int mh, float cx, float cy, float bw, f
+@@ -622,0 +636,2 @@ static void tab_word(uint8_t *m, int mw, int mh, float cx, float cy, float bw, f
 +    float text_height = bh;
 +    int localized = 0;
-@@ -627,2 +638,11 @@ static void tab_word(uint8_t *m, int mw, int mh, float cx, float cy, float bw, f
+@@ -627,2 +642,11 @@ static void tab_word(uint8_t *m, int mw, int mh, float cx, float cy, float bw, f
 -        float a = draw_text(tmp, 400, 160, &s_font_tab, "S", cap, sx, 6, base);
 -        draw_text(tmp, 400, 160, &s_font_tab, "ettings", rest, sx, 6 + a - 2, base);
 +#ifdef NGB_IOS_KOREAN
@@ -60,13 +67,13 @@ index 0f55686..04ec827 100644
 +            float a = draw_text(tmp, 400, 160, &s_font_tab, "S", cap, sx, 6, base);
 +            draw_text(tmp, 400, 160, &s_font_tab, "ettings", rest, sx, 6 + a - 2, base);
 +        }
-@@ -643,2 +663,3 @@ static void tab_word(uint8_t *m, int mw, int mh, float cx, float cy, float bw, f
+@@ -643,2 +667,3 @@ static void tab_word(uint8_t *m, int mw, int mh, float cx, float cy, float bw, f
 -    float k = fminf(fminf(bw / tw, bh / th), 1.0f);
 -    int ow = (int)(tw * k), oh = (int)(th * k);
 +    float k = fminf(fminf(bw / tw, text_height / th), 1.0f);
 +    int ow = localized ? (int)lroundf(tw * k) : (int)(tw * k);
 +    int oh = localized ? (int)lroundf(th * k) : (int)(th * k);
-@@ -650,5 +671,16 @@ static void tab_word(uint8_t *m, int mw, int mh, float cx, float cy, float bw, f
+@@ -650,5 +675,16 @@ static void tab_word(uint8_t *m, int mw, int mh, float cx, float cy, float bw, f
 -            for (float yy = sy0; yy < sy0 + 1 / k; yy += 0.5f)
 -                for (float xx = sx0; xx < sx0 + 1 / k; xx += 0.5f) {
 -                    int X = (int)xx, Y = (int)yy;
@@ -88,27 +95,78 @@ index 0f55686..04ec827 100644
 +                        if (X <= x1 && Y <= y1) { sum += tmp[Y * 400 + X]; n++; }
 +                    }
 +            }
-@@ -2066 +2098 @@ void ngb_menu_mark(void);            /* src/menu_mouse.c */
+@@ -842,0 +879,9 @@ static float s_cat_x[CATS][2];
++#ifdef NGB_CONVERTED_DISPLAY
++#define CTL_FIRST_COL 2            /* Keep the binding API's controller slot number. */
++#define CTL_ACTION_WIDTH 276
++#define CTL_CLEAR_KEY ""
++static const float s_ctl_cx[3] = { 0, 0, 370 }, s_ctl_w[3] = { 0, 0, 116 };
++#else
++#define CTL_FIRST_COL 0
++#define CTL_ACTION_WIDTH 186
++#define CTL_CLEAR_KEY " / Delete"
+@@ -844 +889,2 @@ static const float s_ctl_cx[3] = { 252, 343, 420 }, s_ctl_w[3] = { 88, 88, 56 };
+-static int s_ctl_col, s_ctl_top;
++#endif
++static int s_ctl_col = CTL_FIRST_COL, s_ctl_top;
+@@ -871,0 +918 @@ static void draw_controls(uint32_t *px, uint8_t *m, int focused, int row)
++#ifndef NGB_CONVERTED_DISPLAY
+@@ -872,0 +920 @@ static void draw_controls(uint32_t *px, uint8_t *m, int focused, int row)
++#endif
+@@ -918,2 +966,2 @@ static void draw_controls(uint32_t *px, uint8_t *m, int focused, int row)
+-                      sel ? 0xF5EB5A : focused ? 0xE6E6EB : 0xA0A0A8, 0, 186);
+-        for (int c = 0; c < 3; c++) {
++                      sel ? 0xF5EB5A : focused ? 0xE6E6EB : 0xA0A0A8, 0, CTL_ACTION_WIDTH);
++        for (int c = CTL_FIRST_COL; c < 3; c++) {
+@@ -981 +1029 @@ static void draw_controls(uint32_t *px, uint8_t *m, int focused, int row)
+-             : ngb_pad_prompts_ps() ? "Cross: change   Square / Delete: clear   (play only; the menus keep theirs)"
++             : ngb_pad_prompts_ps() ? "Cross: change   Square" CTL_CLEAR_KEY ": clear   (play only; the menus keep theirs)"
+@@ -983,2 +1031,2 @@ static void draw_controls(uint32_t *px, uint8_t *m, int focused, int row)
+-             ? "B: change   Y / Delete: clear   (play only; the menus keep theirs)"
+-             : "A: change   X / Delete: clear   (play only; the menus keep theirs)";
++             ? "B: change   Y" CTL_CLEAR_KEY ": clear   (play only; the menus keep theirs)"
++             : "A: change   X" CTL_CLEAR_KEY ": clear   (play only; the menus keep theirs)";
+@@ -2066 +2114 @@ void ngb_menu_mark(void);            /* src/menu_mouse.c */
 -enum { K_UP = 1, K_DOWN, K_LEFT, K_RIGHT, K_OK, K_BACK, K_CLEAR, K_ROW = 0x10000 };
 +enum { K_UP = 1, K_DOWN, K_LEFT, K_RIGHT, K_OK, K_BACK, K_CLEAR, K_ALT_OK, K_ROW = 0x10000 };
-@@ -2196,0 +2229 @@ static void pt_draw(void)
+@@ -2088 +2136 @@ static int ctl_hit(float x, float y)
+-    for (int i = 0; i < 3 && r < A_COUNT; i++)
++    for (int i = CTL_FIRST_COL; i < 3 && r < A_COUNT; i++)
+@@ -2145 +2193 @@ static int ctl_keys(int key, int *row, int strip)
+-        if (c >= 0 && c <= 2 && !(c == 2 && *row < A_COUNT && ngb_bind_pad_fixed(*row))) {
++        if (c >= CTL_FIRST_COL && c <= 2 && !(c == 2 && *row < A_COUNT && ngb_bind_pad_fixed(*row))) {
+@@ -2187 +2235 @@ static void ctl_mouse(int r, int *row)
+-    if (c < 3 && !(c == 2 && ngb_bind_pad_fixed(rr)))
++    if (c >= CTL_FIRST_COL && c < 3 && !(c == 2 && ngb_bind_pad_fixed(rr)))
+@@ -2196,0 +2245 @@ static void pt_draw(void)
 +    if(key==K_ALT_OK)key=s_cat==CAT_CTL && s_row>=0?K_CLEAR:K_OK;
-@@ -2435,0 +2469 @@ static int ngb_confirm_tick(void)
+@@ -2244,0 +2294 @@ static void pt_draw(void)
++#ifndef NGB_CONVERTED_DISPLAY
+@@ -2246,0 +2297 @@ static void pt_draw(void)
++#endif
+@@ -2435,0 +2487 @@ static int ngb_confirm_tick(void)
 +    if(key==K_ALT_OK)key=K_OK;
-@@ -2567,0 +2602 @@ void ngb_controls_panel_tick(int want)
+@@ -2562 +2614 @@ void ngb_controls_panel_tick(int want)
+-        s_ctl_col = 0;
++        s_ctl_col = CTL_FIRST_COL;
+@@ -2567,0 +2620 @@ void ngb_controls_panel_tick(int want)
 +    if(key==K_ALT_OK)key=K_CLEAR;
-@@ -2749 +2784 @@ void ngb_main_menu_exit(void)
+@@ -2580,0 +2634 @@ void ngb_controls_panel_tick(int want)
++#ifndef NGB_CONVERTED_DISPLAY
+@@ -2582,0 +2637 @@ void ngb_controls_panel_tick(int want)
++#endif
+@@ -2749 +2804 @@ void ngb_main_menu_exit(void)
 -    if (!s_mm_exit && ngb_confirm_open("Exit to Desktop?", 0))
 +    if (!s_mm_exit && ngb_confirm_open(NGB_QUIT_QUESTION, 0))
-@@ -2779 +2814 @@ void ngb_quit_to_desktop(void);
+@@ -2779 +2834 @@ void ngb_quit_to_desktop(void);
 -static const char *const s_exit_label[EXIT_ROWS] = { "Return to Game", "Return to Main Menu", "Exit to Desktop" };
 +static const char *const s_exit_label[EXIT_ROWS] = { "Return to Game", "Return to Main Menu", NGB_QUIT_LABEL };
-@@ -2785 +2820 @@ static const char *const s_exit_help[EXIT_ROWS] = {
+@@ -2785 +2840 @@ static const char *const s_exit_help[EXIT_ROWS] = {
 -static const char *const s_exit_q[EXIT_ROWS] = { "", "Return to the Main Menu?", "Exit to Desktop?" };
 +static const char *const s_exit_q[EXIT_ROWS] = { "", "Return to the Main Menu?", NGB_QUIT_QUESTION };
-@@ -2831,0 +2867 @@ static void pt_exit_draw(void)
+@@ -2831,0 +2887 @@ static void pt_exit_draw(void)
 +    if(key==K_ALT_OK)key=s_cat==CAT_CTL && s_row>=0?K_CLEAR:K_OK;
-@@ -5267,0 +5304,10 @@ static void edge_inset(uint32_t p, uint32_t verts)
+@@ -5267,0 +5324,10 @@ static void edge_inset(uint32_t p, uint32_t verts)
 +#ifdef NGB_IOS_KOREAN
 +        // Korean ink reaches the last cell row. QuadSnap already clamps to
 +        // console sample centres; another vertical inset cuts off its fade.
@@ -120,30 +178,37 @@ index 0f55686..04ec827 100644
 +            continue;
 +#endif
 diff --git a/src/pc_menu.c b/src/pc_menu.c
-index ff59a45..c7b05a5 100644
+index ff59a45..8a5118b 100644
 --- a/src/pc_menu.c
 +++ b/src/pc_menu.c
-@@ -235,0 +236,5 @@ static const struct { uint32_t id; const char *text; } s_text[] = {
+@@ -82 +82,5 @@ static const uint8_t s_rows_gfx[] = { ROW_RENDER, ROW_TEXTURE, ROW_MSAA, ROW_SHA
+-static const uint8_t s_rows_disp[] = { ROW_ASPECT, ROW_WINDOW, ROW_DISPLAY, ROW_VSYNC, ROW_FPS, ROW_HUD, ROW_HUDSTYLE, ROW_HUDASPECT, ROW_SKIP,
++static const uint8_t s_rows_disp[] = { ROW_ASPECT,
++#ifndef NGB_CONVERTED_DISPLAY
++    ROW_WINDOW, ROW_DISPLAY,
++#endif
++    ROW_VSYNC, ROW_FPS, ROW_HUD, ROW_HUDSTYLE, ROW_HUDASPECT, ROW_SKIP,
+@@ -235,0 +240,5 @@ static const struct { uint32_t id; const char *text; } s_text[] = {
 +#ifdef NGB_IOS_KOREAN
 +    { 0x20200, "Text Language" },
 +    { 0x20201, "Text language. Restart to apply Korean." },
 +    { 0x20210, "Japanese" }, { 0x20211, "English" }, { 0x20212, "Korean" },
 +#endif
-@@ -321,0 +327,4 @@ static const struct { uint32_t id; const char *text; } s_text[] = {
+@@ -321,0 +331,4 @@ static const struct { uint32_t id; const char *text; } s_text[] = {
 +#ifdef NGB_CONVERTED_DISPLAY
 +    { T_SCALE0 + 10, "iPhone Native" },
 +    { T_ASPECT0 + ASPECT_IPHONE, "iPhone Native" },
 +#endif
-@@ -408 +417 @@ static uint32_t make_rows(const uint8_t *kinds, int n)
+@@ -408 +421 @@ static uint32_t make_rows(const uint8_t *kinds, int n)
 -        case ROW_RENDER:  src = 0x429984; max = 9; break;
 +        case ROW_RENDER:  src = 0x429984; max = NGB_RENDER_SCALE_COUNT - 1; break;
-@@ -414 +423 @@ static uint32_t make_rows(const uint8_t *kinds, int n)
+@@ -414 +427 @@ static uint32_t make_rows(const uint8_t *kinds, int n)
 -        case ROW_ASPECT:  src = 0x429984; max = 3; break;
 +        case ROW_ASPECT:  src = 0x429984; max = ASPECT_COUNT - 1; break;
-@@ -932 +941 @@ static int pc_value_change(int row, int delta)
+@@ -932 +945 @@ static int pc_value_change(int row, int delta)
 -        ngb_pc_set_setting(0, v < 1 ? 10 : v > 10 ? 1 : v);
 +        ngb_pc_set_setting(0, v < 1 ? NGB_RENDER_SCALE_COUNT : v > NGB_RENDER_SCALE_COUNT ? 1 : v);
-@@ -2173,0 +2183,3 @@ float ngb_hud_shape(void)
+@@ -2173,0 +2187,3 @@ float ngb_hud_shape(void)
 +#ifdef NGB_CONVERTED_DISPLAY
 +    if (a==ASPECT_IPHONE) {NgbSettings native={0};native.aspect=a;return (float)((4.0/3.0)/ngb_settings_aspect_ratio(&native));}
 +#endif
