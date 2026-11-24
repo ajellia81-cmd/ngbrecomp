@@ -203,12 +203,27 @@ jobs:
         NGB_DISC_URL: ${{ secrets.NGB_DISC_URL }}
         NGB_DISC_SHA256: ${{ secrets.NGB_DISC_SHA256 }}
       run: "\"$RUNNER_TEMP/ngb-input-tools/bin/python\" porting/macos-on-ios/korean/private_input.py \\\n  --download --iso \"$RUNNER_TEMP/ngb-private.iso\"\nrm -f \"$RUNNER_TEMP/ngb-private.iso\"\n"
+    - name: Fetch and verify pinned Korean patch before private code generation
+      shell: bash
+      run: |
+        set -euo pipefail
+        python3 - <<'PYCODE'
+        import hashlib,os,subprocess,sys
+        from pathlib import Path
+        sys.path.insert(0,'porting/macos-on-ios/korean')
+        import prepare_korean as pinned
+        target=Path(os.environ['RUNNER_TEMP'])/'ngb-korean-patch.zip'
+        subprocess.run(['curl','--fail','--location','--retry','5','--retry-all-errors','--retry-delay','3','--connect-timeout','20','--max-time','180','--output',str(target),pinned.PATCH_URL],check=True)
+        if hashlib.sha256(target.read_bytes()).hexdigest()!=pinned.PATCH_SHA256:
+            raise SystemExit('Korean patch fingerprint mismatch')
+        print('Pinned Korean patch downloaded and verified before code generation')
+        PYCODE
     - name: Generate real game C using the existing pipeline
       shell: bash
       run: "set -euo pipefail\nif ! bash tools/pipeline.sh > \"$RUNNER_TEMP/ngb-pipeline-private.log\" 2>&1; then\n  echo '::error::Private recompilation failed. Raw logs are withheld because they can contain game-derived code. No placeholder executable was built.'\n  exit 1\nfi\ntest -s src/recomp/gen/recomp_types.h\npython3 - <<'PY'\nfrom pathlib import Path\nsources = list(Path('src/recomp/gen').glob('*.c'))\nif not sources:\n    raise SystemExit('No generated game C files')\nprint('Generated game C translation units:', len(sources))\nPY\n"
     - name: Prepare verified Korean variants without replacing original game functions
       shell: bash
-      run: "set -euo pipefail\npython3 porting/macos-on-ios/korean/prepare_korean.py --source game_files/default.xbe \\\n  --zip \"$RUNNER_TEMP/ngb-korean-patch.zip\" --download --output \"$RUNNER_TEMP/ngb-korean\"\nexport NGB_RECOMP_XBE=\"$RUNNER_TEMP/ngb-korean/korean.xbe\"\nexport NGB_RECOMP_GEN_DIR=\"$RUNNER_TEMP/ngb-korean/gen\"\nexport NGB_RECOMP_MANUAL=\"$RUNNER_TEMP/ngb-korean/manual-korean.json\"\nexport NGB_RECOMP_ANALYSIS=\"$RUNNER_TEMP/ngb-korean/analysis.json\"\nready=0\nfor pass in 1 2 3 4 5 6; do\n  if [ -s \"$RUNNER_TEMP/ngb-korean/continuations.json\" ]; then\n    export NGB_RECOMP_EXTRA_SEEDS=\"$RUNNER_TEMP/ngb-korean/continuations.json\"\n  fi\n  if ! bash tools/pipeline.sh > \"$RUNNER_TEMP/ngb-korean-pipeline-private.log\" 2>&1; then\n    echo '::error::Private Korean code generation failed; raw game-derived logs are withheld.'\n    exit 1\n  fi\n  set +e\n  python3 porting/macos-on-ios/korean/merge_korean_codegen.py --original src/recomp/gen --translated \"$NGB_RECOMP_GEN_DIR\"\
+      run: "set -euo pipefail\npython3 porting/macos-on-ios/korean/prepare_korean.py --source game_files/default.xbe \\\n  --zip \"$RUNNER_TEMP/ngb-korean-patch.zip\" --output \"$RUNNER_TEMP/ngb-korean\"\nexport NGB_RECOMP_XBE=\"$RUNNER_TEMP/ngb-korean/korean.xbe\"\nexport NGB_RECOMP_GEN_DIR=\"$RUNNER_TEMP/ngb-korean/gen\"\nexport NGB_RECOMP_MANUAL=\"$RUNNER_TEMP/ngb-korean/manual-korean.json\"\nexport NGB_RECOMP_ANALYSIS=\"$RUNNER_TEMP/ngb-korean/analysis.json\"\nready=0\nfor pass in 1 2 3 4 5 6; do\n  if [ -s \"$RUNNER_TEMP/ngb-korean/continuations.json\" ]; then\n    export NGB_RECOMP_EXTRA_SEEDS=\"$RUNNER_TEMP/ngb-korean/continuations.json\"\n  fi\n  if ! bash tools/pipeline.sh > \"$RUNNER_TEMP/ngb-korean-pipeline-private.log\" 2>&1; then\n    echo '::error::Private Korean code generation failed; raw game-derived logs are withheld.'\n    exit 1\n  fi\n  set +e\n  python3 porting/macos-on-ios/korean/merge_korean_codegen.py --original src/recomp/gen --translated \"$NGB_RECOMP_GEN_DIR\"\
         \ \\\n    --missing-seeds \"$RUNNER_TEMP/ngb-korean/continuations.json\"\n  result=$?\n  set -e\n  if [ \"$result\" -eq 0 ]; then ready=1; break; fi\n  if [ \"$result\" -ne 2 ]; then exit \"$result\"; fi\ndone\nif [ \"$ready\" -ne 1 ]; then\n  echo '::error::Korean continuations remain untranslated; refusing to substitute stubs.'\n  exit 1\nfi\n"
     - name: Bind original Options text language to the private Korean boot
       run: python3 porting/macos-on-ios/korean/wrap_game_codegen.py src/recomp/gen
