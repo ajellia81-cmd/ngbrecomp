@@ -67,6 +67,21 @@ int main(void){
 #else
  assert(pw==1 && pd==1 && cw==1 && cd==1 && CTL_FIRST_COL==0);
 #endif
+ for(int cat=0;cat<CATS+1;cat++) {
+  unsigned seen=0;
+  for(int i=0;i<CAT_ROWS && s_cat_rows[cat][i]>=0;i++) {
+   int item=s_cat_rows[cat][i];assert(item<S_COUNT);
+   for(int j=0;j<i;j++)assert(s_cat_rows[cat][j]!=item);
+   seen++;
+  }
+  if(cat==1) {
+#ifdef NGB_CONVERTED_DISPLAY
+   assert(seen==7);
+#else
+   assert(seen==9);
+#endif
+  }
+ }
  int row=0;s_ctl_col=CTL_FIRST_COL;
  ctl_keys(K_LEFT,&row,0);assert(s_ctl_col==CTL_FIRST_COL);
  ctl_keys(K_RIGHT,&row,0);

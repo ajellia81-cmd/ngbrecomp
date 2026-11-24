@@ -17,10 +17,10 @@ def prove_private(release,asset,sha):
   raise RuntimeError('Anonymous access was not rejected with 404; refusing private binary delivery')
 def main():
  p=argparse.ArgumentParser();p.add_argument('action',choices=['prepare','upload','cleanup']);p.add_argument('receipt',type=Path);p.add_argument('--ipa',type=Path);a=p.parse_args()
- repo=os.environ['GITHUB_REPOSITORY'];sha=os.environ['GITHUB_SHA'];run=os.environ['GITHUB_RUN_ID'];attempt=os.environ.get('GITHUB_RUN_ATTEMPT','1');version='4.0.'+os.environ['GITHUB_RUN_NUMBER']
+ repo=os.environ['GITHUB_REPOSITORY'];sha=os.environ['GITHUB_SHA'];run=os.environ['GITHUB_RUN_ID'];attempt=os.environ.get('GITHUB_RUN_ATTEMPT','1');version='4.0.'+os.environ['GITHUB_RUN_NUMBER'];kind='UIProbe' if os.environ.get('NGB_IOS_UI_PROMPT_PROBE')=='1' else 'Release'
  base='repos/'+repo+'/releases';tag='ios-release-'+run+'-'+attempt
  if a.action=='prepare':
-  payload={'tag_name':tag,'target_commitish':sha,'name':'Ninja Gaiden Black '+version+' Release','body':'Private clean release build without added port diagnostic recording. Keep this release as a draft. Download the IPA asset directly.','draft':True,'prerelease':False,'generate_release_notes':False}
+  payload={'tag_name':tag,'target_commitish':sha,'name':'Ninja Gaiden Black '+version+' '+kind,'body':'Private optimized build; UIProbe records bounded footer metadata only, with performance diagnostics disabled. Keep this release as a draft. Download the IPA asset directly.','draft':True,'prerelease':False,'generate_release_notes':False}
   with tempfile.TemporaryDirectory() as td:
    work=Path(td);body=work/'request.json';body.write_text(json.dumps(payload))
    release=json.loads(gh('api','--method','POST',base,'--input',body));private_release(release,sha)
@@ -36,7 +36,7 @@ def main():
   assert a.ipa and a.ipa.is_file()
   with tempfile.TemporaryDirectory() as td:
    import shutil
-   named=Path(td)/('NinjaGaidenBlack-'+version+'-Release.ipa');shutil.copy2(a.ipa,named)
+   named=Path(td)/('NinjaGaidenBlack-'+version+'-'+kind+'.ipa');shutil.copy2(a.ipa,named)
    gh('release','upload',receipt['tag'],named,'--repo',repo)
    release=api(base+'/'+str(receipt['id']));asset=next(x for x in release['assets'] if x['name']==named.name)
    try:prove_private(release,asset,sha)
