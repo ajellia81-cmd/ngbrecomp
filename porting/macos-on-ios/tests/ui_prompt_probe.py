@@ -7,6 +7,7 @@ prefix=r'''
 #include <assert.h>
 #include <math.h>
 static uint8_t mem[0x1000000];
+static uint32_t esp,g_ebp;
 #define MEM8(a) mem[(a)]
 #define MEM32(a) (*(uint32_t *)(void *)(mem+(a)))
 #define MEMF(a) (*(float *)(void *)(mem+(a)))
@@ -14,8 +15,8 @@ static uint8_t mem[0x1000000];
 static uint32_t sprite_def(uint32_t id){return id?0x3000:0;}
 static int records,last_letter;
 void ngb_ui_prompt_record(uint32_t frame,uint32_t sprite,uint32_t texture,int letter,
- int tw,int th,float x0,float y0,float x1,float y1,float u0,float v0,float u1,float v1){
- (void)frame;(void)sprite;(void)texture;(void)x0;(void)y0;(void)x1;(void)y1;
+ int tw,int th,float x0,float y0,float x1,float y1,float u0,float v0,float u1,float v1,uint32_t caller,uint32_t parent){
+ (void)caller;(void)parent;(void)frame;(void)sprite;(void)texture;(void)x0;(void)y0;(void)x1;(void)y1;
  (void)u0;(void)v0;(void)u1;(void)v1;assert(tw==128 && th==128);records++;last_letter=letter;
 }
 '''
