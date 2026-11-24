@@ -21,7 +21,7 @@ index d4f2dd6..2c21eec 100644
 @@ -1334,0 +1345 @@ loc_0017CC98: ;
 +#endif
 diff --git a/src/pause_tab.c b/src/pause_tab.c
-index 0f55686..51f6c48 100644
+index 0f55686..9d7b09f 100644
 --- a/src/pause_tab.c
 +++ b/src/pause_tab.c
 @@ -35,0 +36 @@
@@ -194,11 +194,11 @@ index 0f55686..51f6c48 100644
 +            (id == 0x56D || id == 0x587 || id == 0x588))
 +            continue;
 +#endif
-@@ -5284,0 +5362,26 @@ static void edge_inset(uint32_t p, uint32_t verts)
+@@ -5284,0 +5362,25 @@ static void edge_inset(uint32_t p, uint32_t verts)
 +#ifdef NGB_IOS_UI_PROMPT_PROBE
 +extern void ngb_ui_prompt_record(uint32_t,uint32_t,uint32_t,int,int,int,
 +                                float,float,float,float,float,float,float,float,uint32_t,uint32_t);
-+static void ui_prompt_seen(uint32_t packet,uint32_t verts)
++static void ui_prompt_seen(uint32_t packet,uint32_t verts,uint32_t caller,uint32_t parent)
 +{
 +    static uint64_t seen[512];
 +    static unsigned count;
@@ -208,7 +208,6 @@ index 0f55686..51f6c48 100644
 +    uint32_t id=MEM32(packet)&0xFFFF,d=sprite_def(id);
 +    if (!d) return;
 +    uint32_t texture=MEM32(d+0x10);
-+    uint32_t caller=MEM32(esp),parent=g_ebp>=0x10000 && g_ebp<0x3FFFFF8?MEM32(g_ebp+4):0;
 +    uint64_t key=(((uint64_t)texture<<32)|id)^((uint64_t)parent*0x9E3779B97F4A7C15ull);
 +    for(unsigned i=0;i<count;i++) if(seen[i]==key)return;
 +    seen[count++]=key;
@@ -221,9 +220,15 @@ index 0f55686..51f6c48 100644
 +}
 +#endif
 +
-@@ -5334,0 +5438,3 @@ void sub_002216B0(void)
+@@ -5290,0 +5393,5 @@ void sub_002216B0(void)
 +#ifdef NGB_IOS_UI_PROMPT_PROBE
-+    if(eax) ui_prompt_seen(p,verts);
++    /* sprite_submit consumes the guest return address; retain it before the call. */
++    uint32_t ui_caller=MEM32(esp);
++    uint32_t ui_parent=g_ebp>=0x10000 && g_ebp<0x3FFFFF8?MEM32(g_ebp+4):0;
++#endif
+@@ -5334,0 +5442,3 @@ void sub_002216B0(void)
++#ifdef NGB_IOS_UI_PROMPT_PROBE
++    if(eax) ui_prompt_seen(p,verts,ui_caller,ui_parent);
 +#endif
 diff --git a/src/pc_menu.c b/src/pc_menu.c
 index ff59a45..8a5118b 100644
