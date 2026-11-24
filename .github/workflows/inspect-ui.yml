@@ -1,0 +1,49 @@
+name: Inspect result prompt metadata
+'on':
+  push:
+    branches: [macos-on-ios-upstream072-ui-inspect]
+permissions:
+  contents: read
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python3 -m pip install gdown==6.4.2 capstone==5.0.3
+      - name: Prepare owner-authorized private input
+        env:
+          NGB_DISC_URL: ${{ secrets.NGB_DISC_URL }}
+          NGB_DISC_SHA256: ${{ secrets.NGB_DISC_SHA256 }}
+        run: python3 porting/macos-on-ios/korean/private_input.py --download --iso "$RUNNER_TEMP/disc.iso"
+      - name: Inspect public UI label addresses without emitting game code
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import struct,re
+          b=Path('game_files/default.xbe').read_bytes();base=struct.unpack_from('<I',b,0x104)[0];count,table=struct.unpack_from('<II',b,0x11c)
+          sections=[struct.unpack_from('<9I20s',b,table-base+i*56) for i in range(count)]
+          def va(off):
+            for s in sections:
+              if s[3]<=off<s[3]+s[4]:return s[1]+off-s[3]
+            return base+off
+          for word in ['Proceed','PROCEED','proceed']:
+            for enc in ['ascii','utf-16le']:
+              needle=word.encode(enc)
+              for hit in re.finditer(re.escape(needle),b):
+                address=va(hit.start());print('LABEL',word,enc,hex(address),'file',hex(hit.start()))
+                refs=[va(i) for i in range(len(b)-4) if b[i:i+4]==struct.pack('<I',address)]
+                print('REFERENCES',[hex(x) for x in refs[:30]])
+                for x in refs[:10]:
+                  for sec in sections:
+                    if not (sec[0]&4) and sec[1]<=x<sec[1]+sec[4]:
+                      off=x-sec[1]+sec[3]
+                      print('REF_TABLE_FIELDS',hex(x),[hex(v) for v in struct.unpack_from('<9I',b,max(0,off-16))])
+          PY
+      - if: always()
+        run: rm -rf game_files "$RUNNER_TEMP/disc.iso"
