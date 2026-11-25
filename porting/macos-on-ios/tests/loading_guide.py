@@ -4,6 +4,7 @@ import os,subprocess,tempfile
 root=Path(__file__).resolve().parents[3];s=(root/'src/menu_mouse.c').read_text()
 a=s.index('#ifdef NGB_IOS_KOREAN\n#include "loading_guide_policy.h"');b=s.index('\n}',s.index('void sub_001E6D30(void)\n{',a))+2
 body=s[a:b]
+c=s.index('#ifdef NGB_IOS_KOREAN\n#include "proceed_caption_policy.h"');d=s.index('\n#endif',c)+len('\n#endif');support=s[c:d]
 prefix=r'''
 #include <stdint.h>
 #include <string.h>
@@ -17,6 +18,7 @@ static uint8_t mem[0x1000000];
 #define XBOX_PTR(a) (mem+(a))
 static uint32_t esp,eax;static unsigned draws,translated_draws;static int korean;
 static float seen_alpha,record_alpha;
+int ngb_korean_active(void){return 0;}
 void record_text(uint32_t st,uint32_t caller){assert(caller==0x12345);record_alpha=MEMF(st+0x14);}
 static void text_draw(void){uint32_t st=MEM32(esp+4);seen_alpha=MEMF(st+0x14);MEM32(st+8)=42;eax=37;esp+=4;draws++;}
 static void translated_draw(void){translated_draws++;text_draw();}
@@ -36,11 +38,12 @@ static void run(unsigned phase,int x,int y,const char *text,int expect_hide){
 int main(void){
  for(korean=0;korean<2;korean++){
 #ifdef NGB_IOS_KOREAN
-  run(2,540,440,"@c0@AX next",1);
+  run(2,540,440,"@c0@BX next",1);
 #else
-  run(2,540,440,"@c0@AX next",0);
+  run(2,540,440,"@c0@BX next",0);
 #endif
-  run(3,540,440,"@AX next",0);run(4,540,440,"@AX next",0);
+  run(2,540,440,"@AX attack",0);
+  run(3,540,440,"@BX next",0);run(4,540,440,"@AX next",0);
   run(0,540,440,"@AX next",0);run(5,540,440,"@AX next",0);
   run(2,540,440,"loading",0);run(2,540,440,"@AA next",0);
   run(2,60,120,"@AX body",0);run(2,540,320,"@AX upper",0);
@@ -53,9 +56,9 @@ int main(void){
 }
 '''
 with tempfile.TemporaryDirectory() as folder:
- p=Path(folder);(p/'test.c').write_text(prefix+body+main)
+ p=Path(folder);(p/'test.c').write_text(prefix+support+'\n'+body+main)
  for enabled in (False,True):
   flags=['-DNGB_IOS_KOREAN=1'] if enabled else []
-  subprocess.run([os.environ.get('CC','cc'),'-std=c11','-Wall','-Wextra','-fsanitize=address,undefined',*flags,'-I'+str(root/'porting/macos-on-ios/korean'),str(p/'test.c'),'-o',str(p/'test')],check=True)
+  subprocess.run([os.environ.get('CC','cc'),'-std=c11','-Wall','-Wextra','-fsanitize=address,undefined',*flags,'-I'+str(root/'porting/macos-on-ios/korean'),'-I'+str(root/'src'),str(p/'test.c'),'-o',str(p/'test')],check=True)
   subprocess.run([str(p/'test')],check=True,env=dict(os.environ,ASAN_OPTIONS='detect_leaks=0'))
 print('PASS: only phase-2 footer X caption hidden; native/Korean drawers and ABI/layout writes run, opacity restored; other loading text, body, phases and desktop retained')

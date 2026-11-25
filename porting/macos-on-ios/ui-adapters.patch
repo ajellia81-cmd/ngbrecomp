@@ -359,7 +359,53 @@ diff --git a/src/ingame_menu.c b/src/ingame_menu.c
 diff --git a/src/menu_mouse.c b/src/menu_mouse.c
 --- a/src/menu_mouse.c
 +++ b/src/menu_mouse.c
-@@ -277,0 +278,11 @@
+@@ -97,0 +98,32 @@
++#ifdef NGB_IOS_KOREAN
++#include "proceed_caption_policy.h"
++#include "korean.h"
++typedef struct { uint32_t text,font; int changed; } ProceedCaptionSwap;
++static ProceedCaptionSwap proceed_caption_begin(uint32_t state)
++{
++    ProceedCaptionSwap saved={0};
++    if(state<0x10000 || state>0x3FFFFA0)return saved;
++    uint32_t text=MEM32(state+0x10),font=MEM32(state+0x38);
++    if(text<0x10000 || text>0x3FFFFE0)return saved;
++    unsigned kind=ngb_proceed_caption_kind(ngb_korean_active(),font,
++        (int16_t)MEM16(state+0x44),(int16_t)MEM16(state+0x46),
++        (const uint8_t *)XBOX_PTR(text),32);
++    if(!kind)return saved;
++    /* Pinned native message rows: 0x60 is the bare caption; 0x4A includes
++     * its X guide. Read the existing Korean patch's text, never a new font. */
++    uint32_t entry=kind==1?0x431B3C:0x431A34,id=kind==1?0x60:0x4A;
++    if(MEM32(entry)!=id)return saved;
++    uint32_t caption=MEM32(entry+4),body=kind==1?0:4;
++    if(caption<0x10000 || caption>0x3FFFFF0)return saved;
++    if(kind==2 && memcmp(XBOX_PTR(caption),"@BX ",4))return saved;
++    if(!(MEM8(caption+body)&0x80) || !(MEM8(caption+body+2)&0x80) ||
++       MEM8(caption+body+4))return saved;
++    saved.text=text;saved.font=font;saved.changed=1;
++    MEM32(state+0x10)=caption;MEM32(state+0x38)=1;
++    return saved;
++}
++static void proceed_caption_end(uint32_t state,ProceedCaptionSwap saved)
++{
++    if(saved.changed){MEM32(state+0x10)=saved.text;MEM32(state+0x38)=saved.font;}
++}
++#endif
+@@ -99,0 +132,4 @@
++#ifdef NGB_IOS_KOREAN
++    uint32_t state=MEM32(esp+8); /* measurer: rectangle first, text state second */
++    ProceedCaptionSwap saved=proceed_caption_begin(state);
++#endif
+@@ -110,2 +146,3 @@
+-    if (translated) { translated(); return; }
+-#endif
++    if (translated) translated(); else menu_text();
++    proceed_caption_end(state,saved);
++#else
+@@ -112,0 +150 @@
++#endif
+@@ -277,0 +316,11 @@
 +#ifdef NGB_IOS_KOREAN
 +#include "loading_guide_policy.h"
 +static int loading_guide_pending(uint32_t state)
@@ -371,19 +417,21 @@ diff --git a/src/menu_mouse.c b/src/menu_mouse.c
 +        (int16_t)MEM16(state+0x46),(const uint8_t *)XBOX_PTR(text),96);
 +}
 +#endif
-@@ -279,0 +291,5 @@
+@@ -279,0 +329,6 @@
 +#ifdef NGB_IOS_KOREAN
 +    uint32_t state=MEM32(esp+4),alpha=0;
++    ProceedCaptionSwap saved=proceed_caption_begin(state);
 +    int hide=loading_guide_pending(state);
 +    if(hide){alpha=MEM32(state+0x14);MEMF(state+0x14)=0;}
 +#endif
-@@ -284,2 +300,5 @@
+@@ -284,2 +339,6 @@
 -    if (translated) { translated(); return; }
 -#endif
 +    if (translated) translated(); else text_draw();
 +    /* Only opacity is temporary: native text measurement, cursor updates and
 +     * the return convention still run for both original and Korean drawers. */
 +    if(hide)MEM32(state+0x14)=alpha;
++    proceed_caption_end(state,saved);
 +#else
-@@ -286,0 +306 @@
+@@ -286,0 +346 @@
 +#endif
