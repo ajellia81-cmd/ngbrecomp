@@ -21,7 +21,7 @@ index d4f2dd6..2c21eec 100644
 @@ -1334,0 +1345 @@ loc_0017CC98: ;
 +#endif
 diff --git a/src/pause_tab.c b/src/pause_tab.c
-index 0f55686..e6001cf 100644
+index 0f55686..43ade20 100644
 --- a/src/pause_tab.c
 +++ b/src/pause_tab.c
 @@ -35,0 +36 @@
@@ -223,10 +223,42 @@ index 0f55686..e6001cf 100644
 +            (id == 0x56D || id == 0x587 || id == 0x588))
 +            continue;
 +#endif
-@@ -5284,0 +5389,37 @@ static void edge_inset(uint32_t p, uint32_t verts)
+@@ -5284,0 +5389,69 @@ static void edge_inset(uint32_t p, uint32_t verts)
 +#ifdef NGB_IOS_UI_PROMPT_PROBE
 +#include "ui_prompt_probe.h"
 +int ngb_ui_prompt_hook_enabled(void){return 1;}
++/* At most one observation per game frame, plus the guide's first visible
++ * submission. State changes and button edges get priority over 1 Hz samples. */
++static void ui_loading_seen(uint32_t packet,uint32_t verts)
++{
++    static uint32_t last_frame=UINT32_MAX,last_ms,last_phase,seen_guide;
++    static uint32_t last_host,last_flags,last_guest;
++    static unsigned records;
++    uint32_t phase=MEM32(0x8DB160),frame=MEM32(0xD21734);
++    if(records>=256 || ((!phase || phase>4) && (!last_phase || last_phase>4)))return;
++    int guide=phase>=3 && phase<=4 && (MEM32(packet)&0xFFFF)==5 &&
++        MEMF(packet+0x20)>0 && MEMF(verts)>=450 && MEMF(verts)<720 &&
++        MEMF(verts+4)>=350 && MEMF(verts+4)<480;
++    if(frame==last_frame && (!guide || seen_guide))return;
++    last_frame=frame;
++    uint32_t host,flags,ms;ngb_ui_prompt_host_state(&host,&flags,&ms);
++    uint32_t player=MEM8(0xDB932E),pad=player<4?0xD219A0+player*0x78:0;
++    uint32_t guest=pad?MEM32(pad+8):0;
++    int changed=phase!=last_phase;
++    if(changed)seen_guide=0;
++    int first_guide=guide && !seen_guide;
++    if(guide)seen_guide=1;
++    if(!changed && !first_guide && host==last_host && flags==last_flags &&
++       guest==last_guest && (uint32_t)(ms-last_ms)<1000)return;
++    NgbUiPromptRecord row;memset(&row,0,sizeof row);
++    row.loading=1;row.frame=frame;row.wall_ms=ms;row.phase=phase;
++    row.ticks=MEM32(0xBCDFDC);row.prompt=MEM32(0x8DB248);row.guide=seen_guide;
++    row.host_buttons=host;row.host_flags=flags;row.pad_index=player;
++    if(pad){row.guest[0]=MEM32(pad);row.guest[1]=MEM32(pad+8);
++        row.guest[2]=MEM32(pad+12);row.guest[3]=MEM32(pad+16);}
++    ngb_ui_prompt_record(&row);records++;
++    last_phase=phase;last_ms=ms;last_host=host;last_flags=flags;last_guest=guest;
++}
 +static void ui_prompt_seen(uint32_t packet,uint32_t verts,uint32_t caller,uint32_t parent)
 +{
 +    static uint64_t seen[512];
@@ -261,17 +293,17 @@ index 0f55686..e6001cf 100644
 +}
 +#endif
 +
-@@ -5290,0 +5432,5 @@ void sub_002216B0(void)
+@@ -5290,0 +5464,5 @@ void sub_002216B0(void)
 +#ifdef NGB_IOS_UI_PROMPT_PROBE
 +    /* sprite_submit consumes the guest return address; retain it before the call. */
 +    uint32_t ui_caller=MEM32(esp);
 +    uint32_t ui_parent=g_ebp>=0x10000 && g_ebp<0x3FFFFF8?MEM32(g_ebp+4):0;
 +#endif
-@@ -5334,0 +5481,5 @@ void sub_002216B0(void)
+@@ -5334,0 +5513,5 @@ void sub_002216B0(void)
 +    if(eax && (MEM32(p)&0xFFFF)==0x17B)
 +        pt_header_seen(0x17B,MEMF(p+0x20),MEMF(verts),MEMF(verts+4),MEMF(verts+28),MEMF(verts+60));
 +#ifdef NGB_IOS_UI_PROMPT_PROBE
-+    if(eax) ui_prompt_seen(p,verts,ui_caller,ui_parent);
++    if(eax){ui_loading_seen(p,verts);ui_prompt_seen(p,verts,ui_caller,ui_parent);}
 +#endif
 diff --git a/src/pc_menu.c b/src/pc_menu.c
 index ff59a45..8a5118b 100644
@@ -308,3 +340,18 @@ index ff59a45..8a5118b 100644
 +#ifdef NGB_CONVERTED_DISPLAY
 +    if (a==ASPECT_IPHONE) {NgbSettings native={0};native.aspect=a;return (float)((4.0/3.0)/ngb_settings_aspect_ratio(&native));}
 +#endif
+diff --git a/src/ingame_menu.c b/src/ingame_menu.c
+--- a/src/ingame_menu.c
++++ b/src/ingame_menu.c
+@@ -1416,0 +1417,11 @@
++#ifdef NGB_IOS_UI_PROMPT_PROBE
++/* Observe the existing menu input ownership; never alter it for diagnostics. */
++void ngb_ui_prompt_host_state(uint32_t *buttons,uint32_t *flags,uint32_t *ms)
++{
++    *buttons=pad_bits();
++    *flags=(usb_gamepad_block?1u:0u)|(s_tab_focus?2u:0u)|
++           (s_wait_release?4u:0u)|(s_open?8u:0u)|(tab_shown()?16u:0u);
++    *ms=(uint32_t)mono_ms();
++}
++#endif
++

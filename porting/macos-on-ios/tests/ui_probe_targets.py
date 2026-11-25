@@ -5,7 +5,7 @@ root=Path(__file__).resolve().parents[3]
 p=argparse.ArgumentParser();p.add_argument('--commands',type=Path);args=p.parse_args()
 if args.commands:
     commands=json.loads(args.commands.read_text())
-    for suffix in ('src/pause_tab.c','porting/macos-on-ios/bootstrap.m','porting/macos-on-ios/ui_prompt_probe.cpp'):
+    for suffix in ('src/ingame_menu.c','src/pause_tab.c','porting/macos-on-ios/bootstrap.m','porting/macos-on-ios/ui_prompt_probe.cpp'):
         rows=[r for r in commands if r['file'].endswith(suffix)]
         assert rows, suffix
         assert all('NGB_IOS_UI_PROMPT_PROBE=1' in (r.get('command') or ' '.join(r['arguments'])) for r in rows),suffix
