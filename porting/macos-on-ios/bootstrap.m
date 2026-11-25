@@ -130,7 +130,7 @@ int ngb_conversion_startup(void){@autoreleasepool {
         const char *gameRoot=getenv("NGB_GAME_DIR");
         NSString *uiDocuments=gameRoot?[[NSString stringWithUTF8String:gameRoot] stringByDeletingLastPathComponent]:
             NSSearchPathForDirectoriesInDomains(NSDocumentDirectory,NSUserDomainMask,YES).firstObject;
-        ngb_ui_prompt_start([[uiDocuments stringByAppendingPathComponent:@"ui-result-diagnostics.log"] fileSystemRepresentation]);
+        if(ngb_ui_prompt_hook_enabled())ngb_ui_prompt_start([[uiDocuments stringByAppendingPathComponent:@"ui-result-diagnostics.log"] fileSystemRepresentation]);
 #endif
         void (*screen)(int*,int*)=(void(*)(int*,int*))dlsym(RTLD_DEFAULT,"ngb_macos_on_ios_screen_size");
         if(screen)screen(&w,&h);

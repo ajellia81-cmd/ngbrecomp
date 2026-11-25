@@ -30,8 +30,8 @@ void summary(State &s){
     std::fflush(s.file);
 }
 void write(State &s,const NgbUiPromptRecord &r){
-    std::fprintf(s.file,"{\"kind\":\"sprite\",\"frame\":%u,\"sprite\":%u,\"texture\":%u,\"caller\":%u,\"parent\":%u,\"ascii\":%d,\"mode\":%d,\"depth\":%d,\"sample\":%u,\"input\":[%d,%d],\"texture_size\":[%d,%d],\"rect\":[%.3f,%.3f,%.3f,%.3f],\"uv\":[%.6f,%.6f,%.6f,%.6f]}\n",
-      r.frame,r.sprite,r.texture,r.caller,r.parent,r.letter,r.mode,r.depth,r.sample,r.input_x,r.input_y,r.tw,r.th,
+    std::fprintf(s.file,"{\"kind\":\"%s\",\"frame\":%u,\"sprite\":%u,\"texture\":%u,\"caller\":%u,\"parent\":%u,\"ascii\":%d,\"mode\":%d,\"depth\":%d,\"sample\":%u,\"tab\":%d,\"visible\":%d,\"header_visible\":%d,\"state_flags\":%u,\"input\":[%d,%d],\"texture_size\":[%d,%d],\"rect\":[%.3f,%.3f,%.3f,%.3f],\"uv\":[%.6f,%.6f,%.6f,%.6f]}\n",
+      r.menu?"menu":"sprite",r.frame,r.sprite,r.texture,r.caller,r.parent,r.letter,r.mode,r.depth,r.sample,r.tab,r.visible,r.header_visible,r.state_flags,r.input_x,r.input_y,r.tw,r.th,
       ui_number(r.rect[0]),ui_number(r.rect[1]),ui_number(r.rect[2]),ui_number(r.rect[3]),
       ui_number(r.uv[0]),ui_number(r.uv[1]),ui_number(r.uv[2]),ui_number(r.uv[3]));
 }
@@ -64,7 +64,7 @@ extern "C" int ngb_ui_prompt_start(const char *path){
 extern "C" void ngb_ui_prompt_count(unsigned stage){auto &s=state();if(stage<3 && s.running.load(std::memory_order_relaxed))s.counts[stage].fetch_add(1,std::memory_order_relaxed);}
 extern "C" void ngb_ui_prompt_record(const NgbUiPromptRecord *r){
     auto &s=state();if(!r || !s.running.load(std::memory_order_relaxed))return;
-    {std::lock_guard<std::mutex> lock(s.mutex);if(!s.running || s.size==s.queue.size())return;
+    {std::lock_guard<std::mutex> lock(s.mutex);if(!s.running || s.size==s.queue.size() || s.counts[2].load(std::memory_order_relaxed)>=512)return;
      s.queue[s.head]=*r;s.head=(s.head+1)%s.queue.size();s.size++;s.counts[2].fetch_add(1,std::memory_order_relaxed);}
     s.wake.notify_one();
 }
