@@ -17,7 +17,11 @@ static uint8_t mem[64];
 '''+body+r'''
 int main(void){
  memset(mem,0,sizeof mem);
- assert(pt_page_live());
+ assert(!pt_page_live());
+ MEM32(0xDA41C8)=1;assert(!pt_page_live());
+ MEM32(0xDA41C8)=2;assert(pt_page_live());
+ MEM32(0xDA41C8)=3;assert(!pt_page_live()); // close can clear page-local flags while the root still fades
+ MEM32(0xDA41C8)=2;assert(pt_page_live());
  MEM32(0xDA41C0)=1;assert(pt_page_live());
  MEM8(0xDA41DD)=1;assert(!pt_page_live());
  MEM8(0xDA41DD)=0;MEM8(0xDA41E3)=1;assert(!pt_page_live());

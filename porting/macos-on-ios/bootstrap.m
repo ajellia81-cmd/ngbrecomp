@@ -12,6 +12,9 @@
 #ifdef NGB_IOS_PERF_PROBE
 #include "performance_probe.h"
 #endif
+#ifdef NGB_IOS_UI_PROMPT_PROBE
+#include "ui_prompt_probe.h"
+#endif
 #include "bridge.h"
 #include "save_paths.h"
 #include "launcher.h"
@@ -121,6 +124,13 @@ int ngb_conversion_startup(void){@autoreleasepool {
 #ifdef NGB_IOS_PERF_PROBE
         NSString *probeDocuments=NSSearchPathForDirectoriesInDomains(NSDocumentDirectory,NSUserDomainMask,YES).firstObject;
         ngb_perf_start([[probeDocuments stringByAppendingPathComponent:@"fps-diagnostics.log"] fileSystemRepresentation]);
+#endif
+#ifdef NGB_IOS_UI_PROMPT_PROBE
+        // Resolve the active guest container on the boot thread, not a background queue.
+        const char *gameRoot=getenv("NGB_GAME_DIR");
+        NSString *uiDocuments=gameRoot?[[NSString stringWithUTF8String:gameRoot] stringByDeletingLastPathComponent]:
+            NSSearchPathForDirectoriesInDomains(NSDocumentDirectory,NSUserDomainMask,YES).firstObject;
+        ngb_ui_prompt_start([[uiDocuments stringByAppendingPathComponent:@"ui-result-diagnostics.log"] fileSystemRepresentation]);
 #endif
         void (*screen)(int*,int*)=(void(*)(int*,int*))dlsym(RTLD_DEFAULT,"ngb_macos_on_ios_screen_size");
         if(screen)screen(&w,&h);

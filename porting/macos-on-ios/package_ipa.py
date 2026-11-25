@@ -17,7 +17,7 @@ def main():
  for key in ('NGBSmoothMotionEnabled','NGBSmoothMotionDefault','NGBSmoothMotionReference','NGBUniversalShadersEnabled','NGBUniversalShaderDriver','NGBDiagnosticsFile','NGBDiagnosticsFormatVersion','NGBStartupDiagnosticsFile'):
   info.pop(key,None)
  if diagnostic:info.update(NGBDiagnosticsFile='fps-diagnostics.log',NGBDiagnosticsFormatVersion=1)
- if ui_probe:info.update(NGBDiagnosticsFile='ui-result-diagnostics.log',NGBDiagnosticsFormatVersion=1)
+ if ui_probe:info.update(NGBDiagnosticsFile='ui-result-diagnostics.log',NGBDiagnosticsFormatVersion=2)
  if ui_probe and diagnostic:raise SystemExit('UI capture must not enable performance observers')
  info.pop('CFBundleIconFile',None)
  info_path.write_bytes(plistlib.dumps(info))
@@ -29,7 +29,7 @@ def main():
  symbols=run('nm','-gj',converted)
  if diagnostic and '_ngb_perf_start' not in symbols.splitlines():raise SystemExit('Diagnostic observer is missing')
  if not diagnostic and any(name.startswith('_ngb_perf_') for name in symbols.splitlines()):raise SystemExit('Diagnostic observer linked into clean release')
- if ui_probe != ('_ngb_ui_prompt_record' in symbols.splitlines()):raise SystemExit('UI metadata probe configuration mismatch')
+ if ui_probe != all(name in symbols.splitlines() for name in ('_ngb_ui_prompt_record','_ngb_ui_prompt_start')):raise SystemExit('UI metadata probe configuration mismatch')
  if any(name.startswith('_ngb_diag_') for name in symbols.splitlines()):raise SystemExit('Port diagnostic writer linked into release')
  forbidden=(b'[frame] t=',b'[water-program]',b'[Smooth Motion pacing]',b'sampling original Mac boot thread',b'SHIM polls=',b'SHIM Metal newLibraryWithSource')
  for binary in (converted,*(o.app/'Frameworks').glob('libShim_*.dylib')):

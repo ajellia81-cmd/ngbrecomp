@@ -173,7 +173,7 @@ jobs:
 
         cmake --build "$RUNNER_TEMP/ngb-mac-engine" --target ngb_d3d xbox_nv2a_vk --parallel 2
 
-        ninja -C "$RUNNER_TEMP/ngb-mac-engine" CMakeFiles/ninja_gaiden_black.dir/porting/macos-on-ios/bootstrap.m.o CMakeFiles/ninja_gaiden_black.dir/porting/macos-on-ios/ui_prompt_probe.m.o
+        ninja -C "$RUNNER_TEMP/ngb-mac-engine" CMakeFiles/ninja_gaiden_black.dir/porting/macos-on-ios/bootstrap.m.o CMakeFiles/ninja_gaiden_black.dir/porting/macos-on-ios/ui_prompt_probe.cpp.o
 
         rm src/recomp/gen/public_fixture.c
 

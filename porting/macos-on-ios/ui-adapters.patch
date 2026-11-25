@@ -21,7 +21,7 @@ index d4f2dd6..2c21eec 100644
 @@ -1334,0 +1345 @@ loc_0017CC98: ;
 +#endif
 diff --git a/src/pause_tab.c b/src/pause_tab.c
-index 0f55686..9d7b09f 100644
+index 0f55686..51b3d13 100644
 --- a/src/pause_tab.c
 +++ b/src/pause_tab.c
 @@ -35,0 +36 @@
@@ -142,48 +142,49 @@ index 0f55686..9d7b09f 100644
 @@ -2187 +2239 @@ static void ctl_mouse(int r, int *row)
 -    if (c < 3 && !(c == 2 && ngb_bind_pad_fixed(rr)))
 +    if (c >= CTL_FIRST_COL && c < 3 && !(c == 2 && ngb_bind_pad_fixed(rr)))
-@@ -2190,0 +2243,7 @@ static void ctl_mouse(int r, int *row)
+@@ -2190,0 +2243,8 @@ static void ctl_mouse(int r, int *row)
 +/* The engine still visits the selected tab while closing its root page.
 + * Our static page must not be submitted into the menu's departing picture. */
 +static int pt_page_live(void)
 +{
-+    return (int32_t)MEM32(0xDA41C0) >= 0 && !MEM8(0xDA41DD) && !MEM8(0xDA41E3);
++    return MEM32(0xDA41C8)==2 && (int32_t)MEM32(0xDA41C0)>=0 &&
++           !MEM8(0xDA41DD) && !MEM8(0xDA41E3);
 +}
 +
-@@ -2196,0 +2256 @@ static void pt_draw(void)
+@@ -2196,0 +2257 @@ static void pt_draw(void)
 +    if(key==K_ALT_OK)key=s_cat==CAT_CTL && s_row>=0?K_CLEAR:K_OK;
-@@ -2244,0 +2305 @@ static void pt_draw(void)
+@@ -2244,0 +2306 @@ static void pt_draw(void)
 +#ifndef NGB_CONVERTED_DISPLAY
-@@ -2246,0 +2308 @@ static void pt_draw(void)
+@@ -2246,0 +2309 @@ static void pt_draw(void)
 +#endif
-@@ -2435,0 +2498 @@ static int ngb_confirm_tick(void)
+@@ -2435,0 +2499 @@ static int ngb_confirm_tick(void)
 +    if(key==K_ALT_OK)key=K_OK;
-@@ -2562 +2625 @@ void ngb_controls_panel_tick(int want)
+@@ -2562 +2626 @@ void ngb_controls_panel_tick(int want)
 -        s_ctl_col = 0;
 +        s_ctl_col = CTL_FIRST_COL;
-@@ -2567,0 +2631 @@ void ngb_controls_panel_tick(int want)
+@@ -2567,0 +2632 @@ void ngb_controls_panel_tick(int want)
 +    if(key==K_ALT_OK)key=K_CLEAR;
-@@ -2580,0 +2645 @@ void ngb_controls_panel_tick(int want)
+@@ -2580,0 +2646 @@ void ngb_controls_panel_tick(int want)
 +#ifndef NGB_CONVERTED_DISPLAY
-@@ -2582,0 +2648 @@ void ngb_controls_panel_tick(int want)
+@@ -2582,0 +2649 @@ void ngb_controls_panel_tick(int want)
 +#endif
-@@ -2749 +2815 @@ void ngb_main_menu_exit(void)
+@@ -2749 +2816 @@ void ngb_main_menu_exit(void)
 -    if (!s_mm_exit && ngb_confirm_open("Exit to Desktop?", 0))
 +    if (!s_mm_exit && ngb_confirm_open(NGB_QUIT_QUESTION, 0))
-@@ -2779 +2845 @@ void ngb_quit_to_desktop(void);
+@@ -2779 +2846 @@ void ngb_quit_to_desktop(void);
 -static const char *const s_exit_label[EXIT_ROWS] = { "Return to Game", "Return to Main Menu", "Exit to Desktop" };
 +static const char *const s_exit_label[EXIT_ROWS] = { "Return to Game", "Return to Main Menu", NGB_QUIT_LABEL };
-@@ -2785 +2851 @@ static const char *const s_exit_help[EXIT_ROWS] = {
+@@ -2785 +2852 @@ static const char *const s_exit_help[EXIT_ROWS] = {
 -static const char *const s_exit_q[EXIT_ROWS] = { "", "Return to the Main Menu?", "Exit to Desktop?" };
 +static const char *const s_exit_q[EXIT_ROWS] = { "", "Return to the Main Menu?", NGB_QUIT_QUESTION };
-@@ -2831,0 +2898 @@ static void pt_exit_draw(void)
+@@ -2831,0 +2899 @@ static void pt_exit_draw(void)
 +    if(key==K_ALT_OK)key=s_cat==CAT_CTL && s_row>=0?K_CLEAR:K_OK;
-@@ -5074,2 +5141,2 @@ loc_00180CC9: ;
+@@ -5074,2 +5142,2 @@ loc_00180CC9: ;
 -    if (eax == PT_TAB && pt_tabs() == 7) { pt_draw(); goto loc_00180D2E; } /* Settings: then as Exit */
 -    if (eax == 6 && pt_tabs() == 7) { pt_exit_draw(); goto loc_00180D2E; } /* Settings: Exit's page, ours */
 +    if (eax == PT_TAB && pt_tabs() == 7) { if (pt_page_live()) pt_draw(); goto loc_00180D2E; } /* Settings: then as Exit */
 +    if (eax == 6 && pt_tabs() == 7) { if (pt_page_live()) pt_exit_draw(); goto loc_00180D2E; } /* Settings: Exit's page, ours */
-@@ -5267,0 +5335,10 @@ static void edge_inset(uint32_t p, uint32_t verts)
+@@ -5267,0 +5336,10 @@ static void edge_inset(uint32_t p, uint32_t verts)
 +#ifdef NGB_IOS_KOREAN
 +        // Korean ink reaches the last cell row. QuadSnap already clamps to
 +        // console sample centres; another vertical inset cuts off its fade.
@@ -194,39 +195,50 @@ index 0f55686..9d7b09f 100644
 +            (id == 0x56D || id == 0x587 || id == 0x588))
 +            continue;
 +#endif
-@@ -5284,0 +5362,25 @@ static void edge_inset(uint32_t p, uint32_t verts)
+@@ -5284,0 +5363,36 @@ static void edge_inset(uint32_t p, uint32_t verts)
 +#ifdef NGB_IOS_UI_PROMPT_PROBE
-+extern void ngb_ui_prompt_record(uint32_t,uint32_t,uint32_t,int,int,int,
-+                                float,float,float,float,float,float,float,float,uint32_t,uint32_t);
++#include "ui_prompt_probe.h"
 +static void ui_prompt_seen(uint32_t packet,uint32_t verts,uint32_t caller,uint32_t parent)
 +{
 +    static uint64_t seen[512];
 +    static unsigned count;
++    ngb_ui_prompt_count(0);
++    if(count>=512)return;
 +    float x0=MEMF(verts),y0=MEMF(verts+4),x1=MEMF(verts+28),y1=MEMF(verts+60);
-+    if (!(x0>=450 && x0<720 && y0>=350 && y0<490 &&
-+          x1>x0 && x1-x0<=300 && y1>y0 && y1-y0<=64) || count>=512) return;
++    int px=(int16_t)MEM16(packet+4),py=(int16_t)MEM16(packet+6);
++    int footer=(x0>=450 && x0<720 && y0>=350 && y0<490 &&
++                x1>x0 && x1-x0<=300 && y1>y0 && y1-y0<=64) ||
++               (px>=450 && px<720 && py>=350 && py<490);
++    if(footer)ngb_ui_prompt_count(1);
++    if(!footer && count>=16)return; // Early samples reveal coordinate/filter mismatches.
 +    uint32_t id=MEM32(packet)&0xFFFF,d=sprite_def(id);
 +    if (!d) return;
 +    uint32_t texture=MEM32(d+0x10);
-+    uint64_t key=(((uint64_t)texture<<32)|id)^((uint64_t)parent*0x9E3779B97F4A7C15ull);
++    uint64_t key=(((uint64_t)texture<<32)|id)^((uint64_t)parent*0x9E3779B97F4A7C15ull)^
++                 (footer?0xA71685C93D2B4E60ull:0);
 +    for(unsigned i=0;i<count;i++) if(seen[i]==key)return;
 +    seen[count++]=key;
-+    int letter=-1;
-+    for(int c=32;c<127;c++) if(MEM32(GLYPH_MAP+4*c)==id){letter=c;break;}
++    NgbUiPromptRecord row;
++    memset(&row,0,sizeof row);
++    row.frame=MEM32(0xD21734);row.sprite=id;row.texture=texture;row.caller=caller;row.parent=parent;
++    row.letter=-1;for(int c=32;c<127;c++) if(MEM32(GLYPH_MAP+4*c)==id){row.letter=c;break;}
 +    uint32_t hdr=MEM32(0x8DBB28+texture*8),fmt=hdr?MEM32(hdr+12):0;
-+    ngb_ui_prompt_record(MEM32(0xD21734),id,texture,letter,
-+        hdr?1<<((fmt>>20)&15):0,hdr?1<<((fmt>>24)&15):0,
-+        x0,y0,x1,y1,MEMF(d),MEMF(d+4),MEMF(d+8),MEMF(d+12),caller,parent);
++    row.tw=hdr?1<<((fmt>>20)&15):0;row.th=hdr?1<<((fmt>>24)&15):0;
++    row.mode=(int32_t)MEM32(0xDA41C8);row.depth=(int32_t)MEM32(0xDA41C0);
++    row.input_x=px;row.input_y=py;row.sample=!footer;
++    row.rect[0]=x0;row.rect[1]=y0;row.rect[2]=x1;row.rect[3]=y1;
++    row.uv[0]=MEMF(d);row.uv[1]=MEMF(d+4);row.uv[2]=MEMF(d+8);row.uv[3]=MEMF(d+12);
++    ngb_ui_prompt_record(&row);
 +}
 +#endif
 +
-@@ -5290,0 +5393,5 @@ void sub_002216B0(void)
+@@ -5290,0 +5405,5 @@ void sub_002216B0(void)
 +#ifdef NGB_IOS_UI_PROMPT_PROBE
 +    /* sprite_submit consumes the guest return address; retain it before the call. */
 +    uint32_t ui_caller=MEM32(esp);
 +    uint32_t ui_parent=g_ebp>=0x10000 && g_ebp<0x3FFFFF8?MEM32(g_ebp+4):0;
 +#endif
-@@ -5334,0 +5442,3 @@ void sub_002216B0(void)
+@@ -5334,0 +5454,3 @@ void sub_002216B0(void)
 +#ifdef NGB_IOS_UI_PROMPT_PROBE
 +    if(eax) ui_prompt_seen(p,verts,ui_caller,ui_parent);
 +#endif

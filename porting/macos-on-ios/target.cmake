@@ -32,6 +32,6 @@ endif()
 
 option(NGB_IOS_UI_PROMPT_PROBE "Bounded UI footer metadata for localization investigation" OFF)
 if(NGB_IOS_UI_PROMPT_PROBE)
-    target_sources(${PROJECT_NAME} PRIVATE "${NGB_CONVERSION_DIR}/ui_prompt_probe.m")
+    target_sources(${PROJECT_NAME} PRIVATE "${NGB_CONVERSION_DIR}/ui_prompt_probe.cpp")
     target_compile_definitions(${PROJECT_NAME} PRIVATE NGB_IOS_UI_PROMPT_PROBE=1)
 endif()
