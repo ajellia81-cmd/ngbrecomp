@@ -21,40 +21,7 @@ jobs:
           NGB_DISC_URL: ${{ secrets.NGB_DISC_URL }}
           NGB_DISC_SHA256: ${{ secrets.NGB_DISC_SHA256 }}
         run: python3 porting/macos-on-ios/korean/private_input.py --download --iso "$RUNNER_TEMP/disc.iso"
-      - name: Inspect public UI label addresses without emitting game code
-        run: |
-          python3 - <<'PY'
-          from pathlib import Path
-          import struct,re
-          b=Path('game_files/default.xbe').read_bytes();base=struct.unpack_from('<I',b,0x104)[0];count,table=struct.unpack_from('<II',b,0x11c)
-          sections=[struct.unpack_from('<9I20s',b,table-base+i*56) for i in range(count)]
-          def va(off):
-            for s in sections:
-              if s[3]<=off<s[3]+s[4]:return s[1]+off-s[3]
-            return base+off
-          for word in ['Proceed','PROCEED','proceed']:
-            for enc in ['ascii','utf-16le']:
-              needle=word.encode(enc)
-              for hit in re.finditer(re.escape(needle),b):
-                address=va(hit.start());print('LABEL',word,enc,hex(address),'file',hex(hit.start()))
-                refs=[va(i) for i in range(len(b)-4) if b[i:i+4]==struct.pack('<I',address)]
-                print('REFERENCES',[hex(x) for x in refs[:30]])
-                for x in refs[:10]:
-                  for sec in sections:
-                    if not (sec[0]&4) and sec[1]<=x<sec[1]+sec[4]:
-                      off=x-sec[1]+sec[3]
-                      print('REF_TABLE_FIELDS',hex(x),[hex(v) for v in struct.unpack_from('<9I',b,max(0,off-16))])
-          from capstone import Cs,CS_ARCH_X86,CS_MODE_32
-          cs=Cs(CS_ARCH_X86,CS_MODE_32)
-          for m in re.finditer(b'Proc',b):
-            off=m.start()
-            if b'eed' not in b[off+4:off+100]:continue
-            starts=[b.rfind(q,max(0,off-1024),off) for q in [b'\x55\x8b\xec',b'\x55\x89\xe5']]
-            start=max(starts)
-            if start<0:start=max(0,off-64)
-            print('SPLIT_LABEL',hex(va(off)),'candidate',hex(va(start)))
-            calls=[hex(int(i.op_str,16)) for i in cs.disasm(b[start:off+320],va(start)) if i.mnemonic=='call' and i.op_str.startswith('0x')]
-            print('LABEL_CALLEES',calls)
-          PY
+      - name: Inspect chapter gate metadata without game-code output
+        run: python3 porting/macos-on-ios/tests/inspect_loading_metadata.py
       - if: always()
         run: rm -rf game_files "$RUNNER_TEMP/disc.iso"
