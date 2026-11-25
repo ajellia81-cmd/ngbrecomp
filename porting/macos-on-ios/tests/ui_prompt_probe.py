@@ -73,7 +73,7 @@ int main(int argc,char **argv){
  NgbUiPromptRecord r{};r.sprite=123;r.caller=0x12345;r.parent=0x23456;r.rect[0]=NAN;
  for(int i=0;i<3;i++)ngb_ui_prompt_record(&r);
  r.menu=1;r.tab=5;r.visible=0;r.header_visible=0;r.state_flags=2;ngb_ui_prompt_record(&r);
- r.menu=0;r.loading=1;r.phase=3;r.guide=1;r.host_buttons=1u<<20;r.guest[1]=5;r.wall_ms=1234;ngb_ui_prompt_record(&r);
+ r.menu=0;r.loading=1;r.phase=3;r.guide=1;r.host_buttons=1u<<20;r.guest[1]=5;r.wall_ms=1234;r.pending=12;r.screen_mode=2;r.fade_bits=0x3F800000;ngb_ui_prompt_record(&r);
  ngb_ui_prompt_stop();return 0;
 }
 '''
@@ -91,6 +91,6 @@ with tempfile.TemporaryDirectory() as d:
  assert beats[-1]['visits']==5 and beats[-1]['records']==5
  records=[r for r in rows if r.get('kind')=='sprite'];assert len(records)==3 and records[0]['rect'][0]==0
  menus=[r for r in rows if r.get('kind')=='menu'];assert len(menus)==1 and menus[0]['tab']==5 and menus[0]['state_flags']==2
- loading=[r for r in rows if r.get('kind')=='loading'];assert len(loading)==1 and loading[0]['phase']==3 and loading[0]['guide_seen']==1 and loading[0]['guest'][1]==5 and loading[0]['ms']==1234
+ loading=[r for r in rows if r.get('kind')=='loading'];assert len(loading)==1 and loading[0]['phase']==3 and loading[0]['guide_seen']==1 and loading[0]['guest'][1]==5 and loading[0]['ms']==1234 and loading[0]['pending']==12 and loading[0]['screen_mode']==2 and loading[0]['fade_bits']==0x3F800000
  assert records[0]['caller']==0x12345 and records[0]['parent']==0x23456
 print('PASS: immediate boot log with zero sprites; heartbeat, real writer/drain/JSON, input-coordinate fallback, early samples, hard limit and guest caller snapshot')

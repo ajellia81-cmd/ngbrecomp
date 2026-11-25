@@ -21,7 +21,7 @@ index d4f2dd6..2c21eec 100644
 @@ -1334,0 +1345 @@ loc_0017CC98: ;
 +#endif
 diff --git a/src/pause_tab.c b/src/pause_tab.c
-index 0f55686..43ade20 100644
+index 0f55686..d083015 100644
 --- a/src/pause_tab.c
 +++ b/src/pause_tab.c
 @@ -35,0 +36 @@
@@ -223,7 +223,7 @@ index 0f55686..43ade20 100644
 +            (id == 0x56D || id == 0x587 || id == 0x588))
 +            continue;
 +#endif
-@@ -5284,0 +5389,69 @@ static void edge_inset(uint32_t p, uint32_t verts)
+@@ -5284,0 +5389,70 @@ static void edge_inset(uint32_t p, uint32_t verts)
 +#ifdef NGB_IOS_UI_PROMPT_PROBE
 +#include "ui_prompt_probe.h"
 +int ngb_ui_prompt_hook_enabled(void){return 1;}
@@ -253,6 +253,7 @@ index 0f55686..43ade20 100644
 +    NgbUiPromptRecord row;memset(&row,0,sizeof row);
 +    row.loading=1;row.frame=frame;row.wall_ms=ms;row.phase=phase;
 +    row.ticks=MEM32(0xBCDFDC);row.prompt=MEM32(0x8DB248);row.guide=seen_guide;
++    row.pending=MEM32(0x8DB6B8);row.screen_mode=MEM32(0x8DB028);row.fade_bits=MEM32(0x8DB054);
 +    row.host_buttons=host;row.host_flags=flags;row.pad_index=player;
 +    if(pad){row.guest[0]=MEM32(pad);row.guest[1]=MEM32(pad+8);
 +        row.guest[2]=MEM32(pad+12);row.guest[3]=MEM32(pad+16);}
@@ -293,13 +294,13 @@ index 0f55686..43ade20 100644
 +}
 +#endif
 +
-@@ -5290,0 +5464,5 @@ void sub_002216B0(void)
+@@ -5290,0 +5465,5 @@ void sub_002216B0(void)
 +#ifdef NGB_IOS_UI_PROMPT_PROBE
 +    /* sprite_submit consumes the guest return address; retain it before the call. */
 +    uint32_t ui_caller=MEM32(esp);
 +    uint32_t ui_parent=g_ebp>=0x10000 && g_ebp<0x3FFFFF8?MEM32(g_ebp+4):0;
 +#endif
-@@ -5334,0 +5513,5 @@ void sub_002216B0(void)
+@@ -5334,0 +5514,5 @@ void sub_002216B0(void)
 +    if(eax && (MEM32(p)&0xFFFF)==0x17B)
 +        pt_header_seen(0x17B,MEMF(p+0x20),MEMF(verts),MEMF(verts+4),MEMF(verts+28),MEMF(verts+60));
 +#ifdef NGB_IOS_UI_PROMPT_PROBE
