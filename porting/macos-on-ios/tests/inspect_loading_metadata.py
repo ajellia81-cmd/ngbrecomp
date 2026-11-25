@@ -13,7 +13,23 @@ for sec in sections:
   if not i.id:continue
   if i.mnemonic=='call' and i.operands[0].type==X86_OP_IMM:entries.add(i.operands[0].imm)
   if 0x1f3000<=i.address<0x1f6000:items.append(i)
-entries=sorted(entries);k=bisect.bisect_right(entries,0x1F5AF6)-1
+entries=sorted(entries)
+for i in items:
+ o=i.operands
+ if i.mnemonic=='call' and i.address+i.size==0x1F5AF6 and o and o[0].type==X86_OP_IMM:
+  print('CARD_FOOTER_ROUTE',json.dumps({'site':hex(i.address),'target':hex(o[0].imm)}))
+# Find the other controllers sharing exactly these chapter state fields.
+for sec in sections:
+ if not sec[0]&4:continue
+ for i in cs.disasm(b[sec[3]:sec[3]+sec[4]],sec[1]):
+  if not i.id or i.mnemonic!='mov':continue
+  o=i.operands
+  if len(o)!=2 or o[0].type!=X86_OP_MEM:continue
+  m=o[0].mem
+  if m.base or m.index or m.disp not in (0x8DB028,0x8DAF24):continue
+  j=bisect.bisect_right(entries,i.address)-1
+  print('CARD_STATE_WRITER',json.dumps({'site':hex(i.address),'field':hex(m.disp),'entry':hex(entries[j]) if j>=0 else None,'value':hex(o[1].imm&0xffffffff) if o[1].type==X86_OP_IMM else 'dynamic'}))
+k=bisect.bisect_right(entries,0x1F5AF6)-1
 ranges=[('chapter_card_update_candidate',entries[k-1],entries[k]),('chapter_card_draw',entries[k],entries[k+1])]
 alias={v:r for r,ls in [('eax',('ax','al','ah')),('ebx',('bx','bl','bh')),('ecx',('cx','cl','ch')),('edx',('dx','dl','dh')),('esi',('si',)),('edi',('di',))] for v in ls}
 for role,lo,hi in ranges:
