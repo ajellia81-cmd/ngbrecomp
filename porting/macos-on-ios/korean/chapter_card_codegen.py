@@ -37,7 +37,7 @@ def patch(folder):
                 if role=='start':
                     # This native call returns after preparation, immediately
                     # before the chapter's separate A/X/Start wait loop.
-                    gate=re.compile(r'(?m)^[ \t]*(?:kr_)?sub_002ECC50\(\);[^\n]*')
+                    gate=re.compile(r'(?m)^[ \t]*PUSH32\(esp,\s*0x002DFCB5u\);\s*RECOMP_ABI_CALL\(0x002ECC50u,\s*(?:kr_)?sub_002ECC50\);[^\n]*')
                     body,n=gate.subn(lambda m:m[0]+'\n    ngb_chapter_card_start_ready();',body)
                     if n!=1:raise ValueError('Native chapter-start preparation boundary changed')
                 renamed='ngb_ui_card_body_'+name
