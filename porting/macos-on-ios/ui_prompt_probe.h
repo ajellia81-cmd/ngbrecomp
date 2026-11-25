@@ -10,7 +10,7 @@ typedef struct NgbUiPromptRecord {
     uint32_t wall_ms,phase,ticks,prompt,guide,pending,screen_mode,fade_bits,host_buttons,host_flags,pad_index,guest[4];
     int32_t tab,visible,header_visible;
     uint32_t state_flags;
-    float rect[4],uv[4];
+    float alpha,rect[4],uv[4];
 } NgbUiPromptRecord;
 void ngb_ui_prompt_host_state(uint32_t *buttons,uint32_t *flags,uint32_t *ms);
 int ngb_ui_prompt_hook_enabled(void);

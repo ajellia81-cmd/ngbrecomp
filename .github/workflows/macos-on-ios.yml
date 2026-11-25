@@ -46,6 +46,8 @@ jobs:
 
         python3 porting/macos-on-ios/tests/loading_input_probe.py
 
+        python3 porting/macos-on-ios/tests/loading_guide.py
+
         '
     - name: Check Korean save links after container relocation
       run: 'xcrun --sdk macosx clang -fobjc-arc -Wall -Wextra -Werror -fsanitize=address porting/macos-on-ios/tests/save_paths.m -framework Foundation -o "$RUNNER_TEMP/ngb-save-paths-test"

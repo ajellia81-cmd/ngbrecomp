@@ -35,8 +35,8 @@ void write(State &s,const NgbUiPromptRecord &r){
             r.frame,r.wall_ms,r.phase,r.ticks,r.prompt,r.guide,r.pending,r.screen_mode,r.fade_bits,r.host_buttons,r.host_flags,r.pad_index,
             r.guest[0],r.guest[1],r.guest[2],r.guest[3]);return;
     }
-    std::fprintf(s.file,"{\"kind\":\"%s\",\"frame\":%u,\"sprite\":%u,\"texture\":%u,\"caller\":%u,\"parent\":%u,\"ascii\":%d,\"mode\":%d,\"depth\":%d,\"sample\":%u,\"tab\":%d,\"visible\":%d,\"header_visible\":%d,\"state_flags\":%u,\"input\":[%d,%d],\"texture_size\":[%d,%d],\"rect\":[%.3f,%.3f,%.3f,%.3f],\"uv\":[%.6f,%.6f,%.6f,%.6f]}\n",
-      r.menu?"menu":"sprite",r.frame,r.sprite,r.texture,r.caller,r.parent,r.letter,r.mode,r.depth,r.sample,r.tab,r.visible,r.header_visible,r.state_flags,r.input_x,r.input_y,r.tw,r.th,
+    std::fprintf(s.file,"{\"kind\":\"%s\",\"frame\":%u,\"sprite\":%u,\"texture\":%u,\"caller\":%u,\"parent\":%u,\"ascii\":%d,\"alpha\":%.6f,\"mode\":%d,\"depth\":%d,\"sample\":%u,\"tab\":%d,\"visible\":%d,\"header_visible\":%d,\"state_flags\":%u,\"input\":[%d,%d],\"texture_size\":[%d,%d],\"rect\":[%.3f,%.3f,%.3f,%.3f],\"uv\":[%.6f,%.6f,%.6f,%.6f]}\n",
+      r.menu?"menu":"sprite",r.frame,r.sprite,r.texture,r.caller,r.parent,r.letter,ui_number(r.alpha),r.mode,r.depth,r.sample,r.tab,r.visible,r.header_visible,r.state_flags,r.input_x,r.input_y,r.tw,r.th,
       ui_number(r.rect[0]),ui_number(r.rect[1]),ui_number(r.rect[2]),ui_number(r.rect[3]),
       ui_number(r.uv[0]),ui_number(r.uv[1]),ui_number(r.uv[2]),ui_number(r.uv[3]));
 }

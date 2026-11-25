@@ -26,9 +26,9 @@ int main(void){
  for(int i=0;i<1000;i++){ui_loading_seen(p,v);}assert(count==1 && polls==1);
  MEM32(0xD21734)++;ui_loading_seen(p,v);assert(count==1); // one second timer
  ms+=1000;MEM32(0xD21734)++;ui_loading_seen(p,v);assert(count==2);
- MEM32(0x8DB160)=3;MEM32(0xD21734)++;ui_loading_seen(p,v);assert(count==3 && !last.guide);
+ MEM32(0x8DB160)=2;MEM32(0xD21734)++;ui_loading_seen(p,v);assert(count==3 && !last.guide);
  MEM32(p)=5;MEMF(p+0x20)=1;MEMF(v)=530;MEMF(v+4)=420;
- ui_loading_seen(p,v);assert(count==4 && last.guide); // first visible guide, same frame
+ ui_loading_seen(p,v);assert(count==4 && last.guide && last.phase==2); // first visible guide, same frame
  for(int i=0;i<1000;i++){ui_loading_seen(p,v);}assert(count==4);
  MEM32(0xD21734)++;host=1u<<20;flags=5;ui_loading_seen(p,v);
  assert(count==5 && last.host_buttons==(1u<<20) && last.host_flags==5);
