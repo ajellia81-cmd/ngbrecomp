@@ -14,10 +14,10 @@ for sec in sections:
   if i.mnemonic=='call' and i.operands[0].type==X86_OP_IMM:entries.add(i.operands[0].imm)
   if 0x1f3000<=i.address<0x1f6000:items.append(i)
 entries=sorted(entries);k=bisect.bisect_right(entries,0x1F5AF6)-1
-ranges=[('chapter_card_draw',entries[k],entries[k+1]),('chapter_card_update_candidate',entries[k-1],entries[k])]
+ranges=[('chapter_card_update_candidate',entries[k-1],entries[k]),('chapter_card_draw',entries[k],entries[k+1])]
 alias={v:r for r,ls in [('eax',('ax','al','ah')),('ebx',('bx','bl','bh')),('ecx',('cx','cl','ch')),('edx',('dx','dl','dh')),('esi',('si',)),('edi',('di',))] for v in ls}
 for role,lo,hi in ranges:
- print('CARD_CONDITION_REGION',json.dumps({'role':role,'begin':hex(lo),'end':hex(hi)}))
+ # Only readiness/input predicates and phase values leave this runner.
  regs={};flags=('entry',);flag_site=lo
  def short(v):return v if len(v)<360 else v[:340]+'...'
  def value(op,deref=True):
@@ -41,6 +41,9 @@ for role,lo,hi in ranges:
  for i in items:
   if not lo<=i.address<hi:continue
   o=i.operands;m=i.mnemonic
+  if role=='chapter_card_update_candidate' and o and o[0].type==X86_OP_MEM and not o[0].mem.base and not o[0].mem.index and o[0].mem.disp in (0x8DB028,0x8DAF70,0x8DAEEC,0x8DAF24):
+   if m=='mov' and len(o)==2:print('CARD_READINESS_VALUE',json.dumps({'site':hex(i.address),'field':hex(o[0].mem.disp),'set_to':value(o[1])}))
+   elif m in ('inc','dec'):print('CARD_READINESS_VALUE',json.dumps({'site':hex(i.address),'field':hex(o[0].mem.disp),'change':m}))
   if m in ('mov','movzx','movsx','movss') and len(o)==2:assign(o[0],value(o[1]))
   elif m=='lea' and len(o)==2:assign(o[0],value(o[1],False))
   elif m in ('cmp','test','comiss','ucomiss') and len(o)==2:flags=(m,value(o[0]),value(o[1]));flag_site=i.address
@@ -51,8 +54,16 @@ for role,lo,hi in ranges:
   elif m=='imul' and len(o) in (2,3):assign(o[0],'mul('+value(o[-2])+','+value(o[-1])+')');flags=('mul',);flag_site=i.address
   elif m in ('inc','dec','neg','not') and len(o)==1:
    old=value(o[0]);assign(o[0],m+'('+old+')');flags=(m,old);flag_site=i.address
+  elif m=='jmp' and o and o[0].type==X86_OP_MEM and role=='chapter_card_update_candidate' and o[0].mem.index:
+   addr=o[0].mem.disp
+   for sec in sections:
+    if sec[1]<=addr<sec[1]+sec[4]-28:
+     cases=struct.unpack_from('<7I',b,sec[3]+addr-sec[1]);print('CARD_PHASE_CASES',json.dumps({'site':hex(i.address),'targets':[hex(v) for v in cases]}))
   elif m.startswith('j') and m!='jmp' and o and o[0].type==X86_OP_IMM:
-   print('CARD_INPUT_DISPLAY_PREDICATE',json.dumps({'role':role,'site':hex(i.address),'condition':m,'flags_site':hex(flag_site),'predicate':flags,'target':hex(o[0].imm)}))
+   if any(token in str(flags) for token in ('0x8db028','0x8daf70','0x8daeec','0x8daf24','0xd219a8','0xdb9890')):
+    print('CARD_READINESS_PREDICATE',json.dumps({'site':hex(i.address),'condition':m,'flags_site':hex(flag_site),'predicate':flags,'target':hex(o[0].imm)}))
   elif m.startswith('cmov') and len(o)==2:assign(o[0],m[4:]+'('+','.join(flags)+')?'+value(o[1])+':'+value(o[0]))
   elif m=='call':
+   if role=='chapter_card_draw' and o and o[0].type==X86_OP_IMM and o[0].imm in (0x001E6D30,0x001E6D36,0x001E6AE0,0x001E86A0):
+    print('CARD_CAPTION_ROUTE',json.dumps({'site':hex(i.address),'target':hex(o[0].imm)}))
    regs['eax']='check_result@'+hex(i.address);regs['ecx']='ecx_after_call';regs['edx']='edx_after_call'
