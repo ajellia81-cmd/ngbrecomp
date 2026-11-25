@@ -17,29 +17,6 @@ for s in sections:
    if lo<=dest<hi:entries.add(dest)
   if lo<=i.address<hi:instructions.append(i)
 entries=sorted(entries)
-print('CHAPTER_FUNCTION_ENTRIES',json.dumps([hex(x) for x in entries]))
-for k,start in enumerate(entries):
- end=entries[k+1] if k+1<len(entries) else hi
- part=[i for i in instructions if start<=i.address<end]
- calls=[];globals=set();tests=[];writes=[]
- for ix,i in enumerate(part):
-  ops=i.operands
-  if i.mnemonic=='call' and ops[0].type==X86_OP_IMM:calls.append(hex(ops[0].imm))
-  for op in ops:
-   if op.type==X86_OP_MEM and not op.mem.base and not op.mem.index and op.mem.disp>0x400000:globals.add(op.mem.disp)
-  if i.mnemonic in ('cmp','test') and len(ops)==2 and ops[1].type==X86_OP_IMM:
-   source=None
-   if ops[0].type==X86_OP_MEM and not ops[0].mem.base and not ops[0].mem.index:source=ops[0].mem.disp
-   elif ops[0].type==1:
-    for prev in reversed(part[max(0,ix-5):ix]):
-     po=prev.operands
-     if len(po)==2 and po[0].type==1 and po[0].reg==ops[0].reg:
-      if prev.mnemonic.startswith('mov') and po[1].type==X86_OP_MEM and not po[1].mem.base and not po[1].mem.index:source=po[1].mem.disp
-      break
-   if source and source>0x400000:tests.append({'site':hex(i.address),'global':hex(source),'value':hex(ops[1].imm&0xffffffff)})
-  if i.mnemonic=='mov' and len(ops)==2 and ops[0].type==X86_OP_MEM and not ops[0].mem.base and not ops[0].mem.index and ops[0].mem.disp>0x400000 and ops[1].type==X86_OP_IMM:
-   writes.append({'site':hex(i.address),'global':hex(ops[0].mem.disp),'value':hex(ops[1].imm&0xffffffff)})
- print('CHAPTER_METADATA',json.dumps({'entry':hex(start),'end':hex(end),'calls':list(dict.fromkeys(calls)),'globals':[hex(x) for x in sorted(globals)],'test_candidates':tests,'constant_writes':writes}))
 # Only the loading controller's wait and guide gates, not a code listing.
 for lower,upper in [(0x2041E0,0x204290),(0x205350,0x205580)]:
  part=[i for i in instructions if lower<=i.address<upper]
@@ -66,3 +43,36 @@ for addr in (0x4148C8,0x4148EC,0x414EF4,0x415460,0x415470):
   if s[1]<=addr<s[1]+s[4]-4:
    v=b[s[3]+addr-s[1]:s[3]+addr-s[1]+4]
    print('LOADING_CONSTANT',json.dumps({'address':hex(addr),'u32':struct.unpack('<I',v)[0],'f32':struct.unpack('<f',v)[0]}))
+# Resolve only the controller's opening predicates symbolically. No guest code
+# or instruction strings leave the runner; output is loading-condition metadata.
+regs={};flags=('unknown','unknown','unknown');last_flags=None
+alias={'al':'eax','ah':'eax','ax':'eax','bl':'ebx','bh':'ebx','bx':'ebx','cl':'ecx','ch':'ecx','cx':'ecx','dl':'edx','dh':'edx','dx':'edx','si':'esi','di':'edi'}
+def regname(op):return i.reg_name(op.reg)
+def value(op):
+ if op.type==X86_OP_IMM:return hex(op.imm&0xffffffff)
+ if op.type==1:
+  r=regname(op);v=regs.get(alias.get(r,r),r)
+  return ('low8('+v+')') if r in ('al','bl','cl','dl') else v
+ if op.type==X86_OP_MEM:
+  m=op.mem;v=hex(m.disp&0xffffffff)
+  if m.base:v+='+'+regs.get(i.reg_name(m.base),i.reg_name(m.base))
+  if m.index:v+='+'+regs.get(i.reg_name(m.index),i.reg_name(m.index))+'*'+str(m.scale)
+  return 'memory'+str(op.size*8)+'['+v+']'
+ return 'unknown'
+def assign(op,v):
+ if op.type!=1:return
+ r=regname(op);regs[alias.get(r,r)]=v
+for i in instructions:
+ if not 0x2041e0<=i.address<0x204270:continue
+ op=i.operands;m=i.mnemonic
+ if m in ('mov','movzx','movsx') and len(op)==2:assign(op[0],value(op[1]))
+ elif m in ('cmp','test') and len(op)==2:flags=(m,value(op[0]),value(op[1]));last_flags=i.address
+ elif m.startswith('set') and len(op)==1:assign(op[0],m[3:]+'('+','.join(flags)+')')
+ elif m in ('and','or','xor','add','sub','shl','shr','sar') and len(op)==2:
+  a,v=value(op[0]),value(op[1]);assign(op[0],'0' if m=='xor' and a==v else m+'('+a+','+v+')')
+ elif m in ('neg','not','inc','dec') and len(op)==1:assign(op[0],m+'('+value(op[0])+')')
+ elif m.startswith('j') and m!='jmp':
+  print('LOADING_PREDICATE',json.dumps({'site':hex(i.address),'condition':m,'flags_source':hex(last_flags) if last_flags else None,'predicate':flags,'target':hex(op[0].imm) if op[0].type==X86_OP_IMM else 'indirect'}))
+ elif m.startswith('cmov') and len(op)==2:assign(op[0],m[4:]+'('+','.join(flags)+')?'+value(op[1])+':'+value(op[0]))
+ elif m=='call':
+  regs['eax']='input_check_result'
