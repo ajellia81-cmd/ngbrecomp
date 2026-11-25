@@ -15,7 +15,7 @@ for s in sections:
   if i.mnemonic=='call' and i.operands[0].type==X86_OP_IMM:
    dest=i.operands[0].imm
    if lo<=dest<hi:entries.add(dest)
-  if lo<=i.address<hi:instructions.append(i)
+  if lo<=i.address<hi or 0x21a760<=i.address<0x21a7d0 or 0x16d2b0<=i.address<0x16d340:instructions.append(i)
 entries=sorted(entries)
 # Only the loading controller's wait and guide gates, not a code listing.
 for lower,upper in [(0x2041E0,0x204290),(0x205350,0x205580)]:
@@ -63,7 +63,8 @@ def assign(op,v):
  if op.type!=1:return
  r=regname(op);regs[alias.get(r,r)]=v
 for i in instructions:
- if not 0x2041e0<=i.address<0x204270:continue
+ if not (0x2041e0<=i.address<0x204270 or 0x21a760<=i.address<0x21a7d0 or 0x16d2b0<=i.address<0x16d340):continue
+ if i.address in (0x2041e0,0x21a760,0x16d2b0):regs={};last_flags=None;flags=('unknown','unknown','unknown')
  op=i.operands;m=i.mnemonic
  if m in ('mov','movzx','movsx') and len(op)==2:assign(op[0],value(op[1]))
  elif m in ('cmp','test') and len(op)==2:flags=(m,value(op[0]),value(op[1]));last_flags=i.address
@@ -74,5 +75,7 @@ for i in instructions:
  elif m.startswith('j') and m!='jmp':
   print('LOADING_PREDICATE',json.dumps({'site':hex(i.address),'condition':m,'flags_source':hex(last_flags) if last_flags else None,'predicate':flags,'target':hex(op[0].imm) if op[0].type==X86_OP_IMM else 'indirect'}))
  elif m.startswith('cmov') and len(op)==2:assign(op[0],m[4:]+'('+','.join(flags)+')?'+value(op[1])+':'+value(op[0]))
+ elif m=='ret':
+  print('LOADING_RETURN_PREDICATE',json.dumps({'site':hex(i.address),'return':regs.get('eax','eax')}))
  elif m=='call':
-  regs['eax']='input_check_result'
+  regs['eax']='check_at_'+hex(i.address)+'('+','.join(regs.get(r,r) for r in ('eax','ecx','edx'))+')'
