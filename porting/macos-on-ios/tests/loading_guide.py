@@ -1,6 +1,6 @@
 """Drive the actual footer-opacity wrapper, retaining its native ABI and layout."""
 from pathlib import Path
-import os,subprocess,tempfile
+import os,re,subprocess,tempfile
 root=Path(__file__).resolve().parents[3];s=(root/'src/menu_mouse.c').read_text()
 a=s.index('#ifdef NGB_IOS_KOREAN\n#include "loading_guide_policy.h"');b=s.index('\n}',s.index('void sub_001E6D30(void)\n{',a))+2
 body=s[a:b]
@@ -11,11 +11,7 @@ prefix=r'''
 #include <assert.h>
 #include "loading_guide_policy.h"
 static uint8_t mem[0x1000000];
-#define MEM8(a) mem[a]
-#define MEM16(a) (*(uint16_t *)(void *)(mem+(a)))
-#define MEM32(a) (*(uint32_t *)(void *)(mem+(a)))
-#define MEMF(a) (*(float *)(void *)(mem+(a)))
-#define XBOX_PTR(a) (mem+(a))
+@GUEST_MEMORY_MACROS@
 static uint32_t esp,eax;static unsigned draws,translated_draws;static int korean;
 static float seen_alpha,record_alpha;
 int ngb_korean_active(void){return 0;}
@@ -24,6 +20,13 @@ static void text_draw(void){uint32_t st=MEM32(esp+4);seen_alpha=MEMF(st+0x14);ME
 static void translated_draw(void){translated_draws++;text_draw();}
 void (*ngb_korean_lookup_raw(unsigned address))(void){assert(address==0x001E6D30);return korean?translated_draw:0;}
 '''
+runtime=(root/'xboxrecomp/templates/runtime/recomp_types.h').read_text()
+macros=[]
+for name in ('XBOX_PTR','MEM8','MEM16','MEM32','MEMF'):
+ match=re.search(r'^#define '+name+r'\([^\n]*',runtime,re.M)
+ assert match, name
+ macros.append(match[0])
+prefix=prefix.replace('@GUEST_MEMORY_MACROS@','static uintptr_t g_xbox_mem_offset;\n'+'\n'.join(macros))
 main=r'''
 static void run(unsigned phase,int x,int y,const char *text,int expect_hide){
  uint32_t st=0x30000;esp=0x20000;MEM32(esp)=0x12345;MEM32(esp+4)=st;
@@ -36,6 +39,7 @@ static void run(unsigned phase,int x,int y,const char *text,int expect_hide){
  assert(seen_alpha==(expect_hide?0:0.75f) && record_alpha==seen_alpha);
 }
 int main(void){
+ g_xbox_mem_offset=(uintptr_t)mem;
  for(korean=0;korean<2;korean++){
 #ifdef NGB_IOS_KOREAN
   run(2,540,440,"@c0@BX next",1);
@@ -59,6 +63,6 @@ with tempfile.TemporaryDirectory() as folder:
  p=Path(folder);(p/'test.c').write_text(prefix+support+'\n'+body+main)
  for enabled in (False,True):
   flags=['-DNGB_IOS_KOREAN=1'] if enabled else []
-  subprocess.run([os.environ.get('CC','cc'),'-std=c11','-Wall','-Wextra','-fsanitize=address,undefined',*flags,'-I'+str(root/'porting/macos-on-ios/korean'),'-I'+str(root/'src'),str(p/'test.c'),'-o',str(p/'test')],check=True)
+  subprocess.run([os.environ.get('CC','cc'),'-std=c11','-Wall','-Wextra','-Werror=int-conversion','-fsanitize=address,undefined',*flags,'-I'+str(root/'porting/macos-on-ios/korean'),'-I'+str(root/'src'),str(p/'test.c'),'-o',str(p/'test')],check=True)
   subprocess.run([str(p/'test')],check=True,env=dict(os.environ,ASAN_OPTIONS='detect_leaks=0'))
 print('PASS: only phase-2 footer X caption hidden; native/Korean drawers and ABI/layout writes run, opacity restored; other loading text, body, phases and desktop retained')

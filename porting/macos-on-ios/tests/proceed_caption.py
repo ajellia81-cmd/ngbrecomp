@@ -1,6 +1,6 @@
 """Exercise actual localized Proceed swaps in both measurement and drawing."""
 from pathlib import Path
-import os,subprocess,tempfile
+import os,re,subprocess,tempfile
 root=Path(__file__).resolve().parents[3];s=(root/'src/menu_mouse.c').read_text()
 a=s.index('#ifdef NGB_IOS_KOREAN\n#include "proceed_caption_policy.h"');b=s.index('\n#endif',a)+len('\n#endif');support=s[a:b]
 def function(name):
@@ -11,11 +11,7 @@ prefix=r'''
 #include <string.h>
 #include <assert.h>
 static uint8_t mem[0x1000000];
-#define MEM8(a) mem[a]
-#define MEM16(a) (*(uint16_t *)(void *)(mem+(a)))
-#define MEM32(a) (*(uint32_t *)(void *)(mem+(a)))
-#define MEMF(a) (*(float *)(void *)(mem+(a)))
-#define XBOX_PTR(a) (mem+(a))
+@GUEST_MEMORY_MACROS@
 static uint32_t esp,eax,seen_font,seen_text;static int active,callbacks;
 static uint64_t s_text_ms,s_text_since;
 int ngb_korean_active(void){return active;}
@@ -30,6 +26,13 @@ static void kr_measure(void){menu_text();}
 static void kr_draw(void){text_draw();}
 void (*ngb_korean_lookup_raw(unsigned address))(void){return !callbacks?0:address==0x001E86A0?kr_measure:kr_draw;}
 '''
+runtime=(root/'xboxrecomp/templates/runtime/recomp_types.h').read_text()
+macros=[]
+for name in ('XBOX_PTR','MEM8','MEM16','MEM32','MEMF'):
+ match=re.search(r'^#define '+name+r'\([^\n]*',runtime,re.M)
+ assert match, name
+ macros.append(match[0])
+prefix=prefix.replace('@GUEST_MEMORY_MACROS@','static uintptr_t g_xbox_mem_offset;\n'+'\n'.join(macros))
 main=r'''
 static void run(const char *word,unsigned font,int x,int y,int expected){
  uint32_t st=0x30000,original=0x40000;memset(mem+st,0,0x60);memset(mem+original,0,32);
@@ -47,6 +50,7 @@ static void run(const char *word,unsigned font,int x,int y,int expected){
  }
 }
 int main(void){
+ g_xbox_mem_offset=(uintptr_t)mem;
  MEM32(0x431B3C)=0x60;MEM32(0x431B40)=0x50000;
  MEM32(0x431A34)=0x4A;MEM32(0x431A38)=0x50010;
  memcpy(mem+0x50000,"\x91\x41\x91\x42",5);memcpy(mem+0x50010,"@BX \x91\x41\x91\x42",9);
@@ -69,6 +73,6 @@ with tempfile.TemporaryDirectory() as folder:
  p=Path(folder);(p/'test.c').write_text(prefix+support+'\n'+function('sub_001E86A0')+'\n'+guide+'\n'+function('sub_001E6D30')+main)
  for enabled in (False,True):
   flags=['-DNGB_IOS_KOREAN=1'] if enabled else []
-  subprocess.run([os.environ.get('CC','cc'),'-std=c11','-Wall','-Wextra','-fsanitize=address,undefined',*flags,'-I'+str(root/'src'),'-I'+str(root/'porting/macos-on-ios/korean'),str(p/'test.c'),'-o',str(p/'test')],check=True)
+  subprocess.run([os.environ.get('CC','cc'),'-std=c11','-Wall','-Wextra','-Werror=int-conversion','-fsanitize=address,undefined',*flags,'-I'+str(root/'src'),'-I'+str(root/'porting/macos-on-ios/korean'),str(p/'test.c'),'-o',str(p/'test')],check=True)
   subprocess.run([str(p/'test')],check=True,env=dict(os.environ,ASAN_OPTIONS='detect_leaks=0'))
 print('PASS: real measure/draw wrappers reuse native localized captions/font, restore descriptors, preserve ABI/layout; language, text/context, table and pointer guards checked')

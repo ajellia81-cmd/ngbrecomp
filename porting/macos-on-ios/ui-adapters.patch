@@ -380,7 +380,7 @@ diff --git a/src/menu_mouse.c b/src/menu_mouse.c
 +    if(MEM32(entry)!=id)return saved;
 +    uint32_t caption=MEM32(entry+4),body=kind==1?0:4;
 +    if(caption<0x10000 || caption>0x3FFFFF0)return saved;
-+    if(kind==2 && memcmp(XBOX_PTR(caption),"@BX ",4))return saved;
++    if(kind==2 && memcmp((const void *)XBOX_PTR(caption),"@BX ",4))return saved;
 +    if(!(MEM8(caption+body)&0x80) || !(MEM8(caption+body+2)&0x80) ||
 +       MEM8(caption+body+4))return saved;
 +    saved.text=text;saved.font=font;saved.changed=1;
