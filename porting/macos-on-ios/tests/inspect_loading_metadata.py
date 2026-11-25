@@ -63,11 +63,11 @@ def assign(op,v):
  if op.type!=1:return
  r=regname(op);regs[alias.get(r,r)]=v
 for i in instructions:
- if not (0x2041e0<=i.address<0x204270 or 0x21a760<=i.address<0x21a7d0 or 0x16d2b0<=i.address<0x16d340):continue
+ if not (0x2041e0<=i.address<0x204520 or 0x21a760<=i.address<0x21a7d0 or 0x16d2b0<=i.address<0x16d340):continue
  if i.address in (0x2041e0,0x21a760,0x16d2b0):regs={};last_flags=None;flags=('unknown','unknown','unknown')
  op=i.operands;m=i.mnemonic
- if m in ('mov','movzx','movsx') and len(op)==2:assign(op[0],value(op[1]))
- elif m in ('cmp','test') and len(op)==2:flags=(m,value(op[0]),value(op[1]));last_flags=i.address
+ if m in ('mov','movzx','movsx','movss') and len(op)==2:assign(op[0],value(op[1]))
+ elif m in ('cmp','test','comiss','ucomiss') and len(op)==2:flags=(m,value(op[0]),value(op[1]));last_flags=i.address
  elif m.startswith('set') and len(op)==1:assign(op[0],m[3:]+'('+','.join(flags)+')')
  elif m in ('and','or','xor','add','sub','shl','shr','sar') and len(op)==2:
   a,v=value(op[0]),value(op[1]);assign(op[0],'0' if m=='xor' and a==v else m+'('+a+','+v+')')
@@ -75,6 +75,11 @@ for i in instructions:
  elif m.startswith('j') and m!='jmp':
   print('LOADING_PREDICATE',json.dumps({'site':hex(i.address),'condition':m,'flags_source':hex(last_flags) if last_flags else None,'predicate':flags,'target':hex(op[0].imm) if op[0].type==X86_OP_IMM else 'indirect'}))
  elif m.startswith('cmov') and len(op)==2:assign(op[0],m[4:]+'('+','.join(flags)+')?'+value(op[1])+':'+value(op[0]))
+ elif m=='jmp' and op[0].type==X86_OP_MEM and op[0].mem.index:
+  addr=op[0].mem.disp
+  for sec in sections:
+   if sec[1]<=addr<sec[1]+sec[4]-20:
+    vals=struct.unpack_from('<5I',b,sec[3]+addr-sec[1]);print('LOADING_PHASE_BRANCHES',json.dumps({'site':hex(i.address),'targets':[hex(v) for v in vals]}))
  elif m=='ret':
   print('LOADING_RETURN_PREDICATE',json.dumps({'site':hex(i.address),'return':regs.get('eax','eax')}))
  elif m=='call':
