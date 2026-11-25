@@ -1,7 +1,7 @@
 name: Inspect result prompt metadata
 'on':
   push:
-    branches: [macos-on-ios-upstream072-ui-inspect, macos-on-ios-upstream072-ui-inspect-readiness]
+    branches: [macos-on-ios-upstream072-ui-inspect, 'macos-on-ios-upstream072-ui-inspect-*']
 permissions:
   contents: read
 jobs:
