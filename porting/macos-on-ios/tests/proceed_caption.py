@@ -5,7 +5,7 @@ root=Path(__file__).resolve().parents[3];s=(root/'src/menu_mouse.c').read_text()
 a=s.index('#ifdef NGB_IOS_KOREAN\n#include "proceed_caption_policy.h"');b=s.index('\n#endif',a)+len('\n#endif');support=s[a:b]
 def function(name):
  a=s.index('void '+name+'(void)\n{');return s[a:s.index('\n}',a)+2]
-a=s.index('#ifdef NGB_IOS_KOREAN\n#include "loading_guide_policy.h"');b=s.index('\n#endif',a)+len('\n#endif');guide=s[a:b]
+a=s.index('#ifdef NGB_IOS_KOREAN\n#include "chapter_card_state.h"');b=s.index('\n#endif',a)+len('\n#endif');guide=s[a:b]
 prefix=r'''
 #include <stdint.h>
 #include <string.h>

@@ -2,7 +2,7 @@
 from pathlib import Path
 import os,re,subprocess,tempfile
 root=Path(__file__).resolve().parents[3];s=(root/'src/menu_mouse.c').read_text()
-a=s.index('#ifdef NGB_IOS_KOREAN\n#include "loading_guide_policy.h"');b=s.index('\n}',s.index('void sub_001E6D30(void)\n{',a))+2
+a=s.index('#ifdef NGB_IOS_KOREAN\n#include "chapter_card_state.h"');b=s.index('\n}',s.index('void sub_001E6D30(void)\n{',a))+2
 body=s[a:b]
 c=s.index('#ifdef NGB_IOS_KOREAN\n#include "proceed_caption_policy.h"');d=s.index('\n#endif',c)+len('\n#endif');support=s[c:d]
 prefix=r'''
@@ -29,34 +29,32 @@ for name in ('XBOX_PTR','MEM8','MEM16','MEM32','MEMF'):
  macros.append(match[0])
 prefix=prefix.replace('@GUEST_MEMORY_MACROS@','static uintptr_t g_xbox_mem_offset;\n'+'\n'.join(macros))
 main=r'''
-static void run(unsigned phase,int x,int y,const char *text,int expect_hide){
+static void run(int locked,unsigned caller,unsigned mode,unsigned font,int x,int y,const char *text){
  uint32_t st=0x30000;esp=0x20000;MEM32(esp)=0x12345;MEM32(esp+4)=st;
- ngb_chapter_card_update_begin(); if(phase!=2)ngb_chapter_card_input_ready(); ngb_chapter_card_draw_begin(phase?2:0);MEM32(st+0x10)=0x40000;MEM32(st+0x38)=1;
+ MEM32(st+0x10)=0x40000;MEM32(st+0x38)=font;
  MEM16(st+0x44)=(uint16_t)x;MEM16(st+0x46)=(uint16_t)y;MEMF(st+0x14)=0.75f;
  memset(mem+0x40000,0,96);strncpy((char *)mem+0x40000,text,95);
- unsigned old=draws;sub_001E6D30();ngb_chapter_card_draw_end();
+ ngb_chapter_card_start_begin();if(!locked)ngb_chapter_card_start_ready();
+ ngb_chapter_card_update_begin(); // common updater stays locked during chapter setup
+ ngb_chapter_card_draw_begin(mode);ngb_chapter_card_footer_begin(caller,mode);
+ int hide=locked && mode>=1 && mode<=7 && caller==0x1F5AF6;
+#ifndef NGB_IOS_KOREAN
+ hide=0;
+#endif
+ unsigned old=draws;sub_001E6D30();
  assert(draws==old+1 && MEM32(st+8)==42 && eax==37 && esp==0x20004);
- assert(MEMF(st+0x14)==0.75f); // restore exactly, keep the drawer's other writes
- assert(seen_alpha==(expect_hide?0:0.75f) && record_alpha==seen_alpha);
+ assert(MEMF(st+0x14)==0.75f && seen_alpha==(hide?0:0.75f) && record_alpha==seen_alpha);
+ ngb_chapter_card_footer_end();ngb_chapter_card_draw_end();ngb_chapter_card_start_end();
+ assert(!ngb_chapter_card_hide_footer());
 }
 int main(void){
  g_xbox_mem_offset=(uintptr_t)mem;
- for(korean=0;korean<2;korean++){
-#ifdef NGB_IOS_KOREAN
-  run(2,540,440,"@c0@BX next",1);
-#else
-  run(2,540,440,"@c0@BX next",0);
-#endif
-  run(2,540,440,"@AX attack",0);
-  run(3,540,440,"@BX next",0);run(4,540,440,"@AX next",0);
-  run(0,540,440,"@AX next",0);run(5,540,440,"@AX next",0);
-  run(2,540,440,"loading",0);run(2,540,440,"@AA next",0);
-  run(2,60,120,"@AX body",0);run(2,540,320,"@AX upper",0);
-  run(2,540,440,"\x81\x40" "AX",0); // a multibyte trail @ is not a command
+ for(korean=0;korean<2;korean++)for(int locked=0;locked<2;locked++){
+  run(locked,0x1F5AF6,3,1,540,440,"@BX next");
+  run(locked,0x1F5AF6,3,5,360,0,"localized caption"); // no guessed font/anchor filter
+  run(locked,0x204321,3,1,540,440,"@BX other screen");
+  run(locked,0x1F5AF6,0,1,540,440,"@BX gameplay");
  }
- uint8_t cut[]={'@','A'};
- assert(!ngb_loading_guide_pending(2,540,440,cut,sizeof cut));
- assert(!ngb_loading_guide_pending(2,540,440,0,96));
  return 0;
 }
 '''
@@ -66,4 +64,4 @@ with tempfile.TemporaryDirectory() as folder:
   flags=['-DNGB_IOS_KOREAN=1'] if enabled else []
   subprocess.run([os.environ.get('CC','cc'),'-std=c11','-Wall','-Wextra','-Werror=int-conversion','-fsanitize=address,undefined',*flags,'-I'+str(root/'porting/macos-on-ios/korean'),'-I'+str(root/'src'),str(p/'test.c'),str(root/'porting/macos-on-ios/korean/chapter_card_state.c'),'-o',str(p/'test')],check=True)
   subprocess.run([str(p/'test')],check=True,env=dict(os.environ,ASAN_OPTIONS='detect_leaks=0'))
-print('PASS: only input-locked chapter-card footer X caption hidden; native/Korean drawers and ABI/layout writes run, opacity restored; other loading text, body, phases and desktop retained')
+print('PASS: exact chapter footer scope controls opacity independently of font/anchor; native/Korean draw ABI and descriptor writes retained; other scenes and desktop unchanged')

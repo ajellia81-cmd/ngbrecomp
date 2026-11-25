@@ -21,7 +21,7 @@ index d4f2dd6..2c21eec 100644
 @@ -1334,0 +1345 @@ loc_0017CC98: ;
 +#endif
 diff --git a/src/pause_tab.c b/src/pause_tab.c
-index 0f55686..c47f6ac 100644
+index 0f55686..403b65a 100644
 --- a/src/pause_tab.c
 +++ b/src/pause_tab.c
 @@ -35,0 +36 @@
@@ -260,7 +260,7 @@ index 0f55686..c47f6ac 100644
 +    row.ticks=MEM32(0xBCDFDC);row.prompt=MEM32(0x8DB248);row.guide=seen_guide;
 +    row.pending=MEM32(0x8DB6B8);row.screen_mode=MEM32(0x8DB028);row.fade_bits=MEM32(0x8DB054);
 +    row.card_ticks=MEM32(0x8DAEEC);row.card_counter=MEM32(0x8DAF70);
-+    row.card_block=block;row.card_ready=ready;
++    row.card_block=block;row.card_ready=ready;row.card_route=ngb_chapter_card_route();
 +    row.host_buttons=host;row.host_flags=flags;row.pad_index=player;
 +    if(pad){row.guest[0]=MEM32(pad);row.guest[1]=MEM32(pad+8);
 +        row.guest[2]=MEM32(pad+12);row.guest[3]=MEM32(pad+16);}
@@ -413,27 +413,18 @@ diff --git a/src/menu_mouse.c b/src/menu_mouse.c
 +#else
 @@ -112,0 +150 @@
 +#endif
-@@ -277,0 +316,12 @@
+@@ -277,0 +316,3 @@
 +#ifdef NGB_IOS_KOREAN
-+#include "loading_guide_policy.h"
 +#include "chapter_card_state.h"
-+static int loading_guide_pending(uint32_t state)
-+{
-+    if(state<0x10000 || state>0x3FFFFA0 || MEM32(state+0x38)>2)return 0;
-+    uint32_t text=MEM32(state+0x10);
-+    if(text<0x10000 || text>0x3FFFFA0)return 0;
-+    return ngb_loading_guide_pending(ngb_chapter_card_pending(),(int16_t)MEM16(state+0x44),
-+        (int16_t)MEM16(state+0x46),(const uint8_t *)XBOX_PTR(text),96);
-+}
 +#endif
-@@ -279,0 +330,6 @@
+@@ -279,0 +321,6 @@
 +#ifdef NGB_IOS_KOREAN
 +    uint32_t state=MEM32(esp+4),alpha=0;
 +    ProceedCaptionSwap saved=proceed_caption_begin(state);
-+    int hide=loading_guide_pending(state);
++    int hide=ngb_chapter_card_hide_footer();
 +    if(hide){alpha=MEM32(state+0x14);MEMF(state+0x14)=0;}
 +#endif
-@@ -284,2 +340,6 @@
+@@ -284,2 +331,6 @@
 -    if (translated) { translated(); return; }
 -#endif
 +    if (translated) translated(); else text_draw();
@@ -442,5 +433,5 @@ diff --git a/src/menu_mouse.c b/src/menu_mouse.c
 +    if(hide)MEM32(state+0x14)=alpha;
 +    proceed_caption_end(state,saved);
 +#else
-@@ -286,0 +347 @@
+@@ -286,0 +338 @@
 +#endif

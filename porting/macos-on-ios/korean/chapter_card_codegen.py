@@ -1,20 +1,22 @@
-"""Bind chapter-guide visibility to the actual native confirm path.
-
-This UI adapter neither changes native branches nor exports generated code.
-It runs after language variants have been merged, so both drawers are covered.
-"""
+"""Adapt native chapter readiness and the exact footer route, without exporting game code."""
 from pathlib import Path
 import re,sys
 TOKEN=re.compile(r'/\*.*?\*/|//[^\n]*|"(?:\\.|[^"\\])*"|\'(?:\\.|[^\'\\])*\'',re.S)
-DEFINITION=re.compile(r'^void ((?:kr_|ngb_original_)?sub_001F3(?:AD0|ED0))\(void\)\s*\{',re.M)
+ROLES={'001F3AD0':'update','001F3ED0':'draw','002DF930':'start','001F5E40':'footer'}
+DEFINITION=re.compile(r'^void ((?:kr_|ngb_original_)?sub_('+ '|'.join(ROLES) +r'))\(void\)\s*\{',re.M)
 DECLARATIONS='''
 void ngb_chapter_card_update_begin(void);
 void ngb_chapter_card_input_ready(void);
 void ngb_chapter_card_draw_begin(unsigned mode);
 void ngb_chapter_card_draw_end(void);
+void ngb_chapter_card_start_begin(void);
+void ngb_chapter_card_start_ready(void);
+void ngb_chapter_card_start_end(void);
+void ngb_chapter_card_footer_begin(unsigned caller,unsigned mode);
+void ngb_chapter_card_footer_end(void);
 '''
 def patch(folder):
-    folder=Path(folder);outputs={};counts={('update',False):0,('draw',False):0,('update',True):0,('draw',True):0}
+    folder=Path(folder);outputs={};counts={(role,k):0 for role in ROLES.values() for k in (False,True)}
     for path in sorted(folder.glob('recomp_*.c')):
         source=path.read_text();masked=TOKEN.sub(lambda m:' '*len(m[0]),source)
         edits=[];wrappers=[];prototypes=[]
@@ -23,33 +25,38 @@ def patch(folder):
             while level and end<len(masked):
                 level+=(masked[end]=='{')-(masked[end]=='}');end+=1
             if level:raise ValueError('Unbalanced chapter-card adapter input')
-            body=source[a:end];name=match[1];korean=name.startswith('kr_')
-            update=name.endswith('001F3AD0');address='001F3AD0' if update else '001F3ED0'
-            # Dispatch gates have no native body; their selected bodies below do.
+            body=source[a:end];name,address=match[1],match[2];korean=name.startswith('kr_')
             if 'RECOMP_ENTRY(0x'+address+'u)' not in body:continue
-            role='update' if update else 'draw';counts[role,korean]+=1
-            if update:
+            role=ROLES[address];counts[role,korean]+=1
+            if role=='update':
                 guard=re.compile(r'if\s*\(CMP_NE\(_fa,\s*_fb\)\)\s*goto loc_001F3D50;[^\n]*')
                 body,n=guard.subn(lambda m:m[0]+'\n    ngb_chapter_card_input_ready();',body)
-                if n!=1:raise ValueError('Native chapter confirm guard changed; refusing a guessed readiness condition')
+                if n!=1:raise ValueError('Native common-card confirm guard changed')
                 at=body.index('{')+1;body=body[:at]+'\n    ngb_chapter_card_update_begin();'+body[at:]
             else:
+                if role=='start':
+                    # This native call returns after preparation, immediately
+                    # before the chapter's separate A/X/Start wait loop.
+                    gate=re.compile(r'(?m)^[ \t]*(?:kr_)?sub_002ECC50\(\);[^\n]*')
+                    body,n=gate.subn(lambda m:m[0]+'\n    ngb_chapter_card_start_ready();',body)
+                    if n!=1:raise ValueError('Native chapter-start preparation boundary changed')
                 renamed='ngb_ui_card_body_'+name
                 body=re.sub(r'\bvoid '+re.escape(name)+r'\(void\)', 'void '+renamed+'(void)',body,count=1)
                 prototypes.append('void '+name+'(void);\n')
-                wrappers.append('void '+name+'(void) {\n'
-                    '    ngb_chapter_card_draw_begin(MEM32(0x8DB028));\n'
-                    '    '+renamed+'();\n'
-                    '    ngb_chapter_card_draw_end();\n}\n')
+                begin={'draw':'ngb_chapter_card_draw_begin(MEM32(0x8DB028));',
+                       'start':'ngb_chapter_card_start_begin();',
+                       'footer':'ngb_chapter_card_footer_begin(MEM32(esp),MEM32(0x8DB028));'}[role]
+                end_call={'draw':'ngb_chapter_card_draw_end();','start':'ngb_chapter_card_start_end();',
+                          'footer':'ngb_chapter_card_footer_end();'}[role]
+                wrappers.append('void '+name+'(void) {\n    '+begin+'\n    '+renamed+'();\n    '+end_call+'\n}\n')
             edits.append((a,end,body))
         if edits:
             for a,end,body in reversed(edits):source=source[:a]+body+source[end:]
             outputs[path]=''.join(prototypes)+source+'\n'+''.join(wrappers)
-    if counts['update',False]!=1 or counts['draw',False]!=1 or any(n>1 for n in counts.values()):
+    if any(counts[role,False]!=1 for role in ROLES.values()) or any(n>1 for n in counts.values()):
         raise ValueError('Native chapter UI adapter boundaries changed')
-    # Validate everything before editing any private generated file.
     header=folder/'recomp_funcs.h';declarations=header.read_text()+DECLARATIONS
     for path,source in outputs.items():path.write_text(source)
     header.write_text(declarations)
-    print('Chapter-card native input readiness and scoped guide visibility adapters installed')
+    print('Chapter common/start readiness and exact footer-route adapters installed')
 if __name__=='__main__':patch(Path(sys.argv[1]))
