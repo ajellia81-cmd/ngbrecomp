@@ -21,16 +21,17 @@ index d4f2dd6..2c21eec 100644
 @@ -1334,0 +1345 @@ loc_0017CC98: ;
 +#endif
 diff --git a/src/pause_tab.c b/src/pause_tab.c
-index 0f55686..fd2b471 100644
+index 0f55686..c47f6ac 100644
 --- a/src/pause_tab.c
 +++ b/src/pause_tab.c
 @@ -35,0 +36 @@
 +#include "quit_label.h"
-@@ -36,0 +38,3 @@
+@@ -36,0 +38,4 @@
 +#ifdef NGB_IOS_UI_PROMPT_PROBE
 +#include "ui_prompt_probe.h"
++#include "chapter_card_state.h"
 +#endif
-@@ -159 +163,9 @@ static const signed char s_cat_rows[CATS + 1][CAT_ROWS] = {
+@@ -159 +164,9 @@ static const signed char s_cat_rows[CATS + 1][CAT_ROWS] = {
 -    { S_ASPECT, S_WINDOW, S_DISPLAY, S_VSYNC, S_FPS, S_HUD, S_HUDSTYLE, S_HUDASPECT, S_SKIP },   /* (a full page) */
 +    { S_ASPECT,
 +#ifndef NGB_CONVERTED_DISPLAY
@@ -41,27 +42,27 @@ index 0f55686..fd2b471 100644
 +      , -1
 +#endif
 +    },   /* (a full page) */
-@@ -222 +234,5 @@ static void value_text(int row, char *out, size_t n)
+@@ -222 +235,5 @@ static void value_text(int row, char *out, size_t n)
 -    case S_RENDER:  snprintf(out, n, "%dx %dx%d", v, 720 * v, 480 * v); break;   /* the game's 720x480 times it (#105) */
 +    case S_RENDER:
 +#ifdef NGB_CONVERTED_DISPLAY
 +        if(v==NGB_RENDER_SCALE_IPHONE_NATIVE){snprintf(out,n,"iPhone Native");break;}
 +#endif
 +        snprintf(out, n, "%dx %dx%d", v, 720 * v, 480 * v); break;   /* the game's 720x480 times it (#105) */
-@@ -234 +250,5 @@ static void value_text(int row, char *out, size_t n)
+@@ -234 +251,5 @@ static void value_text(int row, char *out, size_t n)
 -    case S_ASPECT:  snprintf(out, n, "%s", v == 4 ? "32:9" : v == 3 ? "21:9" : v == 2 ? "16:10" : v ? "16:9" : "4:3"); break;
 +    case S_ASPECT:
 +#ifdef NGB_CONVERTED_DISPLAY
 +        if(v==ASPECT_IPHONE){snprintf(out,n,"iPhone Native");break;}
 +#endif
 +        snprintf(out, n, "%s", v == 4 ? "32:9" : v == 3 ? "21:9" : v == 2 ? "16:10" : v ? "16:9" : "4:3"); break;
-@@ -260 +280 @@ static void change(int row, int step)
+@@ -260 +281 @@ static void change(int row, int step)
 -        ngb_pc_set_setting(0, v < 1 ? 10 : v > 10 ? 1 : v);
 +        ngb_pc_set_setting(0, v < 1 ? NGB_RENDER_SCALE_COUNT : v > NGB_RENDER_SCALE_COUNT ? 1 : v);
-@@ -622,0 +643,2 @@ static void tab_word(uint8_t *m, int mw, int mh, float cx, float cy, float bw, f
+@@ -622,0 +644,2 @@ static void tab_word(uint8_t *m, int mw, int mh, float cx, float cy, float bw, f
 +    float text_height = bh;
 +    int localized = 0;
-@@ -627,2 +649,11 @@ static void tab_word(uint8_t *m, int mw, int mh, float cx, float cy, float bw, f
+@@ -627,2 +650,11 @@ static void tab_word(uint8_t *m, int mw, int mh, float cx, float cy, float bw, f
 -        float a = draw_text(tmp, 400, 160, &s_font_tab, "S", cap, sx, 6, base);
 -        draw_text(tmp, 400, 160, &s_font_tab, "ettings", rest, sx, 6 + a - 2, base);
 +#ifdef NGB_IOS_KOREAN
@@ -75,13 +76,13 @@ index 0f55686..fd2b471 100644
 +            float a = draw_text(tmp, 400, 160, &s_font_tab, "S", cap, sx, 6, base);
 +            draw_text(tmp, 400, 160, &s_font_tab, "ettings", rest, sx, 6 + a - 2, base);
 +        }
-@@ -643,2 +674,3 @@ static void tab_word(uint8_t *m, int mw, int mh, float cx, float cy, float bw, f
+@@ -643,2 +675,3 @@ static void tab_word(uint8_t *m, int mw, int mh, float cx, float cy, float bw, f
 -    float k = fminf(fminf(bw / tw, bh / th), 1.0f);
 -    int ow = (int)(tw * k), oh = (int)(th * k);
 +    float k = fminf(fminf(bw / tw, text_height / th), 1.0f);
 +    int ow = localized ? (int)lroundf(tw * k) : (int)(tw * k);
 +    int oh = localized ? (int)lroundf(th * k) : (int)(th * k);
-@@ -650,5 +682,16 @@ static void tab_word(uint8_t *m, int mw, int mh, float cx, float cy, float bw, f
+@@ -650,5 +683,16 @@ static void tab_word(uint8_t *m, int mw, int mh, float cx, float cy, float bw, f
 -            for (float yy = sy0; yy < sy0 + 1 / k; yy += 0.5f)
 -                for (float xx = sx0; xx < sx0 + 1 / k; xx += 0.5f) {
 -                    int X = (int)xx, Y = (int)yy;
@@ -103,7 +104,7 @@ index 0f55686..fd2b471 100644
 +                        if (X <= x1 && Y <= y1) { sum += tmp[Y * 400 + X]; n++; }
 +                    }
 +            }
-@@ -842,0 +886,9 @@ static float s_cat_x[CATS][2];
+@@ -842,0 +887,9 @@ static float s_cat_x[CATS][2];
 +#ifdef NGB_CONVERTED_DISPLAY
 +#define CTL_FIRST_COL 2            /* Keep the binding API's controller slot number. */
 +#define CTL_ACTION_WIDTH 276
@@ -113,40 +114,40 @@ index 0f55686..fd2b471 100644
 +#define CTL_FIRST_COL 0
 +#define CTL_ACTION_WIDTH 186
 +#define CTL_CLEAR_KEY " / Delete"
-@@ -844 +896,2 @@ static const float s_ctl_cx[3] = { 252, 343, 420 }, s_ctl_w[3] = { 88, 88, 56 };
+@@ -844 +897,2 @@ static const float s_ctl_cx[3] = { 252, 343, 420 }, s_ctl_w[3] = { 88, 88, 56 };
 -static int s_ctl_col, s_ctl_top;
 +#endif
 +static int s_ctl_col = CTL_FIRST_COL, s_ctl_top;
-@@ -871,0 +925 @@ static void draw_controls(uint32_t *px, uint8_t *m, int focused, int row)
+@@ -871,0 +926 @@ static void draw_controls(uint32_t *px, uint8_t *m, int focused, int row)
 +#ifndef NGB_CONVERTED_DISPLAY
-@@ -872,0 +927 @@ static void draw_controls(uint32_t *px, uint8_t *m, int focused, int row)
+@@ -872,0 +928 @@ static void draw_controls(uint32_t *px, uint8_t *m, int focused, int row)
 +#endif
-@@ -918,2 +973,2 @@ static void draw_controls(uint32_t *px, uint8_t *m, int focused, int row)
+@@ -918,2 +974,2 @@ static void draw_controls(uint32_t *px, uint8_t *m, int focused, int row)
 -                      sel ? 0xF5EB5A : focused ? 0xE6E6EB : 0xA0A0A8, 0, 186);
 -        for (int c = 0; c < 3; c++) {
 +                      sel ? 0xF5EB5A : focused ? 0xE6E6EB : 0xA0A0A8, 0, CTL_ACTION_WIDTH);
 +        for (int c = CTL_FIRST_COL; c < 3; c++) {
-@@ -981 +1036 @@ static void draw_controls(uint32_t *px, uint8_t *m, int focused, int row)
+@@ -981 +1037 @@ static void draw_controls(uint32_t *px, uint8_t *m, int focused, int row)
 -             : ngb_pad_prompts_ps() ? "Cross: change   Square / Delete: clear   (play only; the menus keep theirs)"
 +             : ngb_pad_prompts_ps() ? "Cross: change   Square" CTL_CLEAR_KEY ": clear   (play only; the menus keep theirs)"
-@@ -983,2 +1038,2 @@ static void draw_controls(uint32_t *px, uint8_t *m, int focused, int row)
+@@ -983,2 +1039,2 @@ static void draw_controls(uint32_t *px, uint8_t *m, int focused, int row)
 -             ? "B: change   Y / Delete: clear   (play only; the menus keep theirs)"
 -             : "A: change   X / Delete: clear   (play only; the menus keep theirs)";
 +             ? "B: change   Y" CTL_CLEAR_KEY ": clear   (play only; the menus keep theirs)"
 +             : "A: change   X" CTL_CLEAR_KEY ": clear   (play only; the menus keep theirs)";
-@@ -2066 +2121 @@ void ngb_menu_mark(void);            /* src/menu_mouse.c */
+@@ -2066 +2122 @@ void ngb_menu_mark(void);            /* src/menu_mouse.c */
 -enum { K_UP = 1, K_DOWN, K_LEFT, K_RIGHT, K_OK, K_BACK, K_CLEAR, K_ROW = 0x10000 };
 +enum { K_UP = 1, K_DOWN, K_LEFT, K_RIGHT, K_OK, K_BACK, K_CLEAR, K_ALT_OK, K_ROW = 0x10000 };
-@@ -2088 +2143 @@ static int ctl_hit(float x, float y)
+@@ -2088 +2144 @@ static int ctl_hit(float x, float y)
 -    for (int i = 0; i < 3 && r < A_COUNT; i++)
 +    for (int i = CTL_FIRST_COL; i < 3 && r < A_COUNT; i++)
-@@ -2145 +2200 @@ static int ctl_keys(int key, int *row, int strip)
+@@ -2145 +2201 @@ static int ctl_keys(int key, int *row, int strip)
 -        if (c >= 0 && c <= 2 && !(c == 2 && *row < A_COUNT && ngb_bind_pad_fixed(*row))) {
 +        if (c >= CTL_FIRST_COL && c <= 2 && !(c == 2 && *row < A_COUNT && ngb_bind_pad_fixed(*row))) {
-@@ -2187 +2242 @@ static void ctl_mouse(int r, int *row)
+@@ -2187 +2243 @@ static void ctl_mouse(int r, int *row)
 -    if (c < 3 && !(c == 2 && ngb_bind_pad_fixed(rr)))
 +    if (c >= CTL_FIRST_COL && c < 3 && !(c == 2 && ngb_bind_pad_fixed(rr)))
-@@ -2190,0 +2246,30 @@ static void ctl_mouse(int r, int *row)
+@@ -2190,0 +2247,30 @@ static void ctl_mouse(int r, int *row)
 +/* Follow the native tab header's actual submission, not only its retained
 + * selection: the engine can keep visiting a page after the header is gone. */
 +static int s_parent_header_visible;
@@ -177,42 +178,42 @@ index 0f55686..fd2b471 100644
 +    return visible;
 +}
 +
-@@ -2196,0 +2282 @@ static void pt_draw(void)
+@@ -2196,0 +2283 @@ static void pt_draw(void)
 +    if(key==K_ALT_OK)key=s_cat==CAT_CTL && s_row>=0?K_CLEAR:K_OK;
-@@ -2244,0 +2331 @@ static void pt_draw(void)
+@@ -2244,0 +2332 @@ static void pt_draw(void)
 +#ifndef NGB_CONVERTED_DISPLAY
-@@ -2246,0 +2334 @@ static void pt_draw(void)
+@@ -2246,0 +2335 @@ static void pt_draw(void)
 +#endif
-@@ -2435,0 +2524 @@ static int ngb_confirm_tick(void)
+@@ -2435,0 +2525 @@ static int ngb_confirm_tick(void)
 +    if(key==K_ALT_OK)key=K_OK;
-@@ -2562 +2651 @@ void ngb_controls_panel_tick(int want)
+@@ -2562 +2652 @@ void ngb_controls_panel_tick(int want)
 -        s_ctl_col = 0;
 +        s_ctl_col = CTL_FIRST_COL;
-@@ -2567,0 +2657 @@ void ngb_controls_panel_tick(int want)
+@@ -2567,0 +2658 @@ void ngb_controls_panel_tick(int want)
 +    if(key==K_ALT_OK)key=K_CLEAR;
-@@ -2580,0 +2671 @@ void ngb_controls_panel_tick(int want)
+@@ -2580,0 +2672 @@ void ngb_controls_panel_tick(int want)
 +#ifndef NGB_CONVERTED_DISPLAY
-@@ -2582,0 +2674 @@ void ngb_controls_panel_tick(int want)
+@@ -2582,0 +2675 @@ void ngb_controls_panel_tick(int want)
 +#endif
-@@ -2749 +2841 @@ void ngb_main_menu_exit(void)
+@@ -2749 +2842 @@ void ngb_main_menu_exit(void)
 -    if (!s_mm_exit && ngb_confirm_open("Exit to Desktop?", 0))
 +    if (!s_mm_exit && ngb_confirm_open(NGB_QUIT_QUESTION, 0))
-@@ -2779 +2871 @@ void ngb_quit_to_desktop(void);
+@@ -2779 +2872 @@ void ngb_quit_to_desktop(void);
 -static const char *const s_exit_label[EXIT_ROWS] = { "Return to Game", "Return to Main Menu", "Exit to Desktop" };
 +static const char *const s_exit_label[EXIT_ROWS] = { "Return to Game", "Return to Main Menu", NGB_QUIT_LABEL };
-@@ -2785 +2877 @@ static const char *const s_exit_help[EXIT_ROWS] = {
+@@ -2785 +2878 @@ static const char *const s_exit_help[EXIT_ROWS] = {
 -static const char *const s_exit_q[EXIT_ROWS] = { "", "Return to the Main Menu?", "Exit to Desktop?" };
 +static const char *const s_exit_q[EXIT_ROWS] = { "", "Return to the Main Menu?", NGB_QUIT_QUESTION };
-@@ -2831,0 +2924 @@ static void pt_exit_draw(void)
+@@ -2831,0 +2925 @@ static void pt_exit_draw(void)
 +    if(key==K_ALT_OK)key=s_cat==CAT_CTL && s_row>=0?K_CLEAR:K_OK;
-@@ -5063,0 +5157 @@ loc_00180CBC: ;
+@@ -5063,0 +5158 @@ loc_00180CBC: ;
 +    s_parent_header_visible=0; /* only the native header drawn by this pass can open our page */
-@@ -5074,2 +5168,2 @@ loc_00180CC9: ;
+@@ -5074,2 +5169,2 @@ loc_00180CC9: ;
 -    if (eax == PT_TAB && pt_tabs() == 7) { pt_draw(); goto loc_00180D2E; } /* Settings: then as Exit */
 -    if (eax == 6 && pt_tabs() == 7) { pt_exit_draw(); goto loc_00180D2E; } /* Settings: Exit's page, ours */
 +    if (eax == PT_TAB && pt_tabs() == 7) { if (pt_page_live()) pt_draw(); goto loc_00180D2E; } /* Settings: then as Exit */
 +    if (eax == 6 && pt_tabs() == 7) { if (pt_page_live()) pt_exit_draw(); goto loc_00180D2E; } /* Settings: Exit's page, ours */
-@@ -5267,0 +5362,10 @@ static void edge_inset(uint32_t p, uint32_t verts)
+@@ -5267,0 +5363,10 @@ static void edge_inset(uint32_t p, uint32_t verts)
 +#ifdef NGB_IOS_KOREAN
 +        // Korean ink reaches the last cell row. QuadSnap already clamps to
 +        // console sample centres; another vertical inset cuts off its fade.
@@ -223,20 +224,24 @@ index 0f55686..fd2b471 100644
 +            (id == 0x56D || id == 0x587 || id == 0x588))
 +            continue;
 +#endif
-@@ -5284,0 +5389,70 @@ static void edge_inset(uint32_t p, uint32_t verts)
+@@ -5284,0 +5390,77 @@ static void edge_inset(uint32_t p, uint32_t verts)
 +#ifdef NGB_IOS_UI_PROMPT_PROBE
 +#include "ui_prompt_probe.h"
++#include "chapter_card_state.h"
 +int ngb_ui_prompt_hook_enabled(void){return 1;}
 +/* At most one observation per game frame, plus the guide's first visible
 + * submission. State changes and button edges get priority over 1 Hz samples. */
 +static void ui_loading_seen(uint32_t packet,uint32_t verts)
 +{
 +    static uint32_t last_frame=UINT32_MAX,last_ms,last_phase,seen_guide;
-+    static uint32_t last_host,last_flags,last_guest;
++    static uint32_t last_host,last_flags,last_guest,last_mode,last_ready,last_block;
 +    static unsigned records;
 +    uint32_t phase=MEM32(0x8DB160),frame=MEM32(0xD21734);
-+    if(records>=256 || ((!phase || phase>4) && (!last_phase || last_phase>4)))return;
-+    int guide=phase>=1 && phase<=4 && (MEM32(packet)&0xFFFF)==5 &&
++    uint32_t mode=MEM32(0x8DB028),ready=ngb_chapter_card_can_confirm(),block=MEM32(0x8DAF24);
++    int active=(phase>=1 && phase<=4)||(mode>=1 && mode<=7);
++    int was_active=(last_phase>=1 && last_phase<=4)||(last_mode>=1 && last_mode<=7);
++    if(records>=256 || (!active && !was_active))return;
++    int guide=active && (MEM32(packet)&0xFFFF)==5 &&
 +        MEMF(packet+0x20)>0 && MEMF(verts)>=450 && MEMF(verts)<720 &&
 +        MEMF(verts+4)>=350 && MEMF(verts+4)<480;
 +    if(frame==last_frame && (!guide || seen_guide))return;
@@ -244,7 +249,7 @@ index 0f55686..fd2b471 100644
 +    uint32_t host,flags,ms;ngb_ui_prompt_host_state(&host,&flags,&ms);
 +    uint32_t player=MEM8(0xDB932E),pad=player<4?0xD219A0+player*0x78:0;
 +    uint32_t guest=pad?MEM32(pad+8):0;
-+    int changed=phase!=last_phase;
++    int changed=phase!=last_phase || mode!=last_mode || ready!=last_ready || block!=last_block;
 +    if(changed)seen_guide=0;
 +    int first_guide=guide && !seen_guide;
 +    if(guide)seen_guide=1;
@@ -254,10 +259,13 @@ index 0f55686..fd2b471 100644
 +    row.loading=1;row.frame=frame;row.wall_ms=ms;row.phase=phase;
 +    row.ticks=MEM32(0xBCDFDC);row.prompt=MEM32(0x8DB248);row.guide=seen_guide;
 +    row.pending=MEM32(0x8DB6B8);row.screen_mode=MEM32(0x8DB028);row.fade_bits=MEM32(0x8DB054);
++    row.card_ticks=MEM32(0x8DAEEC);row.card_counter=MEM32(0x8DAF70);
++    row.card_block=block;row.card_ready=ready;
 +    row.host_buttons=host;row.host_flags=flags;row.pad_index=player;
 +    if(pad){row.guest[0]=MEM32(pad);row.guest[1]=MEM32(pad+8);
 +        row.guest[2]=MEM32(pad+12);row.guest[3]=MEM32(pad+16);}
 +    ngb_ui_prompt_record(&row);records++;
++    last_mode=mode;last_ready=ready;last_block=block;
 +    last_phase=phase;last_ms=ms;last_host=host;last_flags=flags;last_guest=guest;
 +}
 +static void ui_prompt_seen(uint32_t packet,uint32_t verts,uint32_t caller,uint32_t parent)
@@ -294,13 +302,13 @@ index 0f55686..fd2b471 100644
 +}
 +#endif
 +
-@@ -5290,0 +5465,5 @@ void sub_002216B0(void)
+@@ -5290,0 +5473,5 @@ void sub_002216B0(void)
 +#ifdef NGB_IOS_UI_PROMPT_PROBE
 +    /* sprite_submit consumes the guest return address; retain it before the call. */
 +    uint32_t ui_caller=MEM32(esp);
 +    uint32_t ui_parent=g_ebp>=0x10000 && g_ebp<0x3FFFFF8?MEM32(g_ebp+4):0;
 +#endif
-@@ -5334,0 +5514,5 @@ void sub_002216B0(void)
+@@ -5334,0 +5522,5 @@ void sub_002216B0(void)
 +    if(eax && (MEM32(p)&0xFFFF)==0x17B)
 +        pt_header_seen(0x17B,MEMF(p+0x20),MEMF(verts),MEMF(verts+4),MEMF(verts+28),MEMF(verts+60));
 +#ifdef NGB_IOS_UI_PROMPT_PROBE
@@ -405,26 +413,27 @@ diff --git a/src/menu_mouse.c b/src/menu_mouse.c
 +#else
 @@ -112,0 +150 @@
 +#endif
-@@ -277,0 +316,11 @@
+@@ -277,0 +316,12 @@
 +#ifdef NGB_IOS_KOREAN
 +#include "loading_guide_policy.h"
++#include "chapter_card_state.h"
 +static int loading_guide_pending(uint32_t state)
 +{
 +    if(state<0x10000 || state>0x3FFFFA0 || MEM32(state+0x38)>2)return 0;
 +    uint32_t text=MEM32(state+0x10);
 +    if(text<0x10000 || text>0x3FFFFA0)return 0;
-+    return ngb_loading_guide_pending(MEM32(0x8DB160),(int16_t)MEM16(state+0x44),
++    return ngb_loading_guide_pending(ngb_chapter_card_pending(),(int16_t)MEM16(state+0x44),
 +        (int16_t)MEM16(state+0x46),(const uint8_t *)XBOX_PTR(text),96);
 +}
 +#endif
-@@ -279,0 +329,6 @@
+@@ -279,0 +330,6 @@
 +#ifdef NGB_IOS_KOREAN
 +    uint32_t state=MEM32(esp+4),alpha=0;
 +    ProceedCaptionSwap saved=proceed_caption_begin(state);
 +    int hide=loading_guide_pending(state);
 +    if(hide){alpha=MEM32(state+0x14);MEMF(state+0x14)=0;}
 +#endif
-@@ -284,2 +339,6 @@
+@@ -284,2 +340,6 @@
 -    if (translated) { translated(); return; }
 -#endif
 +    if (translated) translated(); else text_draw();
@@ -433,5 +442,5 @@ diff --git a/src/menu_mouse.c b/src/menu_mouse.c
 +    if(hide)MEM32(state+0x14)=alpha;
 +    proceed_caption_end(state,saved);
 +#else
-@@ -286,0 +346 @@
+@@ -286,0 +347 @@
 +#endif

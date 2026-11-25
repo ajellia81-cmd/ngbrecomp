@@ -31,8 +31,8 @@ void summary(State &s){
 }
 void write(State &s,const NgbUiPromptRecord &r){
     if(r.loading){
-        std::fprintf(s.file,"{\"kind\":\"loading\",\"frame\":%u,\"ms\":%u,\"phase\":%u,\"ticks\":%u,\"prompt\":%u,\"guide_seen\":%u,\"pending\":%u,\"screen_mode\":%u,\"fade_bits\":%u,\"host_buttons\":%u,\"host_flags\":%u,\"pad_index\":%u,\"guest\":[%u,%u,%u,%u]}\n",
-            r.frame,r.wall_ms,r.phase,r.ticks,r.prompt,r.guide,r.pending,r.screen_mode,r.fade_bits,r.host_buttons,r.host_flags,r.pad_index,
+        std::fprintf(s.file,"{\"kind\":\"loading\",\"frame\":%u,\"ms\":%u,\"phase\":%u,\"ticks\":%u,\"prompt\":%u,\"guide_seen\":%u,\"pending\":%u,\"screen_mode\":%u,\"fade_bits\":%u,\"card_ticks\":%u,\"card_counter\":%u,\"card_block\":%u,\"card_ready\":%u,\"host_buttons\":%u,\"host_flags\":%u,\"pad_index\":%u,\"guest\":[%u,%u,%u,%u]}\n",
+            r.frame,r.wall_ms,r.phase,r.ticks,r.prompt,r.guide,r.pending,r.screen_mode,r.fade_bits,r.card_ticks,r.card_counter,r.card_block,r.card_ready,r.host_buttons,r.host_flags,r.pad_index,
             r.guest[0],r.guest[1],r.guest[2],r.guest[3]);return;
     }
     std::fprintf(s.file,"{\"kind\":\"%s\",\"frame\":%u,\"sprite\":%u,\"texture\":%u,\"caller\":%u,\"parent\":%u,\"ascii\":%d,\"alpha\":%.6f,\"mode\":%d,\"depth\":%d,\"sample\":%u,\"tab\":%d,\"visible\":%d,\"header_visible\":%d,\"state_flags\":%u,\"input\":[%d,%d],\"texture_size\":[%d,%d],\"rect\":[%.3f,%.3f,%.3f,%.3f],\"uv\":[%.6f,%.6f,%.6f,%.6f]}\n",

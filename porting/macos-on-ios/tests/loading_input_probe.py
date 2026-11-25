@@ -15,6 +15,8 @@ static uint8_t mem[0x1000000];
 #define MEMF(a) (*(float *)(void *)(mem+(a)))
 static uint32_t host,flags,ms=1000;static unsigned count,polls;
 static NgbUiPromptRecord last;
+static int card_ready;
+int ngb_chapter_card_can_confirm(void){return card_ready;}
 void ngb_ui_prompt_host_state(uint32_t *b,uint32_t *f,uint32_t *t){*b=host;*f=flags;*t=ms;polls++;}
 void ngb_ui_prompt_record(const NgbUiPromptRecord *r){last=*r;count++;}
 '''
@@ -36,7 +38,10 @@ int main(void){
  assert(count==6 && last.guest[1]==5); // raw guest report differs from host
  MEM8(0xDB932E)=255;MEM32(0xD21734)++;host=0;ui_loading_seen(p,v);
  assert(last.pad_index==255 && !last.guest[1]); // invalid player does not read out of bounds
- MEM32(0x8DB160)=5;MEM32(0xD21734)++;ui_loading_seen(p,v);assert(last.phase==5 && !last.guide);
+ MEM32(0x8DB160)=0;MEM32(0x8DB028)=2;MEM32(0xD21734)++;ui_loading_seen(p,v);
+ assert(last.screen_mode==2 && last.phase==0); // card follows generic loading
+ card_ready=1;MEM32(0xD21734)++;ui_loading_seen(p,v);assert(last.card_ready);
+ MEM32(0x8DB028)=0;MEM32(0x8DB160)=5;MEM32(0xD21734)++;ui_loading_seen(p,v);assert(last.phase==5 && !last.guide);
  unsigned before=count,poll_before=polls;
  for(int i=0;i<1000;i++){MEM32(0xD21734)++;ms+=1000;ui_loading_seen(p,v);}
  assert(count==before && polls==poll_before); // no gameplay sampling

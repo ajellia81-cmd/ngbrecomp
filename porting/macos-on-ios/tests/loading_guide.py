@@ -10,6 +10,7 @@ prefix=r'''
 #include <string.h>
 #include <assert.h>
 #include "loading_guide_policy.h"
+#include "chapter_card_state.h"
 static uint8_t mem[0x1000000];
 @GUEST_MEMORY_MACROS@
 static uint32_t esp,eax;static unsigned draws,translated_draws;static int korean;
@@ -30,10 +31,10 @@ prefix=prefix.replace('@GUEST_MEMORY_MACROS@','static uintptr_t g_xbox_mem_offse
 main=r'''
 static void run(unsigned phase,int x,int y,const char *text,int expect_hide){
  uint32_t st=0x30000;esp=0x20000;MEM32(esp)=0x12345;MEM32(esp+4)=st;
- MEM32(0x8DB160)=phase;MEM32(st+0x10)=0x40000;MEM32(st+0x38)=1;
+ ngb_chapter_card_update_begin(); if(phase!=2)ngb_chapter_card_input_ready(); ngb_chapter_card_draw_begin(phase?2:0);MEM32(st+0x10)=0x40000;MEM32(st+0x38)=1;
  MEM16(st+0x44)=(uint16_t)x;MEM16(st+0x46)=(uint16_t)y;MEMF(st+0x14)=0.75f;
  memset(mem+0x40000,0,96);strncpy((char *)mem+0x40000,text,95);
- unsigned old=draws;sub_001E6D30();
+ unsigned old=draws;sub_001E6D30();ngb_chapter_card_draw_end();
  assert(draws==old+1 && MEM32(st+8)==42 && eax==37 && esp==0x20004);
  assert(MEMF(st+0x14)==0.75f); // restore exactly, keep the drawer's other writes
  assert(seen_alpha==(expect_hide?0:0.75f) && record_alpha==seen_alpha);
@@ -63,6 +64,6 @@ with tempfile.TemporaryDirectory() as folder:
  p=Path(folder);(p/'test.c').write_text(prefix+support+'\n'+body+main)
  for enabled in (False,True):
   flags=['-DNGB_IOS_KOREAN=1'] if enabled else []
-  subprocess.run([os.environ.get('CC','cc'),'-std=c11','-Wall','-Wextra','-Werror=int-conversion','-fsanitize=address,undefined',*flags,'-I'+str(root/'porting/macos-on-ios/korean'),'-I'+str(root/'src'),str(p/'test.c'),'-o',str(p/'test')],check=True)
+  subprocess.run([os.environ.get('CC','cc'),'-std=c11','-Wall','-Wextra','-Werror=int-conversion','-fsanitize=address,undefined',*flags,'-I'+str(root/'porting/macos-on-ios/korean'),'-I'+str(root/'src'),str(p/'test.c'),str(root/'porting/macos-on-ios/korean/chapter_card_state.c'),'-o',str(p/'test')],check=True)
   subprocess.run([str(p/'test')],check=True,env=dict(os.environ,ASAN_OPTIONS='detect_leaks=0'))
-print('PASS: only phase-2 footer X caption hidden; native/Korean drawers and ABI/layout writes run, opacity restored; other loading text, body, phases and desktop retained')
+print('PASS: only input-locked chapter-card footer X caption hidden; native/Korean drawers and ABI/layout writes run, opacity restored; other loading text, body, phases and desktop retained')

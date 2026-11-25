@@ -73,6 +73,6 @@ with tempfile.TemporaryDirectory() as folder:
  p=Path(folder);(p/'test.c').write_text(prefix+support+'\n'+function('sub_001E86A0')+'\n'+guide+'\n'+function('sub_001E6D30')+main)
  for enabled in (False,True):
   flags=['-DNGB_IOS_KOREAN=1'] if enabled else []
-  subprocess.run([os.environ.get('CC','cc'),'-std=c11','-Wall','-Wextra','-Werror=int-conversion','-fsanitize=address,undefined',*flags,'-I'+str(root/'src'),'-I'+str(root/'porting/macos-on-ios/korean'),str(p/'test.c'),'-o',str(p/'test')],check=True)
+  subprocess.run([os.environ.get('CC','cc'),'-std=c11','-Wall','-Wextra','-Werror=int-conversion','-fsanitize=address,undefined',*flags,'-I'+str(root/'src'),'-I'+str(root/'porting/macos-on-ios/korean'),str(p/'test.c'),str(root/'porting/macos-on-ios/korean/chapter_card_state.c'),'-o',str(p/'test')],check=True)
   subprocess.run([str(p/'test')],check=True,env=dict(os.environ,ASAN_OPTIONS='detect_leaks=0'))
 print('PASS: real measure/draw wrappers reuse native localized captions/font, restore descriptors, preserve ABI/layout; language, text/context, table and pointer guards checked')

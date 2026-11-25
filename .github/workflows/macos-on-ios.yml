@@ -47,6 +47,7 @@ jobs:
         python3 porting/macos-on-ios/tests/loading_input_probe.py
 
         python3 porting/macos-on-ios/tests/loading_guide.py
+        python3 porting/macos-on-ios/tests/chapter_card.py
 
         python3 porting/macos-on-ios/tests/proceed_caption.py
 
@@ -236,7 +237,9 @@ jobs:
       run: "set -euo pipefail\npython3 porting/macos-on-ios/korean/prepare_korean.py --source game_files/default.xbe \\\n  --zip \"$RUNNER_TEMP/ngb-korean-patch.zip\" --output \"$RUNNER_TEMP/ngb-korean\"\nexport NGB_RECOMP_XBE=\"$RUNNER_TEMP/ngb-korean/korean.xbe\"\nexport NGB_RECOMP_GEN_DIR=\"$RUNNER_TEMP/ngb-korean/gen\"\nexport NGB_RECOMP_MANUAL=\"$RUNNER_TEMP/ngb-korean/manual-korean.json\"\nexport NGB_RECOMP_ANALYSIS=\"$RUNNER_TEMP/ngb-korean/analysis.json\"\nready=0\nfor pass in 1 2 3 4 5 6; do\n  if [ -s \"$RUNNER_TEMP/ngb-korean/continuations.json\" ]; then\n    export NGB_RECOMP_EXTRA_SEEDS=\"$RUNNER_TEMP/ngb-korean/continuations.json\"\n  fi\n  if ! bash tools/pipeline.sh > \"$RUNNER_TEMP/ngb-korean-pipeline-private.log\" 2>&1; then\n    echo '::error::Private Korean code generation failed; raw game-derived logs are withheld.'\n    exit 1\n  fi\n  set +e\n  python3 porting/macos-on-ios/korean/merge_korean_codegen.py --original src/recomp/gen --translated \"$NGB_RECOMP_GEN_DIR\"\
         \ \\\n    --missing-seeds \"$RUNNER_TEMP/ngb-korean/continuations.json\"\n  result=$?\n  set -e\n  if [ \"$result\" -eq 0 ]; then ready=1; break; fi\n  if [ \"$result\" -ne 2 ]; then exit \"$result\"; fi\ndone\nif [ \"$ready\" -ne 1 ]; then\n  echo '::error::Korean continuations remain untranslated; refusing to substitute stubs.'\n  exit 1\nfi\n"
     - name: Bind original Options text language to the private Korean boot
-      run: python3 porting/macos-on-ios/korean/wrap_game_codegen.py src/recomp/gen
+      run: |
+        python3 porting/macos-on-ios/korean/wrap_game_codegen.py src/recomp/gen
+        python3 porting/macos-on-ios/korean/chapter_card_codegen.py src/recomp/gen
     - name: Compile original engine for macOS ARM64, not iPhoneOS
       shell: bash
       run: "set -euo pipefail\nif ! cmake -S . -B \"$RUNNER_TEMP/ngb-mac-engine\" -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_EXPORT_COMPILE_COMMANDS=ON -DNGB_IOS_PORT_RELEASE=ON -DNGB_MACOS_ON_IOS=ON -DNGB_IOS_PERF_PROBE=OFF -DNGB_IOS_UI_PROMPT_PROBE=ON -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ -DCMAKE_TOOLCHAIN_FILE=\"$PWD/porting/macos-on-ios/arm64-cross.cmake\" -DCMAKE_PREFIX_PATH=\"$NGB_DEPENDENCY_PREFIX\" -DPKG_CONFIG_EXECUTABLE=\"$(command -v pkg-config)\" -DCMAKE_DISABLE_FIND_PACKAGE_Qt6=TRUE > \"$RUNNER_TEMP/mac-config-private.log\" 2>&1; then\n echo '::error::Native macOS CMake configuration failed.'\n python3 porting/macos-on-ios/report_build_errors.py \"$RUNNER_TEMP/mac-config-private.log\"\n exit 1\nfi\nif ! cmake --build \"$RUNNER_TEMP/ngb-mac-engine\" --target ninja_gaiden_black -j2 -- -k0 > \"$RUNNER_TEMP/mac-compile-private.log\" 2>&1; then\n echo '::error::Native macOS build failed. Generated-code diagnostics remain private.'\n python3 porting/macos-on-ios/report_build_errors.py \"$RUNNER_TEMP/mac-compile-private.log\"\n\
