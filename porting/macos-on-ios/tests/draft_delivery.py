@@ -14,3 +14,23 @@ for status in ['200','302','403','500']:
  except RuntimeError:pass
  else:raise AssertionError('Unverified asset privacy accepted: '+status)
 print('PASS: draft-only source binding and fail-closed anonymous page/asset privacy checks')
+
+# Exercise the actual HTTP request body and reject an unexpected response.
+import io,json,os
+os.environ['GH_TOKEN']='unit-test-token'
+seen=[]
+def response(request,timeout):
+ assert request.full_url=='https://api.github.com/repos/fixture/repo/releases'
+ assert request.method=='POST' and timeout==30
+ data=json.loads(request.data);assert data['draft'] is True and data['target_commitish']==sha
+ assert request.get_header('Authorization')=='Bearer unit-test-token'
+ seen.append(data)
+ return io.BytesIO(json.dumps(dict(release,id=123)).encode())
+m.urlopen=response
+assert m.create_private_draft('repos/fixture/repo/releases',dict(draft=True,target_commitish=sha))['id']==123
+assert len(seen)==1
+m.urlopen=lambda *args,**kwargs:io.BytesIO(json.dumps(dict(release,draft=False)).encode())
+try:m.create_private_draft('repos/fixture/repo/releases',dict(draft=True,target_commitish=sha))
+except RuntimeError:pass
+else:raise AssertionError('Unexpected published response accepted')
+print('PASS: complete authenticated JSON POST and source/draft validation; no token logging')

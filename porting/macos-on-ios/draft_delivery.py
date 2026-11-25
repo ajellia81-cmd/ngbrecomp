@@ -1,6 +1,7 @@
 """Deliver a single IPA through an unpublished GitHub draft, never a public release."""
 from pathlib import Path
 import argparse,hashlib,json,os,subprocess,tempfile
+from urllib.request import Request,urlopen
 
 def gh(*args):
  return subprocess.check_output(['gh',*map(str,args)],text=True)
@@ -8,6 +9,17 @@ def api(path):return json.loads(gh('api',path))
 def private_release(release,sha):
  if release.get('draft') is not True or release.get('target_commitish')!=sha:
   raise RuntimeError('Refusing delivery: release is published or belongs to another source revision')
+def create_private_draft(base,payload):
+ # Send a complete JSON body directly. Some hosted gh clients fail while
+ # decoding the draft-creation response before returning any response body.
+ request=Request('https://api.github.com/'+base,
+     data=json.dumps(payload).encode('utf-8'),method='POST',headers={
+         'Authorization':'Bearer '+os.environ['GH_TOKEN'],
+         'Accept':'application/vnd.github+json','Content-Type':'application/json',
+         'X-GitHub-Api-Version':'2022-11-28','User-Agent':'ngb-private-ipa-delivery'})
+ with urlopen(request,timeout=30) as response:release=json.load(response)
+ private_release(release,payload['target_commitish'])
+ return release
 def anonymous_status(url):
  return subprocess.check_output(['curl','-q','-sS','-L','--max-time','25','-o',os.devnull,'-w','%{http_code}',url],text=True).strip()
 def prove_private(release,asset,sha):
@@ -22,8 +34,8 @@ def main():
  if a.action=='prepare':
   payload={'tag_name':tag,'target_commitish':sha,'name':'Ninja Gaiden Black '+version+' '+kind,'body':'Private optimized build; UIProbe records bounded footer metadata only, with performance diagnostics disabled. Keep this release as a draft. Download the IPA asset directly.','draft':True,'prerelease':False,'generate_release_notes':False}
   with tempfile.TemporaryDirectory() as td:
-   work=Path(td);body=work/'request.json';body.write_text(json.dumps(payload))
-   release=json.loads(gh('api','--method','POST',base,'--input',body));private_release(release,sha)
+   work=Path(td)
+   release=create_private_draft(base,payload)
    receipt={'id':release['id'],'tag':tag,'source':sha,'uploaded':False};a.receipt.write_text(json.dumps(receipt))
    fixture=work/'visibility-fixture.txt';fixture.write_text('Public text used solely to verify unpublished draft asset visibility.\n')
    gh('release','upload',tag,fixture,'--repo',repo)
