@@ -133,3 +133,17 @@ for sec in sections:
     print('CHAPTER_INDICATOR_FIELD',json.dumps({'site':hex(i.address),'field':hex(op.mem.disp),'base':i.reg_name(op.mem.base),'index':i.reg_name(op.mem.index),'write':bool(op.access&2)}))
   if i.mnemonic in ('cmp','test'):
    print('CHAPTER_INDICATOR_SOURCE',json.dumps({'site':hex(i.address),'registers':{i.reg_name(op.reg):last.get(i.reg_name(op.reg),{}) for op in o if op.type==1},'values':[op.imm for op in o if op.type==X86_OP_IMM]}))
+# Numeric lifetime operations and writes of the native indicator's timer.
+for sec in sections:
+ if not sec[0]&4:continue
+ ins=list(cs.disasm(b[sec[3]:sec[3]+sec[4]],sec[1]))
+ for pos,i in enumerate(ins):
+  if not i.id:continue
+  o=i.operands
+  if 0x1f985a<=i.address<0x1f9873:
+   print('CHAPTER_TIMER_TRANSFORM',json.dumps({'site':hex(i.address),'registers':[i.reg_name(op.reg) for op in o if op.type==1],'values':[op.imm for op in o if op.type==X86_OP_IMM],'offsets':[op.mem.disp for op in o if op.type==X86_OP_MEM],'address_only':i.mnemonic=='lea'}))
+  if not 0x1f3a00<=i.address<0x1f9c00:continue
+  if i.mnemonic=='call' and o and o[0].type==X86_OP_IMM and 0x1f9000<=o[0].imm<0x1f9c00:
+   print('CHAPTER_TIMER_CALL',json.dumps({'site':hex(i.address),'target':hex(o[0].imm)}))
+  if not any(op.type==X86_OP_MEM and op.mem.base and op.mem.disp==0x14 and op.access&2 for op in o):continue
+  print('CHAPTER_TIMER_WRITE',json.dumps({'site':hex(i.address),'base':[i.reg_name(op.mem.base) for op in o if op.type==X86_OP_MEM],'values':[op.imm for op in o if op.type==X86_OP_IMM],'decrement':i.mnemonic=='dec','increment':i.mnemonic=='inc'}))
