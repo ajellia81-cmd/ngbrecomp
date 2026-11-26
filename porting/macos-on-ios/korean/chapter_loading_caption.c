@@ -32,6 +32,7 @@ void ngb_chapter_loading_visual(void) {
     MEM32(0x8DB160)=2;MEMF(0x8DB054)=1.0f;
     MEM32(0xBCDFDC)=last_tick+(frame-last_frame);
     MEM32(0x8DB248)=visual_prompt;MEM32(0x8DB6B8)=0;
+    eax=2; /* The native caller leaves the selected loading phase in EAX. */
     PUSH32(esp,0x0020668Du);
     sub_00204540();
     visual_prompt=MEM32(0x8DB248);

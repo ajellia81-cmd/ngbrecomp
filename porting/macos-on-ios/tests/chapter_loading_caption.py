@@ -19,7 +19,7 @@ static double g_fp_stack[8];static int g_fp_top,g_fp_cmp;
 static uint16_t g_fp_control_word,g_fp_cc;
 static unsigned calls,expected_tick,expected_prompt;
 void sub_00204540(void){
- assert(MEM32(esp)==0x20668D && MEM32(0x8DB160)==2 && MEMF(0x8DB054)==1);
+ assert(eax==2 && MEM32(esp)==0x20668D && MEM32(0x8DB160)==2 && MEMF(0x8DB054)==1);
  assert(MEM32(0xBCDFDC)==expected_tick && MEM32(0x8DB248)==expected_prompt && !MEM32(0x8DB6B8));
  assert(ngb_chapter_loading_visual_active() && (ngb_chapter_card_route()&16));
  assert(!ngb_chapter_loading_control_phase(MEM32(0x8DB160)));
