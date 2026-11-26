@@ -109,3 +109,27 @@ for sec in sections:
    elif op.type==1:vals.append({'register':i.reg_name(op.reg)})
    elif op.type==X86_OP_MEM:vals.append({'field':hex(op.mem.disp),'indexed':bool(op.mem.base or op.mem.index)})
   print('CHAPTER_FLOWER_GATE',json.dumps({'site':hex(i.address),'operands':vals,'branch':nxt.mnemonic if nxt else None,'target':hex(nxt.operands[0].imm) if nxt and nxt.mnemonic.startswith('j') and nxt.operands and nxt.operands[0].type==X86_OP_IMM else None}))
+# Data-source metadata for the chapter's own indicator; no instruction text.
+for sec in sections:
+ if not sec[0]&4:continue
+ last={}
+ for i in cs.disasm(b[sec[3]:sec[3]+sec[4]],sec[1]):
+  if not i.id:continue
+  o=i.operands
+  if i.mnemonic=='call':last['eax']={'call':hex(o[0].imm)} if o and o[0].type==X86_OP_IMM else {'call':'indirect'}
+  if i.mnemonic.startswith('mov') and len(o)==2 and o[0].type==1:
+   src=o[1];v={}
+   if src.type==X86_OP_MEM:v={'field':hex(src.mem.disp),'base':i.reg_name(src.mem.base),'index':i.reg_name(src.mem.index)}
+   elif src.type==1:v={'register':i.reg_name(src.reg)}
+   elif src.type==X86_OP_IMM:v={'value':hex(src.imm&0xffffffff)}
+   last[i.reg_name(o[0].reg)]=v
+  if i.address==0x1f5ad2:print('CHAPTER_INDICATOR_GATE_SOURCE',json.dumps(last.get('eax',{})))
+  if not 0x1f97f0<=i.address<0x1f9c00:continue
+  if i.mnemonic.startswith('j'):
+   print('CHAPTER_INDICATOR_BRANCH',json.dumps({'site':hex(i.address),'condition':i.mnemonic,'target':hex(o[0].imm) if o and o[0].type==X86_OP_IMM else None}))
+  if i.mnemonic=='ret':print('CHAPTER_INDICATOR_RETURN',json.dumps({'site':hex(i.address),'argument_bytes':o[0].imm if o else 0}))
+  for op in o:
+   if op.type==X86_OP_MEM:
+    print('CHAPTER_INDICATOR_FIELD',json.dumps({'site':hex(i.address),'field':hex(op.mem.disp),'base':i.reg_name(op.mem.base),'index':i.reg_name(op.mem.index),'write':bool(op.access&2)}))
+  if i.mnemonic in ('cmp','test'):
+   print('CHAPTER_INDICATOR_SOURCE',json.dumps({'site':hex(i.address),'registers':{i.reg_name(op.reg):last.get(i.reg_name(op.reg),{}) for op in o if op.type==1},'values':[op.imm for op in o if op.type==X86_OP_IMM]}))
