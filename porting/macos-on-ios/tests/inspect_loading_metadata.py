@@ -77,3 +77,17 @@ for sec in sections:
    else:operands.append({'register':i.reg_name(op.reg)})
   branch=ins[pos+1] if pos+1<len(ins) else None
   print('LOADING_DRAW_GATE',json.dumps({'site':hex(i.address),'operands':operands,'branch':branch.mnemonic if branch else None,'target':hex(branch.operands[0].imm) if branch and branch.mnemonic.startswith('j') and branch.operands and branch.operands[0].type==X86_OP_IMM else None}))
+# Chapter-native busy/confirm branch selectors: metadata only, no code bytes.
+for sec in sections:
+ if not sec[0]&4:continue
+ ins=list(cs.disasm(b[sec[3]:sec[3]+sec[4]],sec[1]))
+ for pos,i in enumerate(ins):
+  if not i.id or not 0x1f3ed0<=i.address<0x1f5b50:continue
+  o=i.operands
+  if i.mnemonic=='call' and o and o[0].type==X86_OP_IMM:
+   print('CHAPTER_DRAW_CALL',json.dumps({'site':hex(i.address),'target':hex(o[0].imm)}))
+  if i.mnemonic not in ('cmp','test'):continue
+  fields=[op.mem.disp for op in o if op.type==X86_OP_MEM and not op.mem.base and not op.mem.index and 0x8d0000<=op.mem.disp<0x8e0000]
+  if not fields:continue
+  nxt=ins[pos+1] if pos+1<len(ins) else None
+  print('CHAPTER_DRAW_GATE',json.dumps({'site':hex(i.address),'fields':[hex(x) for x in fields],'values':[op.imm for op in o if op.type==X86_OP_IMM],'branch':nxt.mnemonic if nxt else None,'target':hex(nxt.operands[0].imm) if nxt and nxt.mnemonic.startswith('j') and nxt.operands and nxt.operands[0].type==X86_OP_IMM else None}))
