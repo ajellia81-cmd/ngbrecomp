@@ -2,6 +2,7 @@
 #define NGB_KOREAN_H
 typedef void (*ngb_korean_fn)(void);
 int ngb_korean_active(void);
+unsigned ngb_chapter_loading_caption(void);
 ngb_korean_fn ngb_korean_lookup(unsigned address);
 ngb_korean_fn ngb_korean_lookup_raw(unsigned address);
 /* Korean ASCII and full-width spaces share a quarter-cell advance. The
