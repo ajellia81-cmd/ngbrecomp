@@ -147,3 +147,14 @@ for sec in sections:
    print('CHAPTER_TIMER_CALL',json.dumps({'site':hex(i.address),'target':hex(o[0].imm)}))
   if not any(op.type==X86_OP_MEM and op.mem.base and op.mem.disp==0x14 and op.access&2 for op in o):continue
   print('CHAPTER_TIMER_WRITE',json.dumps({'site':hex(i.address),'base':[i.reg_name(op.mem.base) for op in o if op.type==X86_OP_MEM],'values':[op.imm for op in o if op.type==X86_OP_IMM],'decrement':i.mnemonic=='dec','increment':i.mnemonic=='inc'}))
+# Argument descriptors identify the existing indicator ABI (not game code).
+for sec in sections:
+ if not sec[0]&4:continue
+ for i in cs.disasm(b[sec[3]:sec[3]+sec[4]],sec[1]):
+  if not i.id or not (0x1f5ad0<=i.address<0x1f5b14 or 0x1f97f0<=i.address<0x1f97fc):continue
+  o=i.operands
+  fields=[{'offset':hex(op.mem.disp),'base':i.reg_name(op.mem.base)} for op in o if op.type==X86_OP_MEM]
+  if i.mnemonic=='push':
+   print('CHAPTER_INDICATOR_ARGUMENT',json.dumps({'site':hex(i.address),'fields':fields,'registers':[i.reg_name(op.reg) for op in o if op.type==1],'values':[op.imm for op in o if op.type==X86_OP_IMM]}))
+  elif i.mnemonic.startswith('mov') or i.mnemonic=='lea':
+   print('CHAPTER_INDICATOR_ABI',json.dumps({'site':hex(i.address),'fields':fields,'registers':[i.reg_name(op.reg) for op in o if op.type==1],'values':[op.imm for op in o if op.type==X86_OP_IMM]}))
