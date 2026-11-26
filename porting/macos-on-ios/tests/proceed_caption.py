@@ -16,7 +16,6 @@ static uint8_t mem[0x1000000];
 static uint32_t esp,eax,seen_font,seen_text;static int active,callbacks;
 static uint64_t s_text_ms,s_text_since;
 int ngb_korean_active(void){return active;}
-unsigned ngb_chapter_loading_caption(void){return 0x60000;}
 static uint64_t now_ms(void){return 1000;}
 void ngb_menu_mark(void){}
 void ngb_menu_font_init(void){}
@@ -66,13 +65,6 @@ int main(void){
   run("Proceed with care",0,565,398,0);run("proceed",0,565,398,0);
   run("Proceed",0,60,120,0);run("Proceed",3,565,398,0);
   MEM32(0x431B3C)=99;run("Proceed",0,565,398,0);MEM32(0x431B3C)=0x60;
-  ngb_chapter_card_start_begin();ngb_chapter_card_draw_begin(3);ngb_chapter_card_footer_begin(0x1F5AF6,3);
-#ifdef NGB_IOS_KOREAN
-  run("native progress",5,360,0,3); // both measure and draw must select Loading
-#else
-  run("native progress",5,360,0,0);
-#endif
-  ngb_chapter_card_footer_end();ngb_chapter_card_draw_end();ngb_chapter_card_start_end();
   MEM32(0x431B40)=0x4000000;run("Proceed",0,565,398,0);MEM32(0x431B40)=0x50000;
  }
  return 0;

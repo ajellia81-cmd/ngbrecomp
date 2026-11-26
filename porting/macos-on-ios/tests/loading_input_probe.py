@@ -17,6 +17,7 @@ static uint32_t host,flags,ms=1000;static unsigned count,polls;
 static NgbUiPromptRecord last;
 static int card_ready;
 int ngb_chapter_card_can_confirm(void){return card_ready;}
+unsigned ngb_chapter_loading_control_phase(unsigned phase){return phase;}
 unsigned ngb_chapter_card_route(void){return card_ready?7:5;}
 void ngb_ui_prompt_host_state(uint32_t *b,uint32_t *f,uint32_t *t){*b=host;*f=flags;*t=ms;polls++;}
 void ngb_ui_prompt_record(const NgbUiPromptRecord *r){last=*r;count++;}

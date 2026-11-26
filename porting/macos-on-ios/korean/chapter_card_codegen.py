@@ -2,7 +2,7 @@
 from pathlib import Path
 import re,sys
 TOKEN=re.compile(r'/\*.*?\*/|//[^\n]*|"(?:\\.|[^"\\])*"|\'(?:\\.|[^\'\\])*\'',re.S)
-ROLES={'001F3AD0':'update','001F3ED0':'draw','002DF930':'start','001F5E40':'footer'}
+ROLES={'001F3AD0':'update','001F3ED0':'draw','002DF930':'start','001F5E40':'footer','002060A0':'frame','00205350':'prose'}
 DEFINITION=re.compile(r'^void ((?:kr_|ngb_original_)?sub_('+ '|'.join(ROLES) +r'))\(void\)\s*\{',re.M)
 DECLARATIONS='''
 void ngb_chapter_card_update_begin(void);
@@ -14,6 +14,8 @@ void ngb_chapter_card_start_ready(void);
 void ngb_chapter_card_start_end(void);
 void ngb_chapter_card_footer_begin(unsigned caller,unsigned mode);
 void ngb_chapter_card_footer_end(void);
+void ngb_chapter_loading_visual(void);
+int ngb_chapter_loading_visual_active(void);
 '''
 def patch(folder):
     folder=Path(folder);outputs={};counts={(role,k):0 for role in ROLES.values() for k in (False,True)}
@@ -33,6 +35,10 @@ def patch(folder):
                 body,n=guard.subn(lambda m:m[0]+'\n    ngb_chapter_card_input_ready();',body)
                 if n!=1:raise ValueError('Native common-card confirm guard changed')
                 at=body.index('{')+1;body=body[:at]+'\n    ngb_chapter_card_update_begin();'+body[at:]
+            elif role=='frame':
+                marker='loc_0020668D: ;'
+                if body.count(marker)!=1:raise ValueError('Native loading draw-join boundary changed')
+                body=body.replace(marker,marker+'\n    ngb_chapter_loading_visual();')
             else:
                 if role=='start':
                     # This native call returns after preparation, immediately
@@ -43,12 +49,19 @@ def patch(folder):
                 renamed='ngb_ui_card_body_'+name
                 body=re.sub(r'\bvoid '+re.escape(name)+r'\(void\)', 'void '+renamed+'(void)',body,count=1)
                 prototypes.append('void '+name+'(void);\n')
-                begin={'draw':'ngb_chapter_card_draw_begin(MEM32(0x8DB028));',
-                       'start':'ngb_chapter_card_start_begin();',
-                       'footer':'ngb_chapter_card_footer_begin(MEM32(esp),MEM32(0x8DB028));'}[role]
-                end_call={'draw':'ngb_chapter_card_draw_end();','start':'ngb_chapter_card_start_end();',
-                          'footer':'ngb_chapter_card_footer_end();'}[role]
-                wrappers.append('void '+name+'(void) {\n    '+begin+'\n    '+renamed+'();\n    '+end_call+'\n}\n')
+                if role=='prose':
+                    # Verified native RET has no stack arguments. During only
+                    # the extra busy overlay, retain the chapter's own prose.
+                    wrappers.append('void '+name+'(void) {\n'
+                        '    if (ngb_chapter_loading_visual_active()) { esp+=4; return; }\n'
+                        '    '+renamed+'();\n}\n')
+                else:
+                    begin={'draw':'ngb_chapter_card_draw_begin(MEM32(0x8DB028));',
+                           'start':'ngb_chapter_card_start_begin();',
+                           'footer':'ngb_chapter_card_footer_begin(MEM32(esp),MEM32(0x8DB028));'}[role]
+                    end_call={'draw':'ngb_chapter_card_draw_end();','start':'ngb_chapter_card_start_end();',
+                              'footer':'ngb_chapter_card_footer_end();'}[role]
+                    wrappers.append('void '+name+'(void) {\n    '+begin+'\n    '+renamed+'();\n    '+end_call+'\n}\n')
             edits.append((a,end,body))
         if edits:
             for a,end,body in reversed(edits):source=source[:a]+body+source[end:]
@@ -58,5 +71,5 @@ def patch(folder):
     header=folder/'recomp_funcs.h';declarations=header.read_text()+DECLARATIONS
     for path,source in outputs.items():path.write_text(source)
     header.write_text(declarations)
-    print('Chapter common/start readiness and exact footer-route adapters installed')
+    print('Chapter readiness, footer and original busy-visual adapters installed')
 if __name__=='__main__':patch(Path(sys.argv[1]))
