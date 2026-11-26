@@ -32,7 +32,7 @@ def main():
  repo=os.environ['GITHUB_REPOSITORY'];sha=os.environ['GITHUB_SHA'];run=os.environ['GITHUB_RUN_ID'];attempt=os.environ.get('GITHUB_RUN_ATTEMPT','1');version='4.0.'+os.environ['GITHUB_RUN_NUMBER'];kind='UIProbe' if os.environ.get('NGB_IOS_UI_PROMPT_PROBE')=='1' else 'Release'
  base='repos/'+repo+'/releases';tag='ios-release-'+run+'-'+attempt
  if a.action=='prepare':
-  payload={'tag_name':tag,'target_commitish':sha,'name':'Ninja Gaiden Black '+version+' '+kind,'body':'Private optimized build; UIProbe records bounded footer metadata only, with performance diagnostics disabled. Keep this release as a draft. Download the IPA asset directly.','draft':True,'prerelease':False,'generate_release_notes':False}
+  payload={'tag_name':tag,'target_commitish':sha,'name':'Ninja Gaiden Black '+version+' '+kind,'body':('Private optimized UI diagnostic build.' if kind=='UIProbe' else 'Private optimized release with port diagnostics disabled.')+' Keep this release as a draft. Download the IPA asset directly.','draft':True,'prerelease':False,'generate_release_notes':False}
   with tempfile.TemporaryDirectory() as td:
    work=Path(td)
    release=create_private_draft(base,payload)

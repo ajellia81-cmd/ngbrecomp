@@ -30,6 +30,7 @@ def main():
  if diagnostic and '_ngb_perf_start' not in symbols.splitlines():raise SystemExit('Diagnostic observer is missing')
  if not diagnostic and any(name.startswith('_ngb_perf_') for name in symbols.splitlines()):raise SystemExit('Diagnostic observer linked into clean release')
  if ui_probe != all(name in symbols.splitlines() for name in ('_ngb_ui_prompt_record','_ngb_ui_prompt_start','_ngb_ui_prompt_hook_enabled','_ngb_ui_prompt_host_state')):raise SystemExit('UI metadata probe configuration mismatch')
+ if not ui_probe and any(name.startswith('_ngb_ui_prompt_') for name in symbols.splitlines()):raise SystemExit('UI metadata probe linked into clean release')
  if any(name.startswith('_ngb_diag_') for name in symbols.splitlines()):raise SystemExit('Port diagnostic writer linked into release')
  forbidden=(b'[frame] t=',b'[water-program]',b'[Smooth Motion pacing]',b'sampling original Mac boot thread',b'SHIM polls=',b'SHIM Metal newLibraryWithSource')
  for binary in (converted,*(o.app/'Frameworks').glob('libShim_*.dylib')):
