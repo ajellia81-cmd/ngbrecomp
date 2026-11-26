@@ -91,3 +91,21 @@ for sec in sections:
   if not fields:continue
   nxt=ins[pos+1] if pos+1<len(ins) else None
   print('CHAPTER_DRAW_GATE',json.dumps({'site':hex(i.address),'fields':[hex(x) for x in fields],'values':[op.imm for op in o if op.type==X86_OP_IMM],'branch':nxt.mnemonic if nxt else None,'target':hex(nxt.operands[0].imm) if nxt and nxt.mnemonic.startswith('j') and nxt.operands and nxt.operands[0].type==X86_OP_IMM else None}))
+# Register-based chapter selectors and the existing flying-flower helper.
+for sec in sections:
+ if not sec[0]&4:continue
+ ins=list(cs.disasm(b[sec[3]:sec[3]+sec[4]],sec[1]))
+ for pos,i in enumerate(ins):
+  if not i.id or not (0x1f5800<=i.address<0x1f5b50 or 0x1f97f0<=i.address<0x1f9a00):continue
+  o=i.operands
+  for op in o:
+   if op.type==X86_OP_MEM and not op.mem.base and not op.mem.index and 0x8d0000<=op.mem.disp<0x8e0000:
+    print('CHAPTER_FLOWER_FIELD',json.dumps({'site':hex(i.address),'field':hex(op.mem.disp),'write':bool(op.access&2),'register':i.reg_name(o[0].reg) if o[0].type==1 else None}))
+  if i.mnemonic not in ('cmp','test','comiss','ucomiss'):continue
+  nxt=ins[pos+1] if pos+1<len(ins) else None
+  vals=[]
+  for op in o:
+   if op.type==X86_OP_IMM:vals.append({'value':op.imm})
+   elif op.type==1:vals.append({'register':i.reg_name(op.reg)})
+   elif op.type==X86_OP_MEM:vals.append({'field':hex(op.mem.disp),'indexed':bool(op.mem.base or op.mem.index)})
+  print('CHAPTER_FLOWER_GATE',json.dumps({'site':hex(i.address),'operands':vals,'branch':nxt.mnemonic if nxt else None,'target':hex(nxt.operands[0].imm) if nxt and nxt.mnemonic.startswith('j') and nxt.operands and nxt.operands[0].type==X86_OP_IMM else None}))
