@@ -1,91 +1,22 @@
-"""Bounded chapter-card input/display predicates, never game code or bytes."""
+"""Report only the native loading-caption identity and pointer columns."""
 from pathlib import Path
-import struct,json,bisect
-from capstone import Cs,CS_ARCH_X86,CS_MODE_32
-from capstone.x86 import X86_OP_IMM,X86_OP_MEM,X86_OP_REG
+import struct,json,re
 b=Path('game_files/default.xbe').read_bytes();base=struct.unpack_from('<I',b,0x104)[0];n,t=struct.unpack_from('<II',b,0x11c)
 sections=[struct.unpack_from('<9I20s',b,t-base+i*56) for i in range(n)]
-cs=Cs(CS_ARCH_X86,CS_MODE_32);cs.detail=True;cs.skipdata=True
-items=[];entries=set()
-for sec in sections:
- if not sec[0]&4:continue
- for i in cs.disasm(b[sec[3]:sec[3]+sec[4]],sec[1]):
-  if not i.id:continue
-  if i.mnemonic=='call' and i.operands[0].type==X86_OP_IMM:entries.add(i.operands[0].imm)
-  if 0x1f3000<=i.address<0x1f7000 or 0x2df800<=i.address<0x2e0000:items.append(i)
-entries=sorted(entries)
-for i in items:
- o=i.operands
- if i.mnemonic=='call' and i.address+i.size==0x1F5AF6 and o and o[0].type==X86_OP_IMM:
-  print('CARD_FOOTER_ROUTE',json.dumps({'site':hex(i.address),'target':hex(o[0].imm)}))
-# Find the other controllers sharing exactly these chapter state fields.
-for sec in sections:
- if not sec[0]&4:continue
- for i in cs.disasm(b[sec[3]:sec[3]+sec[4]],sec[1]):
-  if not i.id or i.mnemonic!='mov':continue
-  o=i.operands
-  if len(o)!=2 or o[0].type!=X86_OP_MEM:continue
-  m=o[0].mem
-  if m.base or m.index or m.disp not in (0x8DB028,0x8DAF24):continue
-  j=bisect.bisect_right(entries,i.address)-1
-  print('CARD_STATE_WRITER',json.dumps({'site':hex(i.address),'field':hex(m.disp),'entry':hex(entries[j]) if j>=0 else None,'value':hex(o[1].imm&0xffffffff) if o[1].type==X86_OP_IMM else 'dynamic'}))
-k=bisect.bisect_right(entries,0x1F5AF6)-1
-ranges=[('chapter_card_update_candidate',entries[k-1],entries[k]),('chapter_card_draw',entries[k],entries[k+1])]
-for label,at in [('chapter_start_controller',0x2dfd14),('chapter_footer_helper',0x1f5e40)]:
- j=bisect.bisect_right(entries,at)-1
- ranges.append((label,entries[j],entries[j+1]))
- print('CARD_ROUTE_REGION',json.dumps({'role':label,'begin':hex(entries[j]),'end':hex(entries[j+1])}))
-alias={v:r for r,ls in [('eax',('ax','al','ah')),('ebx',('bx','bl','bh')),('ecx',('cx','cl','ch')),('edx',('dx','dl','dh')),('esi',('si',)),('edi',('di',))] for v in ls}
-for role,lo,hi in ranges:
- # Only readiness/input predicates and phase values leave this runner.
- regs={};flags=('entry',);flag_site=lo
- def short(v):return v if len(v)<360 else v[:340]+'...'
- def value(op,deref=True):
-  if op.type==X86_OP_IMM:return hex(op.imm&0xffffffff)
-  if op.type==X86_OP_REG:
-   r=i.reg_name(op.reg);v=regs.get(alias.get(r,r),alias.get(r,r))
-   if r in ('al','bl','cl','dl'):v='low8('+v+')'
-   if r in ('ah','bh','ch','dh'):v='high8('+v+')'
-   return short(v)
-  if op.type==X86_OP_MEM:
-   m=op.mem;v=hex(m.disp&0xffffffff)
-   if m.base:v+='+'+regs.get(i.reg_name(m.base),i.reg_name(m.base))
-   if m.index:v+='+'+regs.get(i.reg_name(m.index),i.reg_name(m.index))+'*'+str(m.scale)
-   return short(('mem'+str(op.size*8)+'['+v+']') if deref else v)
-  return 'unknown'
- def assign(op,v):
-  if op.type!=X86_OP_REG:return
-  r=i.reg_name(op.reg);key=alias.get(r,r)
-  if r!=key:v='set_'+r+'('+regs.get(key,key)+','+v+')'
-  regs[key]=short(v)
- for i in items:
-  if not lo<=i.address<hi:continue
-  o=i.operands;m=i.mnemonic
-  if role in ('chapter_card_update_candidate','chapter_start_controller') and o and o[0].type==X86_OP_MEM and not o[0].mem.base and not o[0].mem.index and o[0].mem.disp in (0x8DB028,0x8DAF70,0x8DAEEC,0x8DAF24):
-   if m=='mov' and len(o)==2:print('CARD_READINESS_VALUE',json.dumps({'site':hex(i.address),'field':hex(o[0].mem.disp),'set_to':value(o[1])}))
-   elif m in ('inc','dec'):print('CARD_READINESS_VALUE',json.dumps({'site':hex(i.address),'field':hex(o[0].mem.disp),'change':m}))
-  if m in ('mov','movzx','movsx','movss') and len(o)==2:assign(o[0],value(o[1]))
-  elif m=='lea' and len(o)==2:assign(o[0],value(o[1],False))
-  elif m in ('cmp','test','comiss','ucomiss') and len(o)==2:flags=(m,value(o[0]),value(o[1]));flag_site=i.address
-  elif m.startswith('set') and len(o)==1:assign(o[0],m[3:]+'('+','.join(flags)+')')
-  elif m in ('and','or','xor','add','sub','shl','shr','sar','addss','subss','mulss','divss') and len(o)==2:
-   a,c=value(o[0]),value(o[1]);v='0' if m=='xor' and a==c else m+'('+a+','+c+')';assign(o[0],v)
-   if not m.endswith('ss'):flags=(m,a,c);flag_site=i.address
-  elif m=='imul' and len(o) in (2,3):assign(o[0],'mul('+value(o[-2])+','+value(o[-1])+')');flags=('mul',);flag_site=i.address
-  elif m in ('inc','dec','neg','not') and len(o)==1:
-   old=value(o[0]);assign(o[0],m+'('+old+')');flags=(m,old);flag_site=i.address
-  elif m=='jmp' and o and o[0].type==X86_OP_MEM and role=='chapter_card_update_candidate' and o[0].mem.index:
-   addr=o[0].mem.disp
-   for sec in sections:
-    if sec[1]<=addr<sec[1]+sec[4]-28:
-     cases=struct.unpack_from('<7I',b,sec[3]+addr-sec[1]);print('CARD_PHASE_CASES',json.dumps({'site':hex(i.address),'targets':[hex(v) for v in cases]}))
-  elif m.startswith('j') and m!='jmp' and o and o[0].type==X86_OP_IMM:
-   if role in ('chapter_start_controller','chapter_footer_helper') or any(token in str(flags) for token in ('0x8db028','0x8daf70','0x8daeec','0x8daf24','0xd219a8','0xdb9890')):
-    print('CARD_READINESS_PREDICATE',json.dumps({'role':role,'site':hex(i.address),'condition':m,'flags_site':hex(flag_site),'predicate':flags,'target':hex(o[0].imm)}))
-  elif m.startswith('cmov') and len(o)==2:assign(o[0],m[4:]+'('+','.join(flags)+')?'+value(o[1])+':'+value(o[0]))
-  elif m=='call':
-   if role in ('chapter_start_controller','chapter_footer_helper') and o and o[0].type==X86_OP_IMM:
-    print('CARD_ROUTE_CALL',json.dumps({'role':role,'site':hex(i.address),'target':hex(o[0].imm)}))
-   if role=='chapter_card_draw' and o and o[0].type==X86_OP_IMM and o[0].imm in (0x001E6D30,0x001E6D36,0x001E6AE0,0x001E86A0):
-    print('CARD_CAPTION_ROUTE',json.dumps({'site':hex(i.address),'target':hex(o[0].imm)}))
-   regs['eax']='check_result@'+hex(i.address);regs['ecx']='ecx_after_call';regs['edx']='edx_after_call'
+def offset(va,length):
+ for s in sections:
+  if s[1]<=va and va+length<=s[1]+s[4]:return s[3]+va-s[1]
+ if base<=va and va+length<=base+0x1000:return va-base
+ return None
+found=0
+for ident in range(256):
+ row=0x4316BC+ident*12;at=offset(row,12)
+ if at is None:continue
+ actual,jp,en=struct.unpack_from('<3I',b,at)
+ if actual!=ident:continue
+ text=offset(en,80)
+ if text is None:continue
+ caption=b[text:text+80].split(b'\0',1)[0]
+ if re.fullmatch(rb'(?:now[ \t]+)?loading[ .]*',caption,re.I):
+  print('LOADING_CAPTION_ROW',json.dumps({'id':ident,'row':hex(row),'jp':hex(jp),'english':hex(en),'length':len(caption)}));found+=1
+if not found:raise ValueError('No verified native loading caption in the pinned footer table')
