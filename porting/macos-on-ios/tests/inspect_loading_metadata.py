@@ -30,3 +30,19 @@ for i in items:
  if i.mnemonic not in ('mov','push'):continue
  k=bisect.bisect_right(entries,i.address)-1
  print('LOADING_FLOWER_ENTRY',json.dumps({'site':hex(i.address),'entry':hex(entries[k])}))
+# Identify the state consumed by the existing draw-only loading routine.
+for sec in sections:
+ if not sec[0]&4:continue
+ for i in cs.disasm(b[sec[3]:sec[3]+sec[4]],sec[1]):
+  if not i.id or not 0x204540<=i.address<0x2056f0:continue
+  o=i.operands
+  if i.mnemonic=='call' and o and o[0].type==X86_OP_IMM:
+   print('LOADING_DRAW_CALL',json.dumps({'site':hex(i.address),'target':hex(o[0].imm)}))
+  for j,op in enumerate(o):
+   if op.type!=X86_OP_MEM or op.mem.base or op.mem.index:continue
+   at=op.mem.disp
+   if not (0x8d0000<=at<0x900000 or at==0xbcdfdc):continue
+   row={'site':hex(i.address),'field':hex(at),'width':op.size,'write':bool(op.access&2)}
+   if i.mnemonic in ('cmp','test') and len(o)==2 and o[1-j].type==X86_OP_IMM:
+    row['condition_value']=hex(o[1-j].imm&0xffffffff)
+   print('LOADING_DRAW_STATE',json.dumps(row))
