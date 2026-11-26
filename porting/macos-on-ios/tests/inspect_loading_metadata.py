@@ -46,3 +46,34 @@ for sec in sections:
    if i.mnemonic in ('cmp','test') and len(o)==2 and o[1-j].type==X86_OP_IMM:
     row['condition_value']=hex(o[1-j].imm&0xffffffff)
    print('LOADING_DRAW_STATE',json.dumps(row))
+# Calling convention and phase predicates for safe draw-only reuse.
+for sec in sections:
+ if not sec[0]&4:continue
+ ins=list(cs.disasm(b[sec[3]:sec[3]+sec[4]],sec[1]))
+ for pos,i in enumerate(ins):
+  if not i.id:continue
+  o=i.operands
+  if 0x205350<=i.address<0x205580 and i.mnemonic=='ret':
+   print('LOADING_PROSE_RETURN',json.dumps({'site':hex(i.address),'argument_bytes':o[0].imm if o else 0}))
+  if 0x206679<=i.address<0x20668D and i.mnemonic.startswith('j') and o and o[0].type==X86_OP_IMM:
+   print('LOADING_DRAW_SKIP',json.dumps({'site':hex(i.address),'target':hex(o[0].imm)}))
+  if not 0x204540<=i.address<0x205350:continue
+  if i.mnemonic=='jmp' and o and o[0].type==X86_OP_MEM and o[0].mem.index:
+   addr=o[0].mem.disp
+   for table in sections:
+    if table[1]<=addr<table[1]+table[4]-16:
+     off=table[3]+addr-table[1]
+     print('LOADING_DRAW_PHASES',json.dumps({'site':hex(i.address),'targets':[hex(v) for v in struct.unpack_from('<4I',b,off)]}))
+  if i.mnemonic not in ('cmp','test','comiss','ucomiss'):continue
+  operands=[]
+  for op in o:
+   if op.type==X86_OP_IMM:operands.append({'value':hex(op.imm&0xffffffff)})
+   elif op.type==X86_OP_MEM:
+    field={'memory':hex(op.mem.disp),'indexed':bool(op.mem.base or op.mem.index)}
+    if not field['indexed'] and i.mnemonic.endswith('comiss'):
+     for data in sections:
+      if data[1]<=op.mem.disp<data[1]+data[4]-4:field['float']=struct.unpack_from('<f',b,data[3]+op.mem.disp-data[1])[0]
+    operands.append(field)
+   else:operands.append({'register':i.reg_name(op.reg)})
+  branch=ins[pos+1] if pos+1<len(ins) else None
+  print('LOADING_DRAW_GATE',json.dumps({'site':hex(i.address),'operands':operands,'branch':branch.mnemonic if branch else None,'target':hex(branch.operands[0].imm) if branch and branch.mnemonic.startswith('j') and branch.operands and branch.operands[0].type==X86_OP_IMM else None}))
