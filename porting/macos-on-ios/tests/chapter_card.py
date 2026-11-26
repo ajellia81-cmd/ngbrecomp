@@ -90,6 +90,10 @@ void {prefix}sub_00206670(void) {{
  native_loading_draw();
  loc_0020668D: ;
 }}
+void {prefix}sub_001F97F0(void) {{
+ RECOMP_ENTRY(0x001F97F0u);
+ indicator_draw();
+}}
 void {prefix}sub_00205350(void) {{
  RECOMP_ENTRY(0x00205350u);
  prose_draw();
@@ -102,20 +106,22 @@ void {prefix}sub_00205350(void) {{
   source=file.read_text();assert source.count('ngb_chapter_card_update_begin();')==1
   assert source.index('goto loc_001F3D50;')<source.index('ngb_chapter_card_input_ready();')<source.index('confirm();')
   assert 'ngb_chapter_card_draw_end();' in source
-  assert source.count('ngb_chapter_loading_visual();')==1
-  assert 'if (ngb_chapter_loading_visual_active()) { esp+=4; return; }' in source
+  assert 'ngb_chapter_loading_visual();' not in source
+  assert 'ngb_chapter_indicator_begin(esp,MEM32(esp));' in source
+  assert 'ngb_chapter_indicator_end();' in source
+  assert 'ngb_chapter_loading_visual_active()' not in source
   assert source.index('RECOMP_ABI_CALL(0x002ECC50u,')<source.index('ngb_chapter_card_start_ready();')<source.index('wait_loop();')
   assert 'ngb_chapter_card_footer_begin(MEM32(esp),MEM32(0x8DB028));' in source
 
  prefix='''#include "chapter_card_state.h"
 #include "recomp_funcs.h"
-extern unsigned _fa,_fb,early,mode,footer_caller,esp,skip_native;
+extern unsigned _fa,_fb,early,mode,footer_caller,esp,skip_native,ecx;
 #define RECOMP_ENTRY(x) ((void)0)
 #define CMP_NE(a,b) ((a)!=(b))
 #define MEM32(a) ((a)==0x8DB028u?mode:footer_caller)
 void confirm(void);void draw(void);void wait_loop(void);void caption_draw(void);
 void sub_002ECC50(void);void kr_sub_002ECC50(void);
-void native_loading_draw(void);void prose_draw(void);
+void native_loading_draw(void);void prose_draw(void);void indicator_draw(void);
 /* This fixture models UI pumping; real guest memory/ABI is tested separately. */
 #define PUSH32(sp,value) ((void)(sp),(void)(value))
 #define RECOMP_ABI_CALL(va, fn) (fn)()
@@ -123,8 +129,8 @@ void native_loading_draw(void);void prose_draw(void);
  for file in gen.glob('*.c'):file.write_text(prefix+file.read_text())
  main='''#include <assert.h>
 #include "chapter_card_state.h"
-unsigned _fa=1,_fb,early,mode=3,footer_caller=0x1F5AF6,esp=0x10000,skip_native;
-static unsigned captions,expect_hidden,native_calls,extra_calls,prose_calls;
+unsigned _fa=1,_fb,early,mode=3,footer_caller=0x1F5AF6,esp=0x10000,skip_native,ecx;
+static unsigned captions,expect_hidden,native_calls,prose_calls,indicator_calls,indicator_depth;
 void ngb_original_sub_001F3AD0(void);void ngb_original_sub_001F3ED0(void);
 void ngb_original_sub_002DF930(void);void ngb_original_sub_001F5E40(void);
 void kr_sub_001F3AD0(void);void kr_sub_001F3ED0(void);
@@ -133,7 +139,10 @@ void ngb_original_sub_002060A0(void);void kr_sub_002060A0(void);
 void ngb_original_sub_00205350(void);void kr_sub_00205350(void);
 void native_loading_draw(void){native_calls++;}
 void prose_draw(void){prose_calls++;esp+=4;}
-void ngb_chapter_loading_visual(void){extra_calls++;}
+void indicator_draw(void){assert(indicator_depth==1);indicator_calls++;esp+=4;}
+void ngb_chapter_indicator_begin(unsigned stack,unsigned caller){assert(stack==100 && caller==0x1F5AF6);indicator_depth++;}
+void ngb_chapter_indicator_end(void){assert(indicator_depth==1);indicator_depth--;}
+void ngb_original_sub_001F97F0(void);void kr_sub_001F97F0(void);
 static void (*update)(void),(*card)(void),(*footer)(void);
 static void pump(void){update();card();assert(!ngb_chapter_card_hide_footer());}
 void confirm(void){assert(0);}
@@ -152,13 +161,13 @@ int main(void){
   early=1;start();assert(captions==before+6 && !ngb_chapter_card_route());early=0;
   void (*frame)(void)=korean?kr_sub_002060A0:ngb_original_sub_002060A0;
   void (*prose)(void)=korean?kr_sub_00205350:ngb_original_sub_00205350;
-  unsigned n=native_calls,e=extra_calls;skip_native=0;frame();
-  assert(native_calls==n+1 && extra_calls==e+1);
-  skip_native=1;frame();assert(native_calls==n+1 && extra_calls==e+2);
+  unsigned n=native_calls;skip_native=0;frame();
+  assert(native_calls==n+1);
+  skip_native=1;frame();assert(native_calls==n+1);
   unsigned pc=prose_calls;esp=100;prose();assert(esp==104 && prose_calls==pc+1);
-  ngb_chapter_loading_visual_begin(0);esp=100;prose();
-  assert(esp==104 && prose_calls==pc+1 && ngb_chapter_loading_control_phase(2)==0);
-  ngb_chapter_loading_visual_end();assert(ngb_chapter_loading_control_phase(2)==2);
+  esp=100;ecx=123;unsigned ic=indicator_calls;
+  (korean?kr_sub_001F97F0:ngb_original_sub_001F97F0)();
+  assert(esp==104 && indicator_calls==ic+1 && !indicator_depth);
  }
  return 0;
 }

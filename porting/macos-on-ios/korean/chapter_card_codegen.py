@@ -2,7 +2,7 @@
 from pathlib import Path
 import re,sys
 TOKEN=re.compile(r'/\*.*?\*/|//[^\n]*|"(?:\\.|[^"\\])*"|\'(?:\\.|[^\'\\])*\'',re.S)
-ROLES={'001F3AD0':'update','001F3ED0':'draw','002DF930':'start','001F5E40':'footer','002060A0':'frame','00205350':'prose'}
+ROLES={'001F3AD0':'update','001F3ED0':'draw','002DF930':'start','001F5E40':'footer','001F97F0':'indicator'}
 DEFINITION=re.compile(r'^void ((?:kr_|ngb_original_)?sub_('+ '|'.join(ROLES) +r'))\(void\)\s*\{',re.M)
 DECLARATIONS='''
 void ngb_chapter_card_update_begin(void);
@@ -14,11 +14,11 @@ void ngb_chapter_card_start_ready(void);
 void ngb_chapter_card_start_end(void);
 void ngb_chapter_card_footer_begin(unsigned caller,unsigned mode);
 void ngb_chapter_card_footer_end(void);
-void ngb_chapter_loading_visual(void);
-int ngb_chapter_loading_visual_active(void);
+void ngb_chapter_indicator_begin(unsigned stack,unsigned caller);
+void ngb_chapter_indicator_end(void);
 '''
 def patch(folder):
-    folder=Path(folder);outputs={};joins={False:0,True:0};counts={(role,k):0 for role in ROLES.values() for k in (False,True)}
+    folder=Path(folder);outputs={};counts={(role,k):0 for role in ROLES.values() for k in (False,True)}
     for path in sorted(folder.glob('recomp_*.c')):
         source=path.read_text();masked=TOKEN.sub(lambda m:' '*len(m[0]),source)
         edits=[];wrappers=[];prototypes=[]
@@ -35,8 +35,6 @@ def patch(folder):
                 body,n=guard.subn(lambda m:m[0]+'\n    ngb_chapter_card_input_ready();',body)
                 if n!=1:raise ValueError('Native common-card confirm guard changed')
                 at=body.index('{')+1;body=body[:at]+'\n    ngb_chapter_card_update_begin();'+body[at:]
-            elif role=='frame':
-                pass # The generator may place the join in a continuation body.
             else:
                 if role=='start':
                     # This native call returns after preparation, immediately
@@ -47,44 +45,22 @@ def patch(folder):
                 renamed='ngb_ui_card_body_'+name
                 body=re.sub(r'\bvoid '+re.escape(name)+r'\(void\)', 'void '+renamed+'(void)',body,count=1)
                 prototypes.append('void '+name+'(void);\n')
-                if role=='prose':
-                    # Verified native RET has no stack arguments. During only
-                    # the extra busy overlay, retain the chapter's own prose.
-                    wrappers.append('void '+name+'(void) {\n'
-                        '    if (ngb_chapter_loading_visual_active()) { esp+=4; return; }\n'
-                        '    '+renamed+'();\n}\n')
-                else:
-                    begin={'draw':'ngb_chapter_card_draw_begin(MEM32(0x8DB028));',
-                           'start':'ngb_chapter_card_start_begin();',
-                           'footer':'ngb_chapter_card_footer_begin(MEM32(esp),MEM32(0x8DB028));'}[role]
-                    end_call={'draw':'ngb_chapter_card_draw_end();','start':'ngb_chapter_card_start_end();',
-                              'footer':'ngb_chapter_card_footer_end();'}[role]
-                    wrappers.append('void '+name+'(void) {\n    '+begin+'\n    '+renamed+'();\n    '+end_call+'\n}\n')
+                begin={'draw':'ngb_chapter_card_draw_begin(MEM32(0x8DB028));',
+                       'start':'ngb_chapter_card_start_begin();',
+                       'footer':'ngb_chapter_card_footer_begin(MEM32(esp),MEM32(0x8DB028));',
+                       'indicator':'ngb_chapter_indicator_begin(esp,MEM32(esp));'}[role]
+                end_call={'draw':'ngb_chapter_card_draw_end();','start':'ngb_chapter_card_start_end();',
+                          'footer':'ngb_chapter_card_footer_end();','indicator':'ngb_chapter_indicator_end();'}[role]
+                wrappers.append('void '+name+'(void) {\n    '+begin+'\n    '+renamed+'();\n    '+end_call+'\n}\n')
             edits.append((a,end,body))
         if edits:
             for a,end,body in reversed(edits):source=source[:a]+body+source[end:]
             source=''.join(prototypes)+source+'\n'+''.join(wrappers)
-        # Match the native join itself, including when upstream splits the
-        # frame pump into a separate generated continuation. No hook belongs
-        # at the root's early return or after the later presentation call.
-        marker='loc_0020668D: ;'
-        join_edits=[]
-        for hit in re.finditer(re.escape(marker),source):
-            owners=list(re.finditer(r'^void ((?:kr_|ngb_original_)?sub_([0-9A-F]{8}))\(void\)\s*\{',source[:hit.start()],re.M))
-            if not owners:raise ValueError('Native loading join has no generated owner')
-            owner=owners[-1];body=source[owner.end():hit.start()]
-            if 'RECOMP_ENTRY(0x'+owner[2]+'u)' not in body:
-                raise ValueError('Native loading join is not in a generated body')
-            korean=owner[1].startswith('kr_');joins[korean]+=1
-            join_edits.append(hit.end())
-        for at in reversed(join_edits):source=source[:at]+'\n    ngb_chapter_loading_visual();'+source[at:]
-        if edits or join_edits:outputs[path]=source
+            outputs[path]=source
     if any(counts[role,False]!=1 for role in ROLES.values()) or any(n>1 for n in counts.values()):
         raise ValueError('Native chapter UI adapter boundaries changed')
-    if joins[False]!=1 or joins[True]>1:
-        raise ValueError('Native loading draw-join counts changed: '+str(joins))
     header=folder/'recomp_funcs.h';declarations=header.read_text()+DECLARATIONS
     for path,source in outputs.items():path.write_text(source)
     header.write_text(declarations)
-    print('Chapter readiness, footer and original busy-visual adapters installed')
+    print('Chapter readiness, footer and native indicator adapters installed')
 if __name__=='__main__':patch(Path(sys.argv[1]))
