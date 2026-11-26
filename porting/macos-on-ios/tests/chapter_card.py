@@ -82,6 +82,10 @@ void {prefix}sub_001F5E40(void) {{
 }}
 void {prefix}sub_002060A0(void) {{
  RECOMP_ENTRY(0x002060A0u);
+ {prefix}sub_00206670();
+}}
+void {prefix}sub_00206670(void) {{
+ RECOMP_ENTRY(0x00206670u);
  if (skip_native) goto loc_0020668D;
  native_loading_draw();
  loc_0020668D: ;
@@ -91,8 +95,8 @@ void {prefix}sub_00205350(void) {{
  prose_draw();
 }}
 '''
- (gen/'recomp_a.c').write_text(fixture('ngb_original_'))
- (gen/'recomp_korean.c').write_text(fixture('kr_'))
+ (gen/'recomp_a.c').write_text('void ngb_original_sub_00206670(void);\n'+fixture('ngb_original_'))
+ (gen/'recomp_korean.c').write_text('void kr_sub_00206670(void);\n'+fixture('kr_'))
  mod.patch(gen)
  for file in gen.glob('*.c'):
   source=file.read_text();assert source.count('ngb_chapter_card_update_begin();')==1

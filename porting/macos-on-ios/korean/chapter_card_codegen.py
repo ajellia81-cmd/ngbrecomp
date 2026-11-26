@@ -18,7 +18,7 @@ void ngb_chapter_loading_visual(void);
 int ngb_chapter_loading_visual_active(void);
 '''
 def patch(folder):
-    folder=Path(folder);outputs={};counts={(role,k):0 for role in ROLES.values() for k in (False,True)}
+    folder=Path(folder);outputs={};joins={False:0,True:0};counts={(role,k):0 for role in ROLES.values() for k in (False,True)}
     for path in sorted(folder.glob('recomp_*.c')):
         source=path.read_text();masked=TOKEN.sub(lambda m:' '*len(m[0]),source)
         edits=[];wrappers=[];prototypes=[]
@@ -36,9 +36,7 @@ def patch(folder):
                 if n!=1:raise ValueError('Native common-card confirm guard changed')
                 at=body.index('{')+1;body=body[:at]+'\n    ngb_chapter_card_update_begin();'+body[at:]
             elif role=='frame':
-                marker='loc_0020668D: ;'
-                if body.count(marker)!=1:raise ValueError('Native loading draw-join boundary changed')
-                body=body.replace(marker,marker+'\n    ngb_chapter_loading_visual();')
+                pass # The generator may place the join in a continuation body.
             else:
                 if role=='start':
                     # This native call returns after preparation, immediately
@@ -65,9 +63,26 @@ def patch(folder):
             edits.append((a,end,body))
         if edits:
             for a,end,body in reversed(edits):source=source[:a]+body+source[end:]
-            outputs[path]=''.join(prototypes)+source+'\n'+''.join(wrappers)
+            source=''.join(prototypes)+source+'\n'+''.join(wrappers)
+        # Match the native join itself, including when upstream splits the
+        # frame pump into a separate generated continuation. No hook belongs
+        # at the root's early return or after the later presentation call.
+        marker='loc_0020668D: ;'
+        join_edits=[]
+        for hit in re.finditer(re.escape(marker),source):
+            owners=list(re.finditer(r'^void ((?:kr_|ngb_original_)?sub_([0-9A-F]{8}))\(void\)\s*\{',source[:hit.start()],re.M))
+            if not owners:raise ValueError('Native loading join has no generated owner')
+            owner=owners[-1];body=source[owner.end():hit.start()]
+            if 'RECOMP_ENTRY(0x'+owner[2]+'u)' not in body:
+                raise ValueError('Native loading join is not in a generated body')
+            korean=owner[1].startswith('kr_');joins[korean]+=1
+            join_edits.append(hit.end())
+        for at in reversed(join_edits):source=source[:at]+'\n    ngb_chapter_loading_visual();'+source[at:]
+        if edits or join_edits:outputs[path]=source
     if any(counts[role,False]!=1 for role in ROLES.values()) or any(n>1 for n in counts.values()):
         raise ValueError('Native chapter UI adapter boundaries changed')
+    if joins[False]!=1 or joins[True]>1:
+        raise ValueError('Native loading draw-join counts changed: '+str(joins))
     header=folder/'recomp_funcs.h';declarations=header.read_text()+DECLARATIONS
     for path,source in outputs.items():path.write_text(source)
     header.write_text(declarations)
