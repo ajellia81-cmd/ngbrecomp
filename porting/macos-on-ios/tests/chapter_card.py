@@ -107,8 +107,9 @@ void {prefix}sub_00205350(void) {{
   assert source.index('goto loc_001F3D50;')<source.index('ngb_chapter_card_input_ready();')<source.index('confirm();')
   assert 'ngb_chapter_card_draw_end();' in source
   assert 'ngb_chapter_loading_visual();' not in source
-  assert 'ngb_chapter_indicator_begin(esp,MEM32(esp));' in source
-  assert 'ngb_chapter_indicator_end();' in source
+  assert 'ngb_chapter_animation_draw_begin();' in source
+  assert 'ngb_chapter_animation_draw_end();' in source
+  assert 'ngb_chapter_indicator_begin' not in source
   assert 'ngb_chapter_loading_visual_active()' not in source
   assert source.index('RECOMP_ABI_CALL(0x002ECC50u,')<source.index('ngb_chapter_card_start_ready();')<source.index('wait_loop();')
   assert 'ngb_chapter_card_footer_begin(MEM32(esp),MEM32(0x8DB028));' in source
@@ -130,6 +131,7 @@ void native_loading_draw(void);void prose_draw(void);void indicator_draw(void);
  main='''#include <assert.h>
 #include "chapter_card_state.h"
 unsigned _fa=1,_fb,early,mode=3,footer_caller=0x1F5AF6,esp=0x10000,skip_native,ecx;
+static unsigned animation_calls,animation_depth;
 static unsigned captions,expect_hidden,native_calls,prose_calls,indicator_calls,indicator_depth;
 void ngb_original_sub_001F3AD0(void);void ngb_original_sub_001F3ED0(void);
 void ngb_original_sub_002DF930(void);void ngb_original_sub_001F5E40(void);
@@ -140,8 +142,8 @@ void ngb_original_sub_00205350(void);void kr_sub_00205350(void);
 void native_loading_draw(void){native_calls++;}
 void prose_draw(void){prose_calls++;esp+=4;}
 void indicator_draw(void){assert(indicator_depth==1);indicator_calls++;esp+=4;}
-void ngb_chapter_indicator_begin(unsigned stack,unsigned caller){assert(stack==100 && caller==0x1F5AF6);indicator_depth++;}
-void ngb_chapter_indicator_end(void){assert(indicator_depth==1);indicator_depth--;}
+void ngb_chapter_animation_draw_begin(void){animation_calls++;animation_depth++;assert(animation_depth==1);}
+void ngb_chapter_animation_draw_end(void){assert(animation_depth==1);animation_depth--;}
 void ngb_original_sub_001F97F0(void);void kr_sub_001F97F0(void);
 static void (*update)(void),(*card)(void),(*footer)(void);
 static void pump(void){update();card();assert(!ngb_chapter_card_hide_footer());}
@@ -165,9 +167,8 @@ int main(void){
   assert(native_calls==n+1);
   skip_native=1;frame();assert(native_calls==n+1);
   unsigned pc=prose_calls;esp=100;prose();assert(esp==104 && prose_calls==pc+1);
-  esp=100;ecx=123;unsigned ic=indicator_calls;
-  (korean?kr_sub_001F97F0:ngb_original_sub_001F97F0)();
-  assert(esp==104 && indicator_calls==ic+1 && !indicator_depth);
+  unsigned ac=animation_calls;early=1;card();early=0;
+  assert(animation_calls==ac+1 && !animation_depth);
  }
  return 0;
 }

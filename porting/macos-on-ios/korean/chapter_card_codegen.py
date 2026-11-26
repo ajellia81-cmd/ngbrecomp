@@ -2,7 +2,7 @@
 from pathlib import Path
 import re,sys
 TOKEN=re.compile(r'/\*.*?\*/|//[^\n]*|"(?:\\.|[^"\\])*"|\'(?:\\.|[^\'\\])*\'',re.S)
-ROLES={'001F3AD0':'update','001F3ED0':'draw','002DF930':'start','001F5E40':'footer','001F97F0':'indicator'}
+ROLES={'001F3AD0':'update','001F3ED0':'draw','002DF930':'start','001F5E40':'footer'}
 DEFINITION=re.compile(r'^void ((?:kr_|ngb_original_)?sub_('+ '|'.join(ROLES) +r'))\(void\)\s*\{',re.M)
 DECLARATIONS='''
 void ngb_chapter_card_update_begin(void);
@@ -14,8 +14,8 @@ void ngb_chapter_card_start_ready(void);
 void ngb_chapter_card_start_end(void);
 void ngb_chapter_card_footer_begin(unsigned caller,unsigned mode);
 void ngb_chapter_card_footer_end(void);
-void ngb_chapter_indicator_begin(unsigned stack,unsigned caller);
-void ngb_chapter_indicator_end(void);
+void ngb_chapter_animation_draw_begin(void);
+void ngb_chapter_animation_draw_end(void);
 '''
 def patch(folder):
     folder=Path(folder);outputs={};counts={(role,k):0 for role in ROLES.values() for k in (False,True)}
@@ -45,12 +45,11 @@ def patch(folder):
                 renamed='ngb_ui_card_body_'+name
                 body=re.sub(r'\bvoid '+re.escape(name)+r'\(void\)', 'void '+renamed+'(void)',body,count=1)
                 prototypes.append('void '+name+'(void);\n')
-                begin={'draw':'ngb_chapter_card_draw_begin(MEM32(0x8DB028));',
+                begin={'draw':'ngb_chapter_card_draw_begin(MEM32(0x8DB028));\n    ngb_chapter_animation_draw_begin();',
                        'start':'ngb_chapter_card_start_begin();',
-                       'footer':'ngb_chapter_card_footer_begin(MEM32(esp),MEM32(0x8DB028));',
-                       'indicator':'ngb_chapter_indicator_begin(esp,MEM32(esp));'}[role]
-                end_call={'draw':'ngb_chapter_card_draw_end();','start':'ngb_chapter_card_start_end();',
-                          'footer':'ngb_chapter_card_footer_end();','indicator':'ngb_chapter_indicator_end();'}[role]
+                       'footer':'ngb_chapter_card_footer_begin(MEM32(esp),MEM32(0x8DB028));'}[role]
+                end_call={'draw':'ngb_chapter_animation_draw_end();\n    ngb_chapter_card_draw_end();','start':'ngb_chapter_card_start_end();',
+                          'footer':'ngb_chapter_card_footer_end();'}[role]
                 wrappers.append('void '+name+'(void) {\n    '+begin+'\n    '+renamed+'();\n    '+end_call+'\n}\n')
             edits.append((a,end,body))
         if edits:

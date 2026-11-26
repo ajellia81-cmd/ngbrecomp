@@ -1,11 +1,13 @@
 #include "chapter_card_state.h"
 /* Native chapter setup pumps the UI before reaching its input loop. Keep that
  * lifetime separate from the common card updater, which runs on every pump. */
-static unsigned update_seen,update_ready,depth,start_depth,footer_depth;
+static unsigned update_seen,update_ready,depth,start_depth,footer_depth,start_generation,visual_depth;
 typedef struct { unsigned active,ready; } CardDraw;
 static CardDraw draws[4];
-static unsigned starts[4],footers[4];
-void ngb_chapter_card_start_begin(void){if(start_depth<4)starts[start_depth]=0;start_depth++;}
+static unsigned starts[4],footers[4],visuals[4];
+unsigned ngb_chapter_card_start_generation(void){return start_generation;}
+int ngb_chapter_card_start_active(void){return start_depth!=0;}
+void ngb_chapter_card_start_begin(void){start_generation++;if(start_depth<4)starts[start_depth]=0;start_depth++;}
 void ngb_chapter_card_start_ready(void){if(start_depth && start_depth<=4)starts[start_depth-1]=1;}
 void ngb_chapter_card_start_end(void){if(start_depth)start_depth--;}
 void ngb_chapter_card_update_begin(void){update_seen=1;update_ready=0;}
@@ -21,17 +23,17 @@ void ngb_chapter_card_draw_begin(unsigned mode)
 void ngb_chapter_card_draw_end(void){if(depth)depth--;}
 int ngb_chapter_card_pending(void)
 {
-    return depth && depth<=4 && draws[depth-1].active && !draws[depth-1].ready;
+    return depth && depth<=4 && draws[depth-1].active && (!draws[depth-1].ready || ngb_chapter_card_visual_busy());
 }
 int ngb_chapter_card_can_confirm(void)
 {
-    return depth && depth<=4 && draws[depth-1].active && draws[depth-1].ready;
+    return depth && depth<=4 && draws[depth-1].active && draws[depth-1].ready && !ngb_chapter_card_visual_busy();
 }
 void ngb_chapter_card_footer_begin(unsigned caller,unsigned mode)
 {
     /* Only this chapter-start controller has the extra preparation stage.
      * Other loading screens keep their native captions and input handling. */
-    unsigned waiting=start_depth && (start_depth>4 || !starts[start_depth-1]);
+    unsigned waiting=(start_depth && (start_depth>4 || !starts[start_depth-1])) || ngb_chapter_card_visual_busy();
     if(footer_depth<4)footers[footer_depth]=caller==0x001F5AF6u && mode>=1 && mode<=7 && waiting;
     footer_depth++;
 }
@@ -44,9 +46,12 @@ int ngb_chapter_card_start_waiting(void)
 {
     return start_depth && (start_depth>4 || !starts[start_depth-1]);
 }
+void ngb_chapter_card_visual_begin(unsigned busy){if(visual_depth<4)visuals[visual_depth]=busy;visual_depth++;}
+void ngb_chapter_card_visual_end(void){if(visual_depth)visual_depth--;}
+int ngb_chapter_card_visual_busy(void){return visual_depth && (visual_depth>4 || visuals[visual_depth-1]);}
 unsigned ngb_chapter_loading_control_phase(unsigned phase){return phase;}
 unsigned ngb_chapter_card_route(void)
 {
     return (start_depth?1u:0u) | (start_depth && start_depth<=4 && starts[start_depth-1]?2u:0u) |
-        (depth?4u:0u) | (ngb_chapter_card_hide_footer()?8u:0u);
+        (depth?4u:0u) | (ngb_chapter_card_hide_footer()?8u:0u) | (ngb_chapter_card_visual_busy()?16u:0u);
 }
